@@ -146,7 +146,8 @@ function extractComponentInfo(node) {
         info.description = node.description;
     }
     if (node.type === 'INSTANCE') {
-        info.mainComponent = node.mainComponent?.name;
+        const instanceNode = node;
+        info.mainComponent = instanceNode.mainComponent ? instanceNode.mainComponent.name : null;
     }
     return {
         name: node.name,

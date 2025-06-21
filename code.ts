@@ -175,7 +175,8 @@ function extractComponentInfo(node: SceneNode): { name: string; structure: any }
   }
 
   if (node.type === 'INSTANCE') {
-    info.mainComponent = (node as InstanceNode).mainComponent?.name;
+    const instanceNode = node as InstanceNode;
+    info.mainComponent = instanceNode.mainComponent ? instanceNode.mainComponent.name : null;
   }
 
   return {
