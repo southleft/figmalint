@@ -38,7 +38,8 @@ async function handleUIMessage(msg: any) {
     }
   } catch (error) {
     console.error('Error handling message:', error);
-    sendMessageToUI('analysis-error', { error: error.message });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    sendMessageToUI('analysis-error', { error: errorMessage });
   }
 }
 
@@ -75,7 +76,8 @@ async function handleSaveApiKey(apiKey: string) {
 
   } catch (error) {
     console.error('Error saving API key:', error);
-    sendMessageToUI('api-key-saved', { success: false, error: error.message });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    sendMessageToUI('api-key-saved', { success: false, error: errorMessage });
   }
 }
 
@@ -122,50 +124,59 @@ async function handleAnalyzeComponent() {
 
   } catch (error) {
     console.error('Error during analysis:', error);
-    figma.notify(`Analysis failed: ${error.message}`, { error: true });
-    sendMessageToUI('analysis-error', { error: error.message });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    figma.notify(`Analysis failed: ${errorMessage}`, { error: true });
+    sendMessageToUI('analysis-error', { error: errorMessage });
   }
 }
 
 // Extract relevant information from a Figma node
 function extractComponentInfo(node: SceneNode): { name: string; structure: any } {
-  const info = {
+  // Build info object step by step to avoid conditional spread operator issues
+  const info: any = {
     name: node.name,
     type: node.type,
-    id: node.id,
-    // Add basic properties that are common to most nodes
-    ...(node.type !== 'SLICE' && {
-      visible: node.visible,
-      locked: node.locked,
-    }),
-    // Add layout properties if available
-    ...(('width' in node && 'height' in node) && {
-      width: node.width,
-      height: node.height,
-    }),
-    // Add fill information if available
-    ...(('fills' in node) && {
-      fills: node.fills ? node.fills.length : 0,
-    }),
-    // Add children information if it's a container
-    ...(('children' in node) && {
-      childCount: node.children.length,
-      childTypes: node.children.map(child => child.type),
-    }),
-    // Add text content if it's a text node
-    ...(node.type === 'TEXT' && {
-      characters: (node as TextNode).characters,
-      fontSize: (node as TextNode).fontSize,
-      fontName: (node as TextNode).fontName,
-    }),
-    // Add component/instance information
-    ...(node.type === 'COMPONENT' && {
-      description: (node as ComponentNode).description,
-    }),
-    ...(node.type === 'INSTANCE' && {
-      mainComponent: (node as InstanceNode).mainComponent?.name,
-    }),
+    id: node.id
   };
+
+  // Add basic properties that are common to most nodes
+  if (node.type !== 'SLICE') {
+    info.visible = node.visible;
+    info.locked = node.locked;
+  }
+
+  // Add layout properties if available
+  if ('width' in node && 'height' in node) {
+    info.width = node.width;
+    info.height = node.height;
+  }
+
+  // Add fill information if available
+  if ('fills' in node) {
+    info.fills = node.fills ? node.fills.length : 0;
+  }
+
+  // Add children information if it's a container
+  if ('children' in node && node.children) {
+    info.childCount = node.children.length;
+    info.childTypes = node.children.map(child => child.type);
+  }
+
+  // Add text content if it's a text node
+  if (node.type === 'TEXT') {
+    info.characters = (node as TextNode).characters;
+    info.fontSize = (node as TextNode).fontSize;
+    info.fontName = (node as TextNode).fontName;
+  }
+
+  // Add component/instance information
+  if (node.type === 'COMPONENT') {
+    info.description = (node as ComponentNode).description;
+  }
+
+  if (node.type === 'INSTANCE') {
+    info.mainComponent = (node as InstanceNode).mainComponent?.name;
+  }
 
   return {
     name: node.name,
