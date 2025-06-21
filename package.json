@@ -8,7 +8,14 @@
     "dev": "tsc --target ES2020 --lib ES2020,DOM --watch figma.d.ts code.ts ui.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["figma", "plugin", "ai", "claude", "design", "analysis"],
+  "keywords": [
+    "figma",
+    "plugin",
+    "ai",
+    "claude",
+    "design",
+    "analysis"
+  ],
   "author": "",
   "license": "ISC",
   "devDependencies": {

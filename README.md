@@ -57,16 +57,56 @@ ai-design-copilot/
 
 ### API Integration
 
-The plugin uses Claude 3 Opus via Anthropic's Messages API:
-- Endpoint: `https://api.anthropic.com/v1/messages`
-- Headers: `x-api-key`, `content-type`, `anthropic-version`
-- Model: `claude-3-opus-20240229`
+The plugin makes direct API calls to Anthropic's Claude API. The `manifest.json` file includes the necessary network permissions:
 
-### Security
+```json
+"networkAccess": {
+  "allowedDomains": ["https://api.anthropic.com"]
+}
+```
 
-- API keys are stored in memory during the session
-- For production, consider using `figma.clientStorage` for persistence
-- API keys are cleared from UI inputs after saving
+This allows the plugin to communicate directly with the Claude API without needing a proxy server.
+
+### Building the Plugin
+
+To compile TypeScript files:
+
+```bash
+npm run build
+```
+
+For development with auto-recompilation:
+
+```bash
+npm run dev
+```
+
+## Troubleshooting
+
+### API Connection Issues
+
+- **Invalid API Key**: Ensure your API key starts with `sk-ant-` and is valid
+- **Rate Limits**: If you see rate limit errors, wait a moment before trying again
+- **Network Issues**: Check your internet connection
+
+### Plugin Issues
+
+- **Component Not Selected**: Make sure to select a Figma component before analyzing
+- **Plugin Not Loading**: Try reloading the plugin or restarting Figma
+
+## Security Notes
+
+- API keys are stored in memory during the plugin session
+- For production use, consider implementing secure key storage using Figma's clientStorage API
+- Never commit API keys to version control
+
+## Future Enhancements
+
+- Persistent API key storage
+- Batch component analysis
+- Export analysis results
+- Custom analysis prompts
+- Integration with design systems
 
 ## Extending the Plugin
 

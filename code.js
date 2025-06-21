@@ -26,24 +26,32 @@ Keep the response concise and actionable for a designer.
 }
 // Send a prompt to Claude API and get a response
 async function fetchClaude(prompt, apiKey) {
-    console.log('Making Claude API call via proxy...');
-    // Use proxy server to bypass CORS restrictions
-    // For production, deploy the proxy server and update this URL
-    const PROXY_URL = 'http://localhost:3000/api/claude';
-    // Prepare the request payload for proxy
+    console.log('Making Claude API call directly...');
+    // Direct API endpoint for Anthropic
+    const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+    // Prepare the request payload for Anthropic API
     const requestBody = {
-        apiKey: apiKey.trim(),
-        prompt: prompt.trim()
+        model: 'claude-3-opus-20240229',
+        messages: [
+            {
+                role: 'user',
+                content: prompt.trim()
+            }
+        ],
+        max_tokens: 1024
     };
-    // Simple headers for proxy request
+    // Headers for direct Anthropic API request
+    // Note: The 'anthropic-dangerous-direct-browser-access' header is required for CORS
     const headers = {
-        'content-type': 'application/json'
+        'content-type': 'application/json',
+        'x-api-key': apiKey.trim(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
     };
     try {
-        // Make the API request
-        // Note: Figma plugins may have network restrictions, so we'll handle errors gracefully
+        // Make the API request directly to Anthropic
         console.log('Sending request to Claude API...');
-        const response = await fetch(PROXY_URL, {
+        const response = await fetch(ANTHROPIC_API_URL, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify(requestBody)
@@ -66,30 +74,20 @@ async function fetchClaude(prompt, apiKey) {
         }
     }
     catch (error) {
-        console.error('Claude API call failed:', error);
-        // Return a helpful error message
-        return `Error connecting to Claude API: ${error instanceof Error ? error.message : 'Unknown error'}
-
-Please check:
-• The proxy server is running (node proxy-server.js)
-• Your API key is valid and starts with 'sk-ant-'
-• You have an active Claude API subscription
-• Your internet connection is working
-
-To fix CORS issues:
-1. Run the proxy server: node proxy-server.js
-2. Make sure it's accessible at http://localhost:3000
-
-For development, you can use this placeholder analysis:
-
-Component Analysis:
-This appears to be a UI component that could benefit from:
-• Multiple visual states (hover, active, disabled)
-• Consistent spacing and typography
-• Accessibility improvements
-• Clear documentation
-
-Try fixing the API connection and analyzing again.`;
+        console.error('Error calling Claude API:', error);
+        // Provide helpful error messages
+        if (error instanceof Error) {
+            if (error.message.includes('Failed to fetch')) {
+                throw new Error('Failed to connect to Claude API. Please check your internet connection.');
+            }
+            else if (error.message.includes('401')) {
+                throw new Error('Invalid API key. Please check your Claude API key.');
+            }
+            else if (error.message.includes('429')) {
+                throw new Error('Rate limit exceeded. Please try again later.');
+            }
+        }
+        throw error;
     }
 }
 // Plugin configuration
