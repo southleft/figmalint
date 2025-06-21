@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AI Design Co-Pilot</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- API Key Configuration Section -->
+    <div class="input-group">
+      <label for="api-key">Claude API Key:</label>
+      <input
+        type="password"
+        id="api-key"
+        placeholder="Enter your Claude API key..."
+        autocomplete="off"
+      >
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="actions">
+      <button id="save-key" class="secondary">Save Key</button>
+      <button id="analyze-component" disabled>Analyze Selected Component</button>
+    </div>
+
+    <!-- Status Display -->
+    <div class="status" id="status">
+      Enter API key to get started
+    </div>
+  </div>
+
+  <!-- Link to UI TypeScript Logic -->
+  <script src="ui.js"></script>
+</body>
+</html>
