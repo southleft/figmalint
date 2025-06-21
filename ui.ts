@@ -13,10 +13,10 @@ let apiKeySaved = false;
 // Initialize UI event listeners
 function initializeUI() {
   // Save API Key button click handler
-  saveKeyButton.addEventListener('click', handleSaveApiKey);
+  saveKeyButton.addEventListener('click', handleSaveApiKeyUI);
 
   // Analyze Component button click handler
-  analyzeButton.addEventListener('click', handleAnalyzeComponent);
+  analyzeButton.addEventListener('click', handleAnalyzeComponentUI);
 
   // API Key input change handler - enable/disable analyze button
   apiKeyInput.addEventListener('input', handleApiKeyChange);
@@ -35,7 +35,7 @@ function handleApiKeyChange() {
 }
 
 // Handle Save API Key button click
-function handleSaveApiKey() {
+function handleSaveApiKeyUI() {
   const apiKey = apiKeyInput.value.trim();
 
   if (!apiKey) {
@@ -52,7 +52,7 @@ function handleSaveApiKey() {
 }
 
 // Handle Analyze Component button click
-function handleAnalyzeComponent() {
+function handleAnalyzeComponentUI() {
   if (!apiKeySaved) {
     updateStatus('Please save API key first', 'error');
     return;
@@ -162,7 +162,9 @@ function sendMessageToPlugin(type: string, data: any) {
 }
 
 // Initialize the UI when DOM is loaded
-document.addEventListener('DOMContentLoaded', initializeUI);
-
-// Export for potential future use
-export { initializeUI };
+// Handle both cases: DOM still loading or already loaded (common in Figma plugins)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeUI);
+} else {
+  initializeUI();
+}
