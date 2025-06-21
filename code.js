@@ -153,7 +153,9 @@ async function handleAnalyzeComponent() {
         // Call Claude API (this is a placeholder - actual implementation would use the real API)
         const analysis = await fetchClaudeAnalysis(prompt, storedApiKey);
         // Display the analysis result
-        figma.notify(`Analysis complete! Claude suggests: ${analysis.substring(0, 100)}...`, { timeout: 10000 });
+        figma.notify(`Analysis complete! Check the plugin panel for details.`, { timeout: 5000 });
+        // Send the full analysis to UI for display
+        sendMessageToUI('analysis-result', { analysis });
         // Send success message to UI
         sendMessageToUI('analysis-complete', { success: true, message: 'Analysis completed successfully' });
         console.log('Full analysis:', analysis);

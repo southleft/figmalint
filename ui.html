@@ -102,6 +102,80 @@
     .status-error {
       color: #d32f2f;
     }
+
+    /* Results display styles */
+    .results-section {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 200px;
+      margin-top: 12px;
+      border-top: 1px solid #e0e0e0;
+      padding-top: 12px;
+    }
+
+    .results-section.visible {
+      display: flex;
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .results-title {
+      font-weight: 600;
+      font-size: 12px;
+      color: #333;
+    }
+
+    .copy-button {
+      padding: 4px 8px;
+      font-size: 11px;
+      background-color: transparent;
+      color: #0066cc;
+      border: 1px solid #0066cc;
+    }
+
+    .copy-button:hover {
+      background-color: #0066cc;
+      color: white;
+    }
+
+    .results-content {
+      flex: 1;
+      overflow-y: auto;
+      background-color: #f5f5f5;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 12px;
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    }
+
+    .results-content h3 {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .results-content p {
+      margin: 0 0 12px 0;
+    }
+
+    .results-content ul {
+      margin: 0 0 12px 0;
+      padding-left: 20px;
+    }
+
+    .results-content li {
+      margin: 0 0 4px 0;
+    }
   </style>
 </head>
 <body>
@@ -127,6 +201,17 @@
     <div class="status" id="status">
       Enter API key to get started
     </div>
+
+    <!-- Results Section -->
+    <div class="results-section" id="results-section">
+      <div class="results-header">
+        <span class="results-title">Analysis Results</span>
+        <button class="copy-button" id="copy-results">Copy</button>
+      </div>
+      <div class="results-content" id="results-content">
+        <!-- Analysis results will appear here -->
+      </div>
+    </div>
   </div>
 
   <!-- Inline JavaScript for better Figma plugin compatibility -->
@@ -139,6 +224,9 @@
     const saveKeyButton = document.getElementById('save-key');
     const analyzeButton = document.getElementById('analyze-component');
     const statusDiv = document.getElementById('status');
+    const resultsSection = document.getElementById('results-section');
+    const resultsContent = document.getElementById('results-content');
+    const copyButton = document.getElementById('copy-results');
 
     // State management
     let apiKeySaved = false;
@@ -169,8 +257,11 @@
       // API Key input change handler - enable/disable analyze button
       apiKeyInput.addEventListener('input', handleApiKeyChange);
 
-      // Listen for messages from the plugin backend
+            // Listen for messages from the plugin backend
       window.addEventListener('message', handlePluginMessage);
+
+      // Copy button click handler
+      copyButton.addEventListener('click', handleCopyResults);
 
       // Request current API key status from backend
       sendMessageToPlugin('check-api-key', {});
@@ -229,6 +320,9 @@
           break;
         case 'analysis-complete':
           handleAnalysisComplete(data.success, data.message);
+          break;
+        case 'analysis-result':
+          handleAnalysisResult(data.analysis);
           break;
         case 'analysis-error':
           handleAnalysisError(data.error);
@@ -318,6 +412,89 @@
           console.error('Fallback also failed:', fallbackError);
         }
       }
+    }
+
+    // Handle analysis result display
+    function handleAnalysisResult(analysis) {
+      console.log('Displaying analysis result:', analysis);
+
+      // Show the results section
+      resultsSection.classList.add('visible');
+
+      // Format and display the analysis
+      const formattedAnalysis = formatAnalysisForDisplay(analysis);
+      resultsContent.innerHTML = formattedAnalysis;
+
+      // Update status
+      updateStatus('Analysis complete!', 'success');
+    }
+
+    // Format analysis text for HTML display
+    function formatAnalysisForDisplay(analysis) {
+      // Convert the plain text analysis to HTML with better formatting
+      const lines = analysis.split('\n');
+      let html = '';
+      let inList = false;
+
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+
+        // Headers (lines ending with :)
+        if (trimmedLine.endsWith(':') && !trimmedLine.startsWith('•')) {
+          if (inList) {
+            html += '</ul>';
+            inList = false;
+          }
+          html += `<h3>${trimmedLine}</h3>`;
+        }
+        // List items
+        else if (trimmedLine.startsWith('•')) {
+          if (!inList) {
+            html += '<ul>';
+            inList = true;
+          }
+          html += `<li>${trimmedLine.substring(1).trim()}</li>`;
+        }
+        // Regular paragraphs
+        else if (trimmedLine) {
+          if (inList) {
+            html += '</ul>';
+            inList = false;
+          }
+          html += `<p>${trimmedLine}</p>`;
+        }
+      });
+
+      if (inList) {
+        html += '</ul>';
+      }
+
+      return html;
+    }
+
+    // Handle copy button click
+    function handleCopyResults() {
+      const textContent = resultsContent.innerText;
+
+      if (!textContent) {
+        updateStatus('No results to copy', 'error');
+        return;
+      }
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(textContent).then(() => {
+        updateStatus('Copied to clipboard!', 'success');
+
+        // Change button text temporarily
+        const originalText = copyButton.textContent;
+        copyButton.textContent = 'Copied!';
+        setTimeout(() => {
+          copyButton.textContent = originalText;
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        updateStatus('Failed to copy to clipboard', 'error');
+      });
     }
 
     // Initialize immediately since script is at bottom of body
