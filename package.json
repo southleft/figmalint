@@ -1,0 +1,17 @@
+{
+  "name": "ai-design-co-pilot",
+  "version": "1.0.0",
+  "description": "A Figma plugin that analyzes selected design components and generates metadata and suggested variants using Claude AI.",
+  "main": "code.js",
+  "scripts": {
+    "build": "tsc --target ES2020 --lib ES2020,DOM --module commonjs --esModuleInterop *.ts",
+    "dev": "tsc --target ES2020 --lib ES2020,DOM --module commonjs --esModuleInterop --watch *.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["figma", "plugin", "ai", "claude", "design", "analysis"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
