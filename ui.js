@@ -1,8 +1,5 @@
-"use strict";
 // UI Logic for AI Design Co-Pilot Figma Plugin
 // Handles user interactions and communication with the plugin backend
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.initializeUI = initializeUI;
 // DOM Elements
 const apiKeyInput = document.getElementById('api-key');
 const saveKeyButton = document.getElementById('save-key');
@@ -134,3 +131,5 @@ function sendMessageToPlugin(type, data) {
 }
 // Initialize the UI when DOM is loaded
 document.addEventListener('DOMContentLoaded', initializeUI);
+// Export for potential future use
+export { initializeUI };
