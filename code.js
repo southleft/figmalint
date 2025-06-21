@@ -60,7 +60,15 @@ const PLUGIN_WINDOW_SIZE = { width: 300, height: 200 };
 // In-memory storage for API key (in production, consider using clientStorage)
 let storedApiKey = null;
 // Plugin initialization
-figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
+// Try to show UI, but handle the case where it might already be shown (in inspect panel)
+try {
+    figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
+    console.log('UI shown successfully');
+}
+catch (error) {
+    console.log('UI might already be shown in inspect panel:', error);
+}
+// Always set up message handler
 figma.ui.onmessage = handleUIMessage;
 // Handle incoming messages from the UI
 async function handleUIMessage(msg) {
@@ -243,10 +251,20 @@ Note: This is a placeholder response. Enable Claude API for detailed AI analysis
 }
 // Send message to UI
 function sendMessageToUI(type, data) {
-    figma.ui.postMessage({
-        type,
-        data
-    });
+    try {
+        figma.ui.postMessage({
+            type,
+            data
+        });
+        console.log('Sent message to UI:', type, data);
+    }
+    catch (error) {
+        console.error('Failed to send message to UI:', type, error);
+        // Try to show notification as fallback
+        if (type === 'api-key-saved' && data.success) {
+            figma.notify('API key saved successfully!');
+        }
+    }
 }
 // Handle plugin closure
 figma.on('close', () => {

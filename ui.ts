@@ -12,6 +12,21 @@ let apiKeySaved = false;
 
 // Initialize UI event listeners
 function initializeUI() {
+  console.log('Initializing UI...');
+
+  // Check if elements exist
+  if (!apiKeyInput || !saveKeyButton || !analyzeButton || !statusDiv) {
+    console.error('UI elements not found:', {
+      apiKeyInput: !!apiKeyInput,
+      saveKeyButton: !!saveKeyButton,
+      analyzeButton: !!analyzeButton,
+      statusDiv: !!statusDiv
+    });
+    return;
+  }
+
+  console.log('UI elements found, setting up event listeners');
+
   // Save API Key button click handler
   saveKeyButton.addEventListener('click', handleSaveApiKeyUI);
 
@@ -36,7 +51,9 @@ function handleApiKeyChange() {
 
 // Handle Save API Key button click
 function handleSaveApiKeyUI() {
+  console.log('Save API Key button clicked');
   const apiKey = apiKeyInput.value.trim();
+  console.log('API Key value:', apiKey ? `${apiKey.substring(0, 5)}...` : 'empty');
 
   if (!apiKey) {
     updateStatus('Please enter an API key', 'error');
@@ -156,9 +173,22 @@ function updateStatus(message: string, type: 'info' | 'success' | 'error' = 'inf
 
 // Send message to plugin backend
 function sendMessageToPlugin(type: string, data: any) {
-  parent.postMessage({
-    pluginMessage: { type, data }
-  }, '*');
+  console.log('Sending message to plugin:', type, data);
+  try {
+    parent.postMessage({
+      pluginMessage: { type, data }
+    }, '*');
+  } catch (error) {
+    console.error('Failed to send message to plugin:', error);
+    // Also try window.parent as fallback
+    try {
+      window.parent.postMessage({
+        pluginMessage: { type, data }
+      }, '*');
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError);
+    }
+  }
 }
 
 // Initialize the UI when DOM is loaded
