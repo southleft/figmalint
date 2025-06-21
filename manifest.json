@@ -8,6 +8,6 @@
   "capabilities": ["inspect"],
   "documentAccess": "dynamic-page",
   "networkAccess": {
-    "allowedDomains": ["https://api.anthropic.com"]
+    "allowedDomains": ["https://api.anthropic.com", "http://localhost:3000"]
   }
 }

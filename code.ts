@@ -30,27 +30,21 @@ Keep the response concise and actionable for a designer.
 
 // Send a prompt to Claude API and get a response
 async function fetchClaude(prompt: string, apiKey: string): Promise<string> {
-  console.log('Making real Claude API call...');
+  console.log('Making Claude API call via proxy...');
 
-  const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
+  // Use proxy server to bypass CORS restrictions
+  // For production, deploy the proxy server and update this URL
+  const PROXY_URL = 'http://localhost:3000/api/claude';
 
-  // Prepare the request payload
+  // Prepare the request payload for proxy
   const requestBody = {
-    model: 'claude-3-opus-20240229',
-    messages: [
-      {
-        role: 'user',
-        content: prompt.trim()
-      }
-    ],
-    max_tokens: 500
+    apiKey: apiKey.trim(),
+    prompt: prompt.trim()
   };
 
-  // Prepare request headers
+  // Simple headers for proxy request
   const headers = {
-    'x-api-key': apiKey.trim(),
-    'content-type': 'application/json',
-    'anthropic-version': '2023-06-01'
+    'content-type': 'application/json'
   };
 
   try {
@@ -58,7 +52,7 @@ async function fetchClaude(prompt: string, apiKey: string): Promise<string> {
     // Note: Figma plugins may have network restrictions, so we'll handle errors gracefully
     console.log('Sending request to Claude API...');
 
-    const response = await fetch(CLAUDE_API_URL, {
+    const response = await fetch(PROXY_URL, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(requestBody)
@@ -89,10 +83,14 @@ async function fetchClaude(prompt: string, apiKey: string): Promise<string> {
     return `Error connecting to Claude API: ${error instanceof Error ? error.message : 'Unknown error'}
 
 Please check:
+• The proxy server is running (node proxy-server.js)
 • Your API key is valid and starts with 'sk-ant-'
 • You have an active Claude API subscription
 • Your internet connection is working
-• The API key has the necessary permissions
+
+To fix CORS issues:
+1. Run the proxy server: node proxy-server.js
+2. Make sure it's accessible at http://localhost:3000
 
 For development, you can use this placeholder analysis:
 
