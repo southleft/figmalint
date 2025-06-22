@@ -784,8 +784,17 @@ function extractDesignTokensFromNode(node) {
         };
 
         try {
+            console.log('🔍 Checking node for variables/styles:', currentNode.name, {
+                hasBoundVariables: !!currentNode.boundVariables,
+                hasFillStyleId: !!currentNode.fillStyleId,
+                hasStrokeStyleId: !!currentNode.strokeStyleId,
+                hasTextStyleId: !!currentNode.textStyleId,
+                hasEffectStyleId: !!currentNode.effectStyleId
+            });
+
+            // First, check for Figma Variables (new system)
             if (currentNode.boundVariables) {
-                console.log('🔍 Extracting bound variables from:', currentNode.name);
+                console.log('🔍 Found boundVariables:', Object.keys(currentNode.boundVariables));
 
                 // Process all array-based variables
                 ['fills', 'strokes', 'effects', 'fontSize', 'fontFamily', 'letterSpacing', 'lineHeight'].forEach(prop => {
@@ -793,6 +802,7 @@ function extractDesignTokensFromNode(node) {
                         currentNode.boundVariables[prop].forEach(variable => {
                             if (variable && variable.id) {
                                 const varName = getVariableName(variable.id);
+                                console.log(`🎯 Variable found for ${prop}:`, varName);
                                 if (varName) {
                                     boundVars[prop].push(varName);
                                 }
@@ -804,10 +814,65 @@ function extractDesignTokensFromNode(node) {
                 // Process single-value variables
                 ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'itemSpacing', 'cornerRadius', 'strokeWeight', 'opacity'].forEach(prop => {
                     if (currentNode.boundVariables[prop] && currentNode.boundVariables[prop].id) {
-                        boundVars[prop] = getVariableName(currentNode.boundVariables[prop].id);
+                        const varName = getVariableName(currentNode.boundVariables[prop].id);
+                        console.log(`🎯 Variable found for ${prop}:`, varName);
+                        if (varName) {
+                            boundVars[prop] = varName;
+                        }
                     }
                 });
             }
+
+            // Second, check for Figma Styles (older system that might still be in use)
+            // These are also considered "tokens" since they represent design decisions
+            if (currentNode.fillStyleId) {
+                try {
+                    const style = figma.getStyleById(currentNode.fillStyleId);
+                    if (style && style.name) {
+                        console.log('🎨 Fill style found:', style.name);
+                        boundVars.fills.push(style.name);
+                    }
+                } catch (error) {
+                    console.log('Could not access fill style:', error);
+                }
+            }
+
+            if (currentNode.strokeStyleId) {
+                try {
+                    const style = figma.getStyleById(currentNode.strokeStyleId);
+                    if (style && style.name) {
+                        console.log('🖊️ Stroke style found:', style.name);
+                        boundVars.strokes.push(style.name);
+                    }
+                } catch (error) {
+                    console.log('Could not access stroke style:', error);
+                }
+            }
+
+            if (currentNode.type === 'TEXT' && currentNode.textStyleId) {
+                try {
+                    const style = figma.getStyleById(currentNode.textStyleId);
+                    if (style && style.name) {
+                        console.log('📝 Text style found:', style.name);
+                        boundVars.fontSize.push(style.name);
+                    }
+                } catch (error) {
+                    console.log('Could not access text style:', error);
+                }
+            }
+
+            if (currentNode.effectStyleId) {
+                try {
+                    const style = figma.getStyleById(currentNode.effectStyleId);
+                    if (style && style.name) {
+                        console.log('✨ Effect style found:', style.name);
+                        boundVars.effects.push(style.name);
+                    }
+                } catch (error) {
+                    console.log('Could not access effect style:', error);
+                }
+            }
+
         } catch (error) {
             console.log('Error extracting bound variables:', error);
         }

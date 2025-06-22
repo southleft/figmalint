@@ -2211,7 +2211,9 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Properties</h4>';
         html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
         metadata.props.forEach(prop => {
-          html += `<span class="property-value">${prop}</span>`;
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          html += `<span class="property-value">${propName}</span>`;
         });
         html += '</div></div>';
       }
@@ -2293,7 +2295,9 @@
         html += '<h3 class="doc-heading">Properties</h3>';
         html += '<ul class="doc-content">';
         metadata.props.forEach(prop => {
-          html += `<li>${prop}</li>`;
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          html += `<li>${propName}</li>`;
         });
         html += '</ul>';
         html += '</div>';
@@ -2337,7 +2341,9 @@
       if (currentMetadata.props && currentMetadata.props.length > 0) {
         markdown += `## Properties\n\n`;
         currentMetadata.props.forEach(prop => {
-          markdown += `- ${prop}\n`;
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          markdown += `- ${propName}\n`;
         });
         markdown += '\n';
       }
