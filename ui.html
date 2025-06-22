@@ -1325,15 +1325,33 @@
               displayName: getTokenDisplayName(tokenType)
             };
 
+            // Debug logging for each token
+            console.log(`🔍 Categorizing ${tokenType} token:`, {
+              name: token.name,
+              value: token.value,
+              isToken: token.isToken,
+              type: token.type,
+              isActualToken: token.isActualToken
+            });
+
             if (token.type === 'ai-suggestion' || token.isActualToken === false) {
               aiSuggestions.push(tokenData);
+              console.log(`   → Added to AI Suggestions`);
             } else if (token.isToken) {
               designTokens.push(tokenData);
+              console.log(`   → Added to Design Tokens`);
             } else {
               hardCodedTokens.push(tokenData);
+              console.log(`   → Added to Hard-coded Values`);
             }
           });
         });
+
+        // Debug summary of categorization
+        console.log(`\n📦 CATEGORIZATION SUMMARY:`);
+        console.log(`   Design Tokens: ${designTokens.length}`, designTokens);
+        console.log(`   Hard-coded Values: ${hardCodedTokens.length}`, hardCodedTokens);
+        console.log(`   AI Suggestions: ${aiSuggestions.length}`, aiSuggestions);
 
         // 1. DESIGN TOKENS IN USE (First)
         if (designTokens.length > 0) {
@@ -1372,7 +1390,8 @@
         }
 
         // 2. HARD-CODED VALUES (Second)
-        if (hardCodedTokens.length > 0) {
+        // Always show this section if we have any hard-coded count, even if array is empty (for debugging)
+        if (hardCodedCount > 0 || hardCodedTokens.length > 0) {
           html += `
             <div class="metadata-section">
               <h3 class="metadata-header" style="display: flex; align-items: center; gap: 8px;">
@@ -1382,30 +1401,40 @@
               <div style="margin-bottom: 8px;">
           `;
 
-          hardCodedTokens.forEach(token => {
-            let tokenDisplay = '';
-            if (token.category === 'colors') {
-              tokenDisplay = `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
-                  <div style="width: 16px; height: 16px; border-radius: 3px; background: ${token.value}; border: 1px solid #e5e7eb;"></div>
-                  <span style="font-family: monospace; font-size: 12px; color: #d97706;">${token.value}</span>
-                  <span style="font-size: 11px; color: #6b7280; background: #fef3c7; padding: 2px 6px; border-radius: 3px;">${token.displayName}</span>
-                  <span style="font-size: 10px; color: #92400e;">Replace with semantic token</span>
-                </div>
-              `;
-            } else {
-              const displayValue = token.value || token.size || 'undefined';
-              tokenDisplay = `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">${token.icon}</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #d97706;">${displayValue}</span>
-                  <span style="font-size: 11px; color: #6b7280; background: #fef3c7; padding: 2px 6px; border-radius: 3px;">${token.displayName}</span>
-                  <span style="font-size: 10px; color: #92400e;">Consider implementing token</span>
-                </div>
-              `;
-            }
-            html += tokenDisplay;
-          });
+          if (hardCodedTokens.length > 0) {
+            hardCodedTokens.forEach((token, index) => {
+              console.log(`🎨 Rendering hard-coded token ${index}:`, token);
+              let tokenDisplay = '';
+              if (token.category === 'colors') {
+                tokenDisplay = `
+                  <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
+                    <div style="width: 16px; height: 16px; border-radius: 3px; background: ${token.value || '#ccc'}; border: 1px solid #e5e7eb;"></div>
+                    <span style="font-family: monospace; font-size: 12px; color: #d97706;">${token.value || 'unknown'}</span>
+                    <span style="font-size: 11px; color: #6b7280; background: #fef3c7; padding: 2px 6px; border-radius: 3px;">${token.displayName}</span>
+                    <span style="font-size: 10px; color: #92400e;">Replace with semantic token</span>
+                  </div>
+                `;
+              } else {
+                const displayValue = token.value || token.size || token.name || 'undefined';
+                tokenDisplay = `
+                  <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
+                    <span style="font-size: 14px;">${token.icon}</span>
+                    <span style="font-family: monospace; font-size: 12px; color: #d97706;">${displayValue}</span>
+                    <span style="font-size: 11px; color: #6b7280; background: #fef3c7; padding: 2px 6px; border-radius: 3px;">${token.displayName}</span>
+                    <span style="font-size: 10px; color: #92400e;">Consider implementing token</span>
+                  </div>
+                `;
+              }
+              html += tokenDisplay;
+            });
+          } else {
+            // Show debugging message if count doesn't match array
+            html += `
+              <div style="padding: 8px; background: #fee2e2; border: 1px solid #fecaca; border-radius: 4px; color: #991b1b; font-size: 12px;">
+                ⚠️ ${hardCodedCount} hard-coded value(s) detected but not displayed. Check console for debugging info.
+              </div>
+            `;
+          }
 
           html += '</div></div>';
         }
