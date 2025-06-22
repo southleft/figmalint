@@ -1172,14 +1172,46 @@
       console.log('Displaying enhanced analysis result:', data);
       console.log('Token data structure:', data.tokens);
 
-      // Debug: Log token counts for each type
+      // Enhanced debugging: Log detailed token analysis
       if (data.tokens) {
+        console.log('🔍 DETAILED TOKEN ANALYSIS:');
         Object.keys(data.tokens).forEach(tokenType => {
           const tokens = data.tokens[tokenType] || [];
           const tokenCount = tokens.filter(t => t.isToken).length;
-          const hardCodedCount = tokens.filter(t => !t.isToken).length;
-          console.log(`${tokenType}: ${tokenCount} tokens, ${hardCodedCount} hard-coded, ${tokens.length} total`);
+          const hardCodedCount = tokens.filter(t => !t.isToken && t.type !== 'ai-suggestion' && t.isActualToken !== false).length;
+          const aiSuggestionCount = tokens.filter(t => t.type === 'ai-suggestion' || t.isActualToken === false).length;
+
+          console.log(`\n📊 ${tokenType.toUpperCase()}:`);
+          console.log(`   ✅ Design tokens: ${tokenCount}`);
+          console.log(`   ⚠️ Hard-coded: ${hardCodedCount}`);
+          console.log(`   💡 AI suggestions: ${aiSuggestionCount}`);
+          console.log(`   📋 Total: ${tokens.length}`);
+
+          // Log each individual token for debugging
+          tokens.forEach((token, index) => {
+            const category = token.type === 'ai-suggestion' || token.isActualToken === false ? 'AI' :
+                            token.isToken ? 'TOKEN' : 'HARD-CODED';
+            console.log(`   [${index}] ${category}: "${token.name || token.value}" (isToken: ${token.isToken}, type: ${token.type})`);
+          });
         });
+
+        // Summary counts
+        let totalTokens = 0;
+        let totalHardCoded = 0;
+        let totalAISuggestions = 0;
+
+        Object.keys(data.tokens).forEach(tokenType => {
+          const tokens = data.tokens[tokenType] || [];
+          totalTokens += tokens.filter(t => t.isToken).length;
+          totalHardCoded += tokens.filter(t => !t.isToken && t.type !== 'ai-suggestion' && t.isActualToken !== false).length;
+          totalAISuggestions += tokens.filter(t => t.type === 'ai-suggestion' || t.isActualToken === false).length;
+        });
+
+        console.log(`\n🎯 SUMMARY TOTALS:`);
+        console.log(`   ✅ Total design tokens: ${totalTokens}`);
+        console.log(`   ⚠️ Total hard-coded: ${totalHardCoded}`);
+        console.log(`   💡 Total AI suggestions: ${totalAISuggestions}`);
+        console.log(`   📊 Grand total: ${totalTokens + totalHardCoded + totalAISuggestions}`);
       }
 
       // Store current metadata for copying
@@ -1249,251 +1281,168 @@
         </div>
       `;
 
-      // Tokens section with detailed breakdown
-      if (data.tokens && (data.tokens.colors?.length > 0 || data.tokens.spacing?.length > 0 || data.tokens.typography?.length > 0)) {
-        html += `
-          <div class="metadata-section">
-            <h3 class="metadata-header" style="display: flex; align-items: center; gap: 8px;">
-              <span>🎨</span>
-              Color Tokens
-            </h3>
-        `;
+      // Tokens section with restructured display: Design Tokens → Hard-coded Values → AI Suggestions
+      if (data.tokens && Object.keys(data.tokens).length > 0) {
+        // Helper function to get token icon and display name
+        function getTokenIcon(tokenType) {
+          const icons = {
+            colors: '🎨',
+            spacing: '📏',
+            typography: '📝',
+            effects: '✨',
+            borders: '⬜',
+            layout: '📐'
+          };
+          return icons[tokenType] || '🔧';
+        }
 
-        // Token colors
-        if (data.tokens.colors?.some(c => c.isToken)) {
-          html += '<div style="margin-bottom: 16px;"><h4 style="color: #10b981; font-size: 13px; margin: 0 0 8px 0;">✅ Design Tokens</h4>';
-          data.tokens.colors.filter(c => c.isToken).forEach(token => {
-            html += `
-              <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; margin-bottom: 4px;">
-                <div style="width: 16px; height: 16px; border-radius: 3px; background: ${token.value?.startsWith('#') ? token.value : '#ccc'}; border: 1px solid #e5e7eb;"></div>
-                <span style="font-family: monospace; font-size: 12px; color: #059669;">${token.name}</span>
-                <span style="font-size: 11px; color: #6b7280;">${token.type}</span>
-              </div>
-            `;
+        function getTokenDisplayName(tokenType) {
+          const names = {
+            colors: 'Color',
+            spacing: 'Spacing',
+            typography: 'Typography',
+            effects: 'Effects',
+            borders: 'Border',
+            layout: 'Layout'
+          };
+          return names[tokenType] || tokenType;
+        }
+
+        // Collect all tokens categorized by type (design tokens, hard-coded, AI suggestions)
+        const designTokens = [];
+        const hardCodedTokens = [];
+        const aiSuggestions = [];
+
+        Object.keys(data.tokens).forEach(tokenType => {
+          const tokens = data.tokens[tokenType] || [];
+
+          tokens.forEach(token => {
+            const tokenData = {
+              ...token,
+              category: tokenType,
+              icon: getTokenIcon(tokenType),
+              displayName: getTokenDisplayName(tokenType)
+            };
+
+            if (token.type === 'ai-suggestion' || token.isActualToken === false) {
+              aiSuggestions.push(tokenData);
+            } else if (token.isToken) {
+              designTokens.push(tokenData);
+            } else {
+              hardCodedTokens.push(tokenData);
+            }
           });
-          html += '</div>';
-        }
+        });
 
-        // Hard-coded colors
-        if (data.tokens.colors?.some(c => !c.isToken)) {
-          html += '<div><h4 style="color: #d97706; font-size: 13px; margin: 0 0 8px 0;">⚠️ Hard-coded Colors</h4>';
-          data.tokens.colors.filter(c => !c.isToken).forEach(token => {
-            html += `
-              <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
-                <div style="width: 16px; height: 16px; border-radius: 3px; background: ${token.value}; border: 1px solid #e5e7eb;"></div>
-                <span style="font-family: monospace; font-size: 12px; color: #d97706;">${token.value}</span>
-                <span style="font-size: 11px; color: #6b7280;">Replace hard-coded color with semantic token for better maintainability</span>
-              </div>
-            `;
+        // 1. DESIGN TOKENS IN USE (First)
+        if (designTokens.length > 0) {
+          html += `
+            <div class="metadata-section">
+              <h3 class="metadata-header" style="display: flex; align-items: center; gap: 8px;">
+                <span>✅</span>
+                Design Tokens in Use
+              </h3>
+              <div style="margin-bottom: 8px;">
+          `;
+
+          designTokens.forEach(token => {
+            let tokenDisplay = '';
+            if (token.category === 'colors') {
+              tokenDisplay = `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; margin-bottom: 4px;">
+                  <div style="width: 16px; height: 16px; border-radius: 3px; background: ${token.value?.startsWith('#') ? token.value : '#ccc'}; border: 1px solid #e5e7eb;"></div>
+                  <span style="font-family: monospace; font-size: 12px; color: #059669;">${token.name}</span>
+                  <span style="font-size: 11px; color: #6b7280; background: #e0f2fe; padding: 2px 6px; border-radius: 3px;">${token.displayName}</span>
+                </div>
+              `;
+            } else {
+              tokenDisplay = `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; margin-bottom: 4px;">
+                  <span style="font-size: 14px;">${token.icon}</span>
+                  <span style="font-family: monospace; font-size: 12px; color: #059669;">${token.name}</span>
+                  <span style="font-size: 11px; color: #6b7280; background: #e0f2fe; padding: 2px 6px; border-radius: 3px;">${token.displayName}</span>
+                </div>
+              `;
+            }
+            html += tokenDisplay;
           });
-          html += '</div>';
+
+          html += '</div></div>';
         }
 
-        html += '</div>';
-
-        // Spacing tokens
-        if (data.tokens.spacing?.length > 0) {
+        // 2. HARD-CODED VALUES (Second)
+        if (hardCodedTokens.length > 0) {
           html += `
             <div class="metadata-section">
               <h3 class="metadata-header" style="display: flex; align-items: center; gap: 8px;">
-                <span>📏</span>
-                Spacing Tokens
+                <span>⚠️</span>
+                Hard-coded Values
               </h3>
+              <div style="margin-bottom: 8px;">
           `;
 
-          if (data.tokens.spacing?.some(s => s.isToken)) {
-            html += '<div style="margin-bottom: 16px;"><h4 style="color: #10b981; font-size: 13px; margin: 0 0 8px 0;">✅ Design Tokens</h4>';
-            data.tokens.spacing.filter(s => s.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="width: 16px; height: 16px; background: #10b981; border-radius: 2px;"></span>
-                  <span style="font-family: monospace; font-size: 12px; color: #059669;">${token.name}</span>
-                  <span style="font-size: 11px; color: #6b7280;">${token.type}</span>
-                </div>
-              `;
-            });
-            html += '</div>';
-          }
-
-          if (data.tokens.spacing?.some(s => !s.isToken)) {
-            html += '<div><h4 style="color: #d97706; font-size: 13px; margin: 0 0 8px 0;">⚠️ Hard-coded Spacing</h4>';
-            data.tokens.spacing.filter(s => !s.isToken).forEach(token => {
-              html += `
+          hardCodedTokens.forEach(token => {
+            let tokenDisplay = '';
+            if (token.category === 'colors') {
+              tokenDisplay = `
                 <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="width: 16px; height: 16px; background: #d97706; border-radius: 2px;"></span>
+                  <div style="width: 16px; height: 16px; border-radius: 3px; background: ${token.value}; border: 1px solid #e5e7eb;"></div>
                   <span style="font-family: monospace; font-size: 12px; color: #d97706;">${token.value}</span>
-                  <span style="font-size: 11px; color: #6b7280;">Consider implementing this spacing token in your design system</span>
+                  <span style="font-size: 11px; color: #6b7280; background: #fef3c7; padding: 2px 6px; border-radius: 3px;">${token.displayName}</span>
+                  <span style="font-size: 10px; color: #92400e;">Replace with semantic token</span>
                 </div>
               `;
-            });
-            html += '</div>';
-          }
+            } else {
+              const displayValue = token.value || token.size || 'undefined';
+              tokenDisplay = `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
+                  <span style="font-size: 14px;">${token.icon}</span>
+                  <span style="font-family: monospace; font-size: 12px; color: #d97706;">${displayValue}</span>
+                  <span style="font-size: 11px; color: #6b7280; background: #fef3c7; padding: 2px 6px; border-radius: 3px;">${token.displayName}</span>
+                  <span style="font-size: 10px; color: #92400e;">Consider implementing token</span>
+                </div>
+              `;
+            }
+            html += tokenDisplay;
+          });
 
-          html += '</div>';
+          html += '</div></div>';
         }
 
-        // Typography tokens
-        if (data.tokens.typography?.length > 0) {
+        // 3. AI SUGGESTED TOKENS (Last)
+        if (aiSuggestions.length > 0) {
           html += `
             <div class="metadata-section">
               <h3 class="metadata-header" style="display: flex; align-items: center; gap: 8px;">
-                <span>📝</span>
-                Typography Tokens
+                <span>💡</span>
+                AI Suggested Tokens
               </h3>
+              <div style="margin-bottom: 8px;">
           `;
 
-          if (data.tokens.typography?.some(t => t.isToken)) {
-            html += '<div style="margin-bottom: 16px;"><h4 style="color: #10b981; font-size: 13px; margin: 0 0 8px 0;">✅ Design Tokens</h4>';
-            data.tokens.typography.filter(t => t.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">Aa</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #059669;">${token.name}</span>
-                  <span style="font-size: 11px; color: #6b7280;">${token.type}</span>
+          aiSuggestions.forEach(token => {
+            let tokenDisplay = '';
+            if (token.category === 'colors') {
+              tokenDisplay = `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; margin-bottom: 4px;">
+                  <div style="width: 16px; height: 16px; border-radius: 3px; background: ${token.value || '#e5e7eb'}; border: 1px solid #e5e7eb;"></div>
+                  <span style="font-family: monospace; font-size: 12px; color: #0284c7;">${token.name}</span>
+                  <span style="font-size: 11px; color: #6b7280; background: #dbeafe; padding: 2px 6px; border-radius: 3px;">AI Suggestion</span>
                 </div>
               `;
-            });
-            html += '</div>';
-          }
-
-          if (data.tokens.typography?.some(t => !t.isToken)) {
-            html += '<div><h4 style="color: #d97706; font-size: 13px; margin: 0 0 8px 0;">⚠️ Hard-coded Typography</h4>';
-            data.tokens.typography.filter(t => !t.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">Aa</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #d97706;">${token.size || token.value}</span>
-                  <span style="font-size: 11px; color: #6b7280;">Consider implementing this typography token in your design system</span>
+            } else {
+              tokenDisplay = `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; margin-bottom: 4px;">
+                  <span style="font-size: 14px;">${token.icon}</span>
+                  <span style="font-family: monospace; font-size: 12px; color: #0284c7;">${token.name}</span>
+                  <span style="font-size: 11px; color: #6b7280; background: #dbeafe; padding: 2px 6px; border-radius: 3px;">AI Suggestion</span>
                 </div>
               `;
-            });
-            html += '</div>';
-          }
+            }
+            html += tokenDisplay;
+          });
 
-          html += '</div>';
-        }
-
-        // Effects tokens
-        if (data.tokens.effects?.length > 0) {
-          html += `
-            <div class="metadata-section">
-              <h3 class="metadata-header" style="display: flex; align-items: center; gap: 8px;">
-                <span>✨</span>
-                Effects Tokens
-              </h3>
-          `;
-
-          if (data.tokens.effects?.some(e => e.isToken)) {
-            html += '<div style="margin-bottom: 16px;"><h4 style="color: #10b981; font-size: 13px; margin: 0 0 8px 0;">✅ Design Tokens</h4>';
-            data.tokens.effects.filter(e => e.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">✨</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #059669;">${token.name}</span>
-                  <span style="font-size: 11px; color: #6b7280;">${token.type}</span>
-                </div>
-              `;
-            });
-            html += '</div>';
-          }
-
-          if (data.tokens.effects?.some(e => !e.isToken)) {
-            html += '<div><h4 style="color: #d97706; font-size: 13px; margin: 0 0 8px 0;">⚠️ Hard-coded Effects</h4>';
-            data.tokens.effects.filter(e => !e.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">✨</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #d97706;">${token.value}</span>
-                  <span style="font-size: 11px; color: #6b7280;">Consider implementing this effect token in your design system</span>
-                </div>
-              `;
-            });
-            html += '</div>';
-          }
-
-          html += '</div>';
-        }
-
-        // Borders tokens
-        if (data.tokens.borders?.length > 0) {
-          html += `
-            <div class="metadata-section">
-              <h3 class="metadata-header" style="display: flex; align-items: center; gap: 8px;">
-                <span>⬜</span>
-                Border Tokens
-              </h3>
-          `;
-
-          if (data.tokens.borders?.some(b => b.isToken)) {
-            html += '<div style="margin-bottom: 16px;"><h4 style="color: #10b981; font-size: 13px; margin: 0 0 8px 0;">✅ Design Tokens</h4>';
-            data.tokens.borders.filter(b => b.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">⬜</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #059669;">${token.name}</span>
-                  <span style="font-size: 11px; color: #6b7280;">${token.type}</span>
-                </div>
-              `;
-            });
-            html += '</div>';
-          }
-
-          if (data.tokens.borders?.some(b => !b.isToken)) {
-            html += '<div><h4 style="color: #d97706; font-size: 13px; margin: 0 0 8px 0;">⚠️ Hard-coded Borders</h4>';
-            data.tokens.borders.filter(b => !b.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">⬜</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #d97706;">${token.value}</span>
-                  <span style="font-size: 11px; color: #6b7280;">Consider implementing this border token in your design system</span>
-                </div>
-              `;
-            });
-            html += '</div>';
-          }
-
-          html += '</div>';
-        }
-
-        // Layout tokens
-        if (data.tokens.layout?.length > 0) {
-          html += `
-            <div class="metadata-section">
-              <h3 class="metadata-header" style="display: flex; align-items: center; gap: 8px;">
-                <span>📐</span>
-                Layout Tokens
-              </h3>
-          `;
-
-          if (data.tokens.layout?.some(l => l.isToken)) {
-            html += '<div style="margin-bottom: 16px;"><h4 style="color: #10b981; font-size: 13px; margin: 0 0 8px 0;">✅ Design Tokens</h4>';
-            data.tokens.layout.filter(l => l.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">📐</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #059669;">${token.name}</span>
-                  <span style="font-size: 11px; color: #6b7280;">${token.type}</span>
-                </div>
-              `;
-            });
-            html += '</div>';
-          }
-
-          if (data.tokens.layout?.some(l => !l.isToken)) {
-            html += '<div><h4 style="color: #d97706; font-size: 13px; margin: 0 0 8px 0;">⚠️ Hard-coded Layout</h4>';
-            data.tokens.layout.filter(l => !l.isToken).forEach(token => {
-              html += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #fffbeb; border: 1px solid #fed7aa; border-radius: 4px; margin-bottom: 4px;">
-                  <span style="font-size: 14px;">📐</span>
-                  <span style="font-family: monospace; font-size: 12px; color: #d97706;">${token.value}</span>
-                  <span style="font-size: 11px; color: #6b7280;">Consider implementing this layout token in your design system</span>
-                </div>
-              `;
-            });
-            html += '</div>';
-          }
-
-          html += '</div>';
+          html += '</div></div>';
         }
       }
 
