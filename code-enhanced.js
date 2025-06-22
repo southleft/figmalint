@@ -2846,9 +2846,38 @@ async function handleAddState(data) {
         // Create a new instance for the state
         const stateInstance = component.createInstance();
         stateInstance.name = `${component.name} / ${state}`;
-        // Position it next to the original
-        stateInstance.x = (component.x || 0) + (component.width || 100) + 20;
-        stateInstance.y = component.y || 0;
+
+        // Smart positioning: Find existing state instances to avoid overlap
+        // This ensures state instances are arranged in a row instead of stacking on top of each other
+        const spacing = 24; // Space between instances
+        let targetX = (component.x || 0) + (component.width || 100) + spacing;
+        const targetY = component.y || 0;
+
+        // Look for existing state instances in the same parent
+        const parentNode = component.parent || figma.currentPage;
+        if (parentNode && 'children' in parentNode) {
+            const existingStateInstances = parentNode.children.filter((child) => {
+                // Check if this is a state instance of the same component
+                return child.type === 'INSTANCE' &&
+                       child.name.startsWith(`${component.name} /`) &&
+                       child !== component &&
+                       Math.abs((child.y || 0) - targetY) < 10; // Same row (within 10px vertically)
+            });
+
+            // Find the rightmost position of existing state instances
+            if (existingStateInstances.length > 0) {
+                let rightmostX = targetX;
+                existingStateInstances.forEach((instance) => {
+                    const instanceRight = (instance.x || 0) + (instance.width || 100);
+                    rightmostX = Math.max(rightmostX, instanceRight);
+                });
+                targetX = rightmostX + spacing;
+            }
+        }
+
+        // Position the new instance
+        stateInstance.x = targetX;
+        stateInstance.y = targetY;
         // Apply state styling
         applyStateOverrides(stateInstance, state, metadata);
         // Add to parent (or current page if no parent)
@@ -2861,7 +2890,21 @@ async function handleAddState(data) {
         // Select and zoom to the new instance
         figma.currentPage.selection = [stateInstance];
         figma.viewport.scrollAndZoomIntoView([stateInstance]);
-        figma.notify(`Created ${state} state instance`, { timeout: 3000 });
+
+        // Enhanced notification with positioning context
+        const existingCount = parentNode && 'children' in parentNode ?
+            parentNode.children.filter((child) =>
+                child.type === 'INSTANCE' &&
+                child.name.startsWith(`${component.name} /`) &&
+                child !== component
+            ).length : 0;
+
+        let notificationMsg = `Created ${state} state instance`;
+        if (existingCount > 0) {
+            notificationMsg += ` (positioned next to ${existingCount} existing state${existingCount > 1 ? 's' : ''})`;
+        }
+
+        figma.notify(notificationMsg, { timeout: 3000 });
         sendMessageToUI('state-added', { success: true, state });
     }
     catch (error) {
