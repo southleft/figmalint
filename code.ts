@@ -1880,8 +1880,8 @@ function processEnhancedAnalysis(data: any, node: SceneNode): any {
   if (data.audit && data.audit.namingIssues && data.audit.namingIssues.length > 0) {
     data.audit.namingIssues.forEach((issue: string) => {
       const parts = issue.split(' should be ');
-      const layer = parts[0]?.replace(/['"]/g, '').trim() || 'Unknown layer';
-      const suggestion = parts[1]?.replace(/['"]/g, '').trim() || null;
+      const layer = (parts[0] && parts[0].replace(/['"]/g, '').trim()) || 'Unknown layer';
+      const suggestion = (parts[1] && parts[1].replace(/['"]/g, '').trim()) || null;
 
       audit.naming.push({
         layer: layer,
@@ -2040,8 +2040,8 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
           typography.push({
             name: `text-${typography.length + 1}`,
             size: `${fontSize}px`,
-            weight: fontName.style?.toLowerCase().includes('bold') ? '700' :
-                   fontName.style?.toLowerCase().includes('medium') ? '500' : '400',
+            weight: fontName.style && fontName.style.toLowerCase().includes('bold') ? '700' :
+                   fontName.style && fontName.style.toLowerCase().includes('medium') ? '500' : '400',
             family: fontName.family
           });
         }

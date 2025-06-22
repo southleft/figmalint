@@ -1693,7 +1693,7 @@
       if (data.properties && data.properties.length > 0) {
         console.log('UI: Using data.properties:', data.properties);
         updatePropertyCheatSheet(data.properties);
-      } else if (data.metadata?.props) {
+      } else if (data.metadata && data.metadata.props) {
         console.log('UI: Falling back to data.metadata.props:', data.metadata.props);
         // Create basic properties from metadata
         const basicProperties = data.metadata.props.map(prop => ({
@@ -1878,35 +1878,35 @@
       }
     }
 
-        // Update Token Suggestions
+    // Enhanced Token Suggestions Display
     function updateTokenSuggestions(tokens) {
       console.log('UI updateTokenSuggestions called with:', tokens);
 
       let html = '';
 
-      // Colors - Enhanced with usage information
+      // Colors - Enhanced with comprehensive analysis
       if (tokens.colors && tokens.colors.length > 0) {
         console.log('Processing color tokens:', tokens.colors);
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🎨 Color Tokens</h4>';
 
-        // Separate actual tokens from suggestions and AI suggestions
+        // Separate actual tokens from hard-coded values
         const actualTokens = tokens.colors.filter(token => token.isActualToken);
-        const currentTokens = tokens.colors.filter(token => !token.isActualToken && token.type !== 'ai-suggestion');
-        const suggestedTokens = tokens.colors.filter(token => token.type === 'ai-suggestion');
+        const hardCodedTokens = tokens.colors.filter(token => !token.isActualToken && token.type !== 'ai-suggestion');
+        const aiSuggestions = tokens.colors.filter(token => token.type === 'ai-suggestion');
 
         // Show actual design tokens first
         if (actualTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Design Tokens in Use</h5>';
           actualTokens.forEach(token => {
-            const tokenIcon = token.type === 'stroke' ? '🔲' : '🎨';
+            const usageIcon = token.usage === 'background' ? '🎨' : '🔲';
             html += `
               <div class="token-item-compact">
                 <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">${tokenIcon} ${token.name}</div>
-                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
+                  <div class="token-name">${usageIcon} ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
                 </div>
               </div>
             `;
@@ -1914,18 +1914,22 @@
           html += '</div>';
         }
 
-        // Show current tokens without design system binding
-        if (currentTokens.length > 0) {
+        // Show hard-coded colors with enhanced context
+        if (hardCodedTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Colors</h5>';
-          currentTokens.forEach(token => {
-            const tokenIcon = token.type === 'stroke' ? '🔲' : '🎨';
+          hardCodedTokens.forEach(token => {
+            const usageIcon = token.usage === 'background' ? '🎨' : '🔲';
+            const contextInfo = token.context ?
+              `${token.context.nodeType} in "${token.context.nodeName}"${token.context.isInteractive ? ' (Interactive)' : ''}` :
+              'Unknown context';
+
             html += `
               <div class="token-item-compact warning">
                 <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">${tokenIcon} ${token.value}</div>
-                  <div class="token-usage" title="${token.suggestion}">${token.suggestion}</div>
+                  <div class="token-name">${usageIcon} ${token.value}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
               </div>
             `;
@@ -1934,10 +1938,10 @@
         }
 
         // Show AI suggested tokens
-        if (suggestedTokens.length > 0) {
+        if (aiSuggestions.length > 0) {
           html += '<div>';
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--primary); margin-bottom: 6px;">💡 AI Suggested Tokens</h5>';
-          suggestedTokens.forEach(token => {
+          aiSuggestions.forEach(token => {
             html += `
               <div class="token-item-compact suggestion">
                 <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
@@ -1954,18 +1958,109 @@
         html += '</div>';
       }
 
-      // Spacing - Enhanced with context
+      // Effects - New comprehensive section
+      if (tokens.effects && tokens.effects.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">✨ Effect Tokens</h4>';
+
+        const actualEffectTokens = tokens.effects.filter(token => token.isActualToken);
+        const hardCodedEffects = tokens.effects.filter(token => !token.isActualToken);
+
+        if (actualEffectTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Effect Tokens in Use</h5>';
+          actualEffectTokens.forEach(token => {
+            html += `
+              <div class="token-item-compact">
+                <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">✨ ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedEffects.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Effects</h5>';
+          hardCodedEffects.forEach(token => {
+            const contextInfo = token.context ? `${token.context.nodeType} in "${token.context.nodeName}"` : 'Unknown context';
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">✨ ${token.type}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Borders - New comprehensive section
+      if (tokens.borders && tokens.borders.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🔲 Border Tokens</h4>';
+
+        const actualBorderTokens = tokens.borders.filter(token => token.isActualToken);
+        const hardCodedBorders = tokens.borders.filter(token => !token.isActualToken);
+
+        if (actualBorderTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Border Tokens in Use</h5>';
+          actualBorderTokens.forEach(token => {
+            html += `
+              <div class="token-item-compact">
+                <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">🔲 ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedBorders.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Border Radius</h5>';
+          hardCodedBorders.forEach(token => {
+            const contextInfo = token.context ? `${token.context.nodeType} in "${token.context.nodeName}"` : 'Unknown context';
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">🔲 ${token.value}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Spacing - Enhanced with better context
       if (tokens.spacing && tokens.spacing.length > 0) {
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📐 Spacing Tokens</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📏 Spacing Tokens</h4>';
 
-        // Separate actual spacing tokens from suggestions
         const actualSpacingTokens = tokens.spacing.filter(token => token.isActualToken);
-        const suggestedSpacingTokens = tokens.spacing.filter(token => !token.isActualToken);
+        const hardCodedSpacing = tokens.spacing.filter(token => !token.isActualToken);
 
         if (actualSpacingTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Design Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Spacing Tokens in Use</h5>';
           actualSpacingTokens.forEach(token => {
             const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
             html += `
@@ -1973,7 +2068,7 @@
                 <div class="token-swatch-spacing" style="width: ${Math.min(parseInt(token.value), 40)}px; height: 12px; background: var(--success);" title="${token.value}"></div>
                 <div class="token-details">
                   <div class="token-name">${spaceIcon} ${token.name}</div>
-                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
                 </div>
               </div>
             `;
@@ -1981,17 +2076,21 @@
           html += '</div>';
         }
 
-        if (suggestedSpacingTokens.length > 0) {
+        if (hardCodedSpacing.length > 0) {
           html += '<div>';
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Spacing</h5>';
-          suggestedSpacingTokens.forEach(token => {
+          hardCodedSpacing.forEach(token => {
             const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
+            const contextInfo = token.context ?
+              `${token.context.nodeType} (${token.context.layoutMode}) in "${token.context.nodeName}"` :
+              'Unknown context';
+
             html += `
               <div class="token-item-compact warning">
                 <div class="token-swatch-spacing" style="width: ${Math.min(parseInt(token.value), 40)}px; height: 12px; background: var(--warning);" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">${spaceIcon} ${token.value}</div>
-                  <div class="token-usage" title="${token.suggestion}">${token.suggestion}</div>
+                  <div class="token-name">${spaceIcon} ${token.value} (${token.property})</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
               </div>
             `;
@@ -2002,28 +2101,26 @@
         html += '</div>';
       }
 
-      // Typography - Enhanced with preview
+      // Typography - Enhanced with better context
       if (tokens.typography && tokens.typography.length > 0) {
         html += '<div>';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Typography Tokens</h4>';
 
-        // Separate actual typography tokens from suggestions
         const actualTypographyTokens = tokens.typography.filter(token => token.isActualToken);
-        const suggestedTypographyTokens = tokens.typography.filter(token => !token.isActualToken);
+        const hardCodedTypography = tokens.typography.filter(token => !token.isActualToken);
 
         if (actualTypographyTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Design Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Typography Tokens in Use</h5>';
           actualTypographyTokens.forEach(token => {
-            const typeIcon = token.type === 'fontSize' ? '📝' :
-                           token.type === 'letterSpacing' ? '📐' :
-                           token.type === 'lineHeight' ? '📏' : '📝';
+            const typeIcon = token.type === 'font-size' ? '📝' :
+                           token.type === 'line-height' ? '📏' : '📝';
             html += `
               <div class="token-item-compact">
-                <div class="token-preview-text" style="font-size: ${token.size || '14px'}; font-weight: ${token.weight || '400'};">Aa</div>
+                <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
                 <div class="token-details">
                   <div class="token-name">${typeIcon} ${token.name}</div>
-                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
                 </div>
               </div>
             `;
@@ -2031,16 +2128,22 @@
           html += '</div>';
         }
 
-        if (suggestedTypographyTokens.length > 0) {
+        if (hardCodedTypography.length > 0) {
           html += '<div>';
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Typography</h5>';
-          suggestedTypographyTokens.forEach(token => {
+          hardCodedTypography.forEach(token => {
+            const typeIcon = token.type === 'font-size' ? '📝' :
+                           token.type === 'line-height' ? '📏' : '📝';
+            const contextInfo = token.context ?
+              `${token.context.fontFamily} in "${token.context.textContent || 'text element'}"` :
+              'Unknown context';
+
             html += `
               <div class="token-item-compact warning">
-                <div class="token-preview-text" style="font-size: ${token.size}; font-weight: ${token.weight};">Aa</div>
+                <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
                 <div class="token-details">
-                  <div class="token-name">📝 ${token.size} / ${token.weight}</div>
-                  <div class="token-usage" title="${token.suggestion}">${token.suggestion}</div>
+                  <div class="token-name">${typeIcon} ${token.value}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
               </div>
             `;
@@ -2051,15 +2154,44 @@
         html += '</div>';
       }
 
+      // Show comprehensive summary if no tokens found
       if (html === '') {
         html = `
           <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
             <div style="font-size: 24px; margin-bottom: var(--space-sm);">🎨</div>
-            <p>No design tokens detected</p>
-            <p style="font-size: 11px; margin-top: var(--space-xs);">This component uses simple styling without extractable tokens</p>
+            <p><strong>No design tokens detected</strong></p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">This component uses simple styling without extractable design tokens.</p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">Consider using Figma variables for colors, spacing, and typography to improve consistency.</p>
           </div>
         `;
+      } else {
+        // Add summary statistics
+        const totalTokens = (tokens.colors && tokens.colors.length ? tokens.colors.length : 0) +
+                          (tokens.spacing && tokens.spacing.length ? tokens.spacing.length : 0) +
+                          (tokens.typography && tokens.typography.length ? tokens.typography.length : 0) +
+                          (tokens.effects && tokens.effects.length ? tokens.effects.length : 0) +
+                          (tokens.borders && tokens.borders.length ? tokens.borders.length : 0);
+        const actualTokensCount = [
+          ...(tokens.colors || []),
+          ...(tokens.spacing || []),
+          ...(tokens.typography || []),
+          ...(tokens.effects || []),
+          ...(tokens.borders || [])
+        ].filter(token => token.isActualToken).length;
+        const hardCodedCount = totalTokens - actualTokensCount;
+
+        html = `
+          <div style="background: var(--surface); padding: var(--space-sm); border-radius: var(--radius-sm); margin-bottom: var(--space-md); border: 1px solid var(--border);">
+            <div style="font-size: 11px; font-weight: 600; margin-bottom: 4px;">📊 Token Analysis Summary</div>
+            <div style="font-size: 10px; color: var(--text-secondary);">
+              <span style="color: var(--success);">✅ ${actualTokensCount} using design tokens</span> •
+              <span style="color: var(--warning);">⚠️ ${hardCodedCount} hard-coded values</span> •
+              <span style="color: var(--text-tertiary);">📊 ${totalTokens} total properties analyzed</span>
+            </div>
+          </div>
+        ` + html;
       }
+
       tokenSuggestions.innerHTML = html;
     }
 
