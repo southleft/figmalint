@@ -27,6 +27,10 @@ declare global {
     createText: () => TextNode;
     group: (nodes: SceneNode[], parent: BaseNode) => GroupNode;
     loadFontAsync: (fontName: { family: string; style: string }) => Promise<void>;
+    getStyleById: (id: string) => { name: string } | null;
+    variables: {
+      getVariableById: (id: string) => { name: string } | null;
+    };
     editorType?: string;
     mode?: string;
   };

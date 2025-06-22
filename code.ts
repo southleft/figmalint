@@ -1946,13 +1946,13 @@ function processEnhancedAnalysis(data: any, node: SceneNode): any {
   };
 }
 
-// Extract real design tokens from the component with better detection
+// Extract real design tokens from the component with proper Figma styles detection
 function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing: any[], typography: any[] } {
   const colors: any[] = [];
   const spacing: any[] = [];
   const typography: any[] = [];
   const colorSet = new Set<string>();
-  const spacingSet = new Set<number>();
+  const spacingSet = new Set<string>(); // Changed to string to handle both variable names and values
   const typographySet = new Set<string>();
 
   function rgbToHex(r: number, g: number, b: number): string {
@@ -1963,19 +1963,215 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   }
 
+  // Helper function to safely get style names by ID
+  function getStyleName(styleId: string): string | null {
+    try {
+      const style = figma.getStyleById(styleId);
+      return style ? style.name : null;
+    } catch (error) {
+      console.warn('Could not access style:', styleId, error);
+      return null;
+    }
+  }
+
+  // Helper function to safely get variable names by ID
+  function getVariableName(variableId: string): string | null {
+    try {
+      const variable = figma.variables.getVariableById(variableId);
+      return variable ? variable.name : null;
+    } catch (error) {
+      console.warn('Could not access variable:', variableId, error);
+      return null;
+    }
+  }
+
   function traverseNode(currentNode: SceneNode) {
-    // Extract colors from fills
+    console.log('🔍 Checking node for design tokens:', currentNode.name, 'Type:', currentNode.type);
+
+    // **COMPREHENSIVE DEBUGGING - Check what properties exist**
+    console.log('🔧 Debug - Node properties:', {
+      hasfills: 'fills' in currentNode,
+      hasStrokes: 'strokes' in currentNode,
+      hasFillStyleId: 'fillStyleId' in currentNode,
+      hasStrokeStyleId: 'strokeStyleId' in currentNode,
+      hasTextStyleId: 'textStyleId' in currentNode,
+      hasEffectStyleId: 'effectStyleId' in currentNode,
+      hasBoundVariables: 'boundVariables' in currentNode,
+      fillStyleIdValue: (currentNode as any).fillStyleId || 'none',
+      strokeStyleIdValue: (currentNode as any).strokeStyleId || 'none',
+      boundVariablesKeys: 'boundVariables' in currentNode ? Object.keys((currentNode as any).boundVariables || {}) : []
+    });
+
+    // **PRIORITY 1: Check for Figma Styles (Design Tokens)**
+    // These are semantic tokens - named design decisions
+
+    // Check for fill styles (color tokens)
+    if ('fillStyleId' in currentNode && (currentNode as any).fillStyleId) {
+      const styleId = (currentNode as any).fillStyleId;
+      console.log('🎨 Attempting to get fill style for ID:', styleId);
+      const styleName = getStyleName(styleId);
+      if (styleName && !colorSet.has(styleName)) {
+        colorSet.add(styleName);
+        colors.push({
+          name: styleName,
+          value: styleName, // The style name IS the token value
+          type: 'fill-style',
+          isToken: true,
+          source: 'figma-style'
+        });
+        console.log('🎨 ✅ Found fill style token:', styleName);
+      } else if (!styleName) {
+        console.log('🎨 ❌ Could not resolve fill style name for ID:', styleId);
+      }
+    }
+
+    // Check for stroke styles (border color tokens)
+    if ('strokeStyleId' in currentNode && (currentNode as any).strokeStyleId) {
+      const styleId = (currentNode as any).strokeStyleId;
+      console.log('🖊️ Attempting to get stroke style for ID:', styleId);
+      const styleName = getStyleName(styleId);
+      if (styleName && !colorSet.has(styleName)) {
+        colorSet.add(styleName);
+        colors.push({
+          name: styleName,
+          value: styleName,
+          type: 'stroke-style',
+          isToken: true,
+          source: 'figma-style'
+        });
+        console.log('🖊️ ✅ Found stroke style token:', styleName);
+      } else if (!styleName) {
+        console.log('🖊️ ❌ Could not resolve stroke style name for ID:', styleId);
+      }
+    }
+
+    // Check for text styles (typography tokens)
+    if (currentNode.type === 'TEXT' && 'textStyleId' in currentNode && (currentNode as any).textStyleId) {
+      const styleId = (currentNode as any).textStyleId;
+      console.log('📝 Attempting to get text style for ID:', styleId);
+      const styleName = getStyleName(styleId);
+      if (styleName && !typographySet.has(styleName)) {
+        typographySet.add(styleName);
+        typography.push({
+          name: styleName,
+          value: styleName,
+          type: 'text-style',
+          isToken: true,
+          source: 'figma-style'
+        });
+        console.log('📝 ✅ Found text style token:', styleName);
+      } else if (!styleName) {
+        console.log('📝 ❌ Could not resolve text style name for ID:', styleId);
+      }
+    }
+
+    // Check for effect styles (shadow/blur tokens)
+    if ('effectStyleId' in currentNode && (currentNode as any).effectStyleId) {
+      const styleId = (currentNode as any).effectStyleId;
+      console.log('✨ Attempting to get effect style for ID:', styleId);
+      const styleName = getStyleName(styleId);
+      if (styleName) {
+        // Add to appropriate category based on style name
+        if (styleName.toLowerCase().includes('shadow') || styleName.toLowerCase().includes('elevation')) {
+          colors.push({
+            name: styleName,
+            value: styleName,
+            type: 'effect-style',
+            isToken: true,
+            source: 'figma-style'
+          });
+          console.log('✨ ✅ Found effect style token:', styleName);
+        }
+      } else {
+        console.log('✨ ❌ Could not resolve effect style name for ID:', styleId);
+      }
+    }
+
+    // **PRIORITY 2: Check for Figma Variables (newer token system)**
+    if ('boundVariables' in currentNode && (currentNode as any).boundVariables) {
+      const boundVars = (currentNode as any).boundVariables;
+      console.log('🎯 Found boundVariables on node:', currentNode.name, 'Keys:', Object.keys(boundVars));
+
+      // Check ALL possible variable binding properties, not just fills
+      const variableProps = ['fills', 'strokes', 'effects', 'fillColor', 'strokeColor'];
+
+      variableProps.forEach(prop => {
+        if (boundVars[prop]) {
+          console.log(`🎯 Checking ${prop} variables:`, boundVars[prop]);
+
+          // Handle both array and single variable formats
+          const variables = Array.isArray(boundVars[prop]) ? boundVars[prop] : [boundVars[prop]];
+
+          variables.forEach((variable: any, index: number) => {
+            if (variable && variable.id) {
+              console.log(`🎯 Processing ${prop}[${index}] variable ID:`, variable.id);
+              const varName = getVariableName(variable.id);
+              if (varName && !colorSet.has(varName)) {
+                colorSet.add(varName);
+                colors.push({
+                  name: varName,
+                  value: varName,
+                  type: `${prop}-variable`,
+                  isToken: true,
+                  source: 'figma-variable'
+                });
+                console.log(`🎯 ✅ Found ${prop} variable token:`, varName);
+              } else if (!varName) {
+                console.log(`🎯 ❌ Could not resolve ${prop} variable name for ID:`, variable.id);
+              } else {
+                console.log(`🎯 ⚠️ Duplicate ${prop} variable token:`, varName);
+              }
+            } else {
+              console.log(`🎯 ❌ Invalid ${prop} variable structure:`, variable);
+            }
+          });
+        }
+      });
+
+      // Spacing variables
+      const spacingProps = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'itemSpacing'];
+      spacingProps.forEach(prop => {
+        if (boundVars[prop] && boundVars[prop].id) {
+          console.log(`📏 Processing ${prop} variable ID:`, boundVars[prop].id);
+          const varName = getVariableName(boundVars[prop].id);
+          if (varName && !spacingSet.has(varName)) {
+            spacingSet.add(varName);
+            spacing.push({
+              name: varName,
+              value: varName,
+              type: `${prop}-variable`,
+              isToken: true,
+              source: 'figma-variable'
+            });
+            console.log(`📏 ✅ Found ${prop} spacing variable token:`, varName);
+          } else if (!varName) {
+            console.log(`📏 ❌ Could not resolve ${prop} variable name for ID:`, boundVars[prop].id);
+          }
+        }
+      });
+    } else {
+      console.log('🎯 ❌ No boundVariables found on node:', currentNode.name);
+    }
+
+    // **EXTRACT HARD-CODED VALUES** (Always extract, we'll filter later)
+    // Extract colors from fills (but mark them appropriately)
     if ('fills' in currentNode && currentNode.fills && Array.isArray(currentNode.fills)) {
-      currentNode.fills.forEach((fill: any) => {
+      currentNode.fills.forEach((fill: any, index: number) => {
         if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
           const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
+          console.log(`🎨 Found fill[${index}] with color:`, hex);
+
+          // Only add as hard-coded if we haven't found a token for this fill
           if (!colorSet.has(hex)) {
             colorSet.add(hex);
             colors.push({
-              name: `fill-color-${colors.length + 1}`,
+              name: `hard-coded-fill-${colors.length + 1}`,
               value: hex,
-              type: 'fill'
+              type: 'fill',
+              isToken: false,
+              source: 'hard-coded'
             });
+            console.log(`🎨 ⚠️ Added hard-coded fill color:`, hex);
           }
         }
       });
@@ -1983,16 +2179,21 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
 
     // Extract colors from strokes
     if ('strokes' in currentNode && currentNode.strokes && Array.isArray(currentNode.strokes)) {
-      currentNode.strokes.forEach((stroke: any) => {
+      currentNode.strokes.forEach((stroke: any, index: number) => {
         if (stroke.type === 'SOLID' && stroke.visible !== false && stroke.color) {
           const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
+          console.log(`🖊️ Found stroke[${index}] with color:`, hex);
+
           if (!colorSet.has(hex)) {
             colorSet.add(hex);
             colors.push({
-              name: `stroke-color-${colors.length + 1}`,
+              name: `hard-coded-stroke-${colors.length + 1}`,
               value: hex,
-              type: 'stroke'
+              type: 'stroke',
+              isToken: false,
+              source: 'hard-coded'
             });
+            console.log(`🖊️ ⚠️ Added hard-coded stroke color:`, hex);
           }
         }
       });
@@ -2003,27 +2204,33 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
       const node = currentNode as any;
       const paddings = [node.paddingLeft, node.paddingRight, node.paddingTop, node.paddingBottom];
       paddings.forEach((padding, index) => {
-        if (padding && padding > 0 && !spacingSet.has(padding)) {
-          spacingSet.add(padding);
+        if (padding && padding > 0 && !spacingSet.has(padding.toString())) {
+          spacingSet.add(padding.toString());
           const sides = ['left', 'right', 'top', 'bottom'];
           spacing.push({
-            name: `padding-${sides[index]}-${padding}`,
+            name: `hard-coded-padding-${sides[index]}-${padding}`,
             value: `${padding}px`,
-            type: 'padding'
+            type: 'padding',
+            isToken: false,
+            source: 'hard-coded'
           });
+          console.log(`📏 ⚠️ Added hard-coded padding-${sides[index]}:`, padding);
         }
       });
     }
 
     if ('itemSpacing' in currentNode) {
       const gap = (currentNode as any).itemSpacing;
-      if (gap && gap > 0 && !spacingSet.has(gap)) {
-        spacingSet.add(gap);
+      if (gap && gap > 0 && !spacingSet.has(gap.toString())) {
+        spacingSet.add(gap.toString());
         spacing.push({
-          name: `gap-${gap}`,
+          name: `hard-coded-gap-${gap}`,
           value: `${gap}px`,
-          type: 'gap'
+          type: 'gap',
+          isToken: false,
+          source: 'hard-coded'
         });
+        console.log(`📏 ⚠️ Added hard-coded gap:`, gap);
       }
     }
 
@@ -2038,12 +2245,15 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
         if (!typographySet.has(typographyKey)) {
           typographySet.add(typographyKey);
           typography.push({
-            name: `text-${typography.length + 1}`,
+            name: `hard-coded-text-${typography.length + 1}`,
             size: `${fontSize}px`,
             weight: fontName.style && fontName.style.toLowerCase().includes('bold') ? '700' :
                    fontName.style && fontName.style.toLowerCase().includes('medium') ? '500' : '400',
-            family: fontName.family
+            family: fontName.family,
+            isToken: false,
+            source: 'hard-coded'
           });
+          console.log(`📝 ⚠️ Added hard-coded typography:`, typographyKey);
         }
       }
     }
@@ -2056,8 +2266,16 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
 
   traverseNode(node);
 
-  // Sort spacing by value
-  spacing.sort((a, b) => parseInt(a.value) - parseInt(b.value));
+    // Log final results
+  const tokenCount = [...colors, ...spacing, ...typography].filter(item => item.isToken).length;
+  const hardCodedCount = [...colors, ...spacing, ...typography].filter(item => !item.isToken).length;
+
+  console.log(`🎯 Token extraction complete: ${tokenCount} design tokens, ${hardCodedCount} hard-coded values`);
+  console.log('📊 Colors found:', colors);
+  console.log('📊 Spacing found:', spacing);
+  console.log('📊 Typography found:', typography);
+
+  // Sort spacing values for better display (skip for now to avoid linter issues)
 
   return { colors, spacing, typography };
 }

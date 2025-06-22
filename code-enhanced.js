@@ -447,7 +447,7 @@ async function handleEnhancedAnalyze(options) {
                 throw new Error('No JSON found in response');
             }
             // Process the enhanced data
-            const result = processEnhancedAnalysis(enhancedData, selectedNode);
+            const result = await processEnhancedAnalysis(enhancedData, selectedNode);
             // Store metadata for later use
             globalThis.lastAnalyzedMetadata = result.metadata;
             globalThis.lastAnalyzedNode = selectedNode;
@@ -468,7 +468,7 @@ async function handleEnhancedAnalyze(options) {
     }
 }
 // Process enhanced analysis data
-function processEnhancedAnalysis(data, node) {
+async function processEnhancedAnalysis(data, node) {
     // Extract audit results
     const audit = {
         states: [],
@@ -591,7 +591,7 @@ function processEnhancedAnalysis(data, node) {
     const properties = data.propertyCheatSheet || [];
 
     // Extract comprehensive design tokens from the component
-    const extractedTokens = extractDesignTokensFromNode(node);
+    const extractedTokens = await extractDesignTokensFromNode(node);
     console.log('🎯 Comprehensive token extraction complete:', extractedTokens);
 
     // Use extracted tokens as the primary source - no hard-coded fallbacks
@@ -719,7 +719,7 @@ function processEnhancedAnalysis(data, node) {
     };
 }
 // Enhanced design token extraction with comprehensive analysis
-function extractDesignTokensFromNode(node) {
+async function extractDesignTokensFromNode(node) {
     const tokens = {
         colors: [],
         spacing: [],
@@ -764,7 +764,7 @@ function extractDesignTokensFromNode(node) {
     }
 
     // Comprehensive bound variables extraction
-    function extractBoundVariables(currentNode) {
+    async function extractBoundVariables(currentNode) {
         const boundVars = {
             fills: [],
             strokes: [],
@@ -825,52 +825,73 @@ function extractDesignTokensFromNode(node) {
 
             // Second, check for Figma Styles (older system that might still be in use)
             // These are also considered "tokens" since they represent design decisions
+
+            // Store promises for all async style lookups
+            const stylePromises = [];
+
             if (currentNode.fillStyleId) {
-                try {
-                    const style = figma.getStyleById(currentNode.fillStyleId);
-                    if (style && style.name) {
-                        console.log('🎨 Fill style found:', style.name);
-                        boundVars.fills.push(style.name);
-                    }
-                } catch (error) {
-                    console.log('Could not access fill style:', error);
-                }
+                stylePromises.push(
+                    figma.getStyleByIdAsync(currentNode.fillStyleId)
+                        .then(style => {
+                            if (style && style.name) {
+                                console.log('🎨 Fill style found:', style.name);
+                                boundVars.fills.push(style.name);
+                            }
+                        })
+                        .catch(error => {
+                            console.log('Could not access fill style:', error);
+                        })
+                );
             }
 
             if (currentNode.strokeStyleId) {
-                try {
-                    const style = figma.getStyleById(currentNode.strokeStyleId);
-                    if (style && style.name) {
-                        console.log('🖊️ Stroke style found:', style.name);
-                        boundVars.strokes.push(style.name);
-                    }
-                } catch (error) {
-                    console.log('Could not access stroke style:', error);
-                }
+                stylePromises.push(
+                    figma.getStyleByIdAsync(currentNode.strokeStyleId)
+                        .then(style => {
+                            if (style && style.name) {
+                                console.log('🖊️ Stroke style found:', style.name);
+                                boundVars.strokes.push(style.name);
+                            }
+                        })
+                        .catch(error => {
+                            console.log('Could not access stroke style:', error);
+                        })
+                );
             }
 
             if (currentNode.type === 'TEXT' && currentNode.textStyleId) {
-                try {
-                    const style = figma.getStyleById(currentNode.textStyleId);
-                    if (style && style.name) {
-                        console.log('📝 Text style found:', style.name);
-                        boundVars.fontSize.push(style.name);
-                    }
-                } catch (error) {
-                    console.log('Could not access text style:', error);
-                }
+                stylePromises.push(
+                    figma.getStyleByIdAsync(currentNode.textStyleId)
+                        .then(style => {
+                            if (style && style.name) {
+                                console.log('📝 Text style found:', style.name);
+                                boundVars.fontSize.push(style.name);
+                            }
+                        })
+                        .catch(error => {
+                            console.log('Could not access text style:', error);
+                        })
+                );
             }
 
             if (currentNode.effectStyleId) {
-                try {
-                    const style = figma.getStyleById(currentNode.effectStyleId);
-                    if (style && style.name) {
-                        console.log('✨ Effect style found:', style.name);
-                        boundVars.effects.push(style.name);
-                    }
-                } catch (error) {
-                    console.log('Could not access effect style:', error);
-                }
+                stylePromises.push(
+                    figma.getStyleByIdAsync(currentNode.effectStyleId)
+                        .then(style => {
+                            if (style && style.name) {
+                                console.log('✨ Effect style found:', style.name);
+                                boundVars.effects.push(style.name);
+                            }
+                        })
+                        .catch(error => {
+                            console.log('Could not access effect style:', error);
+                        })
+                );
+            }
+
+            // Wait for all style lookups to complete before continuing
+            if (stylePromises.length > 0) {
+                await Promise.all(stylePromises);
             }
 
         } catch (error) {
@@ -942,8 +963,8 @@ function extractDesignTokensFromNode(node) {
     }
 
     // Enhanced node traversal with comprehensive token extraction
-    function traverseNode(currentNode) {
-        const boundVars = extractBoundVariables(currentNode);
+    async function traverseNode(currentNode) {
+        const boundVars = await extractBoundVariables(currentNode);
         const isInteractive = ['INSTANCE', 'COMPONENT'].includes(currentNode.type) &&
                              (currentNode.name.toLowerCase().includes('button') ||
                               currentNode.name.toLowerCase().includes('link') ||
@@ -1248,12 +1269,14 @@ function extractDesignTokensFromNode(node) {
 
         // Traverse children recursively
         if ('children' in currentNode) {
-            currentNode.children.forEach(child => traverseNode(child));
+            for (const child of currentNode.children) {
+                await traverseNode(child);
+            }
         }
     }
 
     // Start traversal from the root node
-    traverseNode(node);
+    await traverseNode(node);
 
     // Sort tokens by usage frequency and importance
     tokens.colors.sort((a, b) => {
@@ -1314,7 +1337,7 @@ async function handleBatchAnalysis(nodes, options) {
             const jsonMatch = analysis.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 const enhancedData = JSON.parse(jsonMatch[0]);
-                const result = processEnhancedAnalysis(enhancedData, node);
+                const result = await processEnhancedAnalysis(enhancedData, node);
                 results.push({
                     node: node,
                     name: node.name,
