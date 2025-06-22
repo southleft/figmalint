@@ -590,6 +590,71 @@
       margin-bottom: var(--space-xs);
     }
 
+    /* Enhanced Token Display */
+    .token-item-enhanced {
+      display: flex;
+      align-items: center;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+      gap: var(--space-sm);
+      border: 1px solid var(--border);
+      transition: all var(--transition-base);
+    }
+
+    .token-item-enhanced:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .token-item-enhanced.suggestion {
+      background: var(--primary-light);
+      border-color: var(--primary);
+    }
+
+    .token-info {
+      flex: 1;
+    }
+
+    .token-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .token-usage {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-bottom: 2px;
+    }
+
+    .token-value {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    }
+
+    .token-preview-spacing {
+      max-width: 40px;
+      min-height: 8px;
+      border-radius: 2px;
+    }
+
+    .token-preview-text {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+    }
+
     /* Playground Grid */
     .playground-grid {
       display: grid;
@@ -1743,53 +1808,93 @@
 
       let html = '';
 
-      // Colors
+      // Colors - Enhanced with usage information
       if (tokens.colors && tokens.colors.length > 0) {
         console.log('Processing color tokens:', tokens.colors);
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Color Tokens</h4>';
-        html += '<div class="token-grid">';
-        tokens.colors.forEach(token => {
-          html += `
-            <div class="token-item">
-              <div class="token-preview" style="background: ${token.value};"></div>
-              <div>${token.name}</div>
-            </div>
-          `;
-        });
-        html += '</div></div>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🎨 Color Tokens</h4>';
+
+        // Separate current usage from suggestions
+        const currentTokens = tokens.colors.filter(token => token.type !== 'ai-suggestion');
+        const suggestedTokens = tokens.colors.filter(token => token.type === 'ai-suggestion');
+
+        if (currentTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Currently Used</h5>';
+          currentTokens.forEach(token => {
+            const tokenType = token.type === 'stroke' ? '🔲' : '🎨';
+            html += `
+              <div class="token-item-enhanced">
+                <div class="token-preview" style="background: ${token.value}; border: 1px solid #ddd;"></div>
+                <div class="token-info">
+                  <div class="token-name">${tokenType} ${token.name}</div>
+                  <div class="token-usage">${token.usage || 'Used in component'}</div>
+                  <div class="token-value">${token.value}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (suggestedTokens.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--primary); margin-bottom: 6px;">💡 Suggested Tokens</h5>';
+          suggestedTokens.forEach(token => {
+            html += `
+              <div class="token-item-enhanced suggestion">
+                <div class="token-preview" style="background: ${token.value}; border: 1px solid var(--primary);"></div>
+                <div class="token-info">
+                  <div class="token-name">💡 ${token.name}</div>
+                  <div class="token-usage">${token.usage || 'Suggested for this component'}</div>
+                  <div class="token-value">${token.value}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
       }
 
-      // Spacing
+      // Spacing - Enhanced with context
       if (tokens.spacing && tokens.spacing.length > 0) {
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Spacing Tokens</h4>';
-        html += '<div class="token-grid">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📐 Spacing Tokens</h4>';
         tokens.spacing.forEach(token => {
+          const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
           html += `
-            <div class="token-item">
-              <div class="token-preview" style="height: ${token.value}; background: var(--primary-light);"></div>
-              <div>${token.name}</div>
+            <div class="token-item-enhanced">
+              <div class="token-preview-spacing" style="width: ${token.value}; height: 12px; background: var(--primary-light); border-radius: 2px;"></div>
+              <div class="token-info">
+                <div class="token-name">${spaceIcon} ${token.name}</div>
+                <div class="token-usage">${token.usage || 'Spacing value used in layout'}</div>
+                <div class="token-value">${token.value}</div>
+              </div>
             </div>
           `;
         });
-        html += '</div></div>';
+        html += '</div>';
       }
 
-      // Typography
+      // Typography - Enhanced with preview
       if (tokens.typography && tokens.typography.length > 0) {
         html += '<div>';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Typography Tokens</h4>';
-        html += '<div class="token-grid">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Typography Tokens</h4>';
         tokens.typography.forEach(token => {
           html += `
-            <div class="token-item" style="padding: 12px;">
-              <div style="font-size: ${token.size}; font-weight: ${token.weight};">Aa</div>
-              <div>${token.name}</div>
+            <div class="token-item-enhanced">
+              <div class="token-preview-text" style="font-size: ${token.size}; font-weight: ${token.weight};">Aa</div>
+              <div class="token-info">
+                <div class="token-name">📝 ${token.name}</div>
+                <div class="token-usage">${token.usage || 'Typography style used in component'}</div>
+                <div class="token-value">${token.size} / ${token.weight}</div>
+              </div>
             </div>
           `;
         });
-        html += '</div></div>';
+        html += '</div>';
       }
 
       if (html === '') {

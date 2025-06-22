@@ -530,42 +530,68 @@ function processEnhancedAnalysis(data, node) {
     };
     // Extract real design tokens from the component
     const extractedTokens = extractDesignTokensFromNode(node);
+
+    // Always use extracted tokens as the primary source
+    tokens.colors = extractedTokens.colors.slice(0, 8); // Show more tokens for better analysis
+    tokens.spacing = extractedTokens.spacing.slice(0, 6);
+    tokens.typography = extractedTokens.typography.slice(0, 5);
+
+    // Enhance with AI suggestions if available
     if (data.tokens) {
-        // Use real colors from the component
-        if (data.tokens.colors && extractedTokens.colors.length > 0) {
-            tokens.colors = extractedTokens.colors.slice(0, 5); // Limit to 5 tokens
-        }
-        else if (data.tokens.colors) {
-            // Fallback to mock if no real colors found
-            tokens.colors = data.tokens.colors.map((name) => ({
+        // Add AI-suggested tokens as additional suggestions
+        if (data.tokens.colors && data.tokens.colors.length > 0) {
+            const aiSuggestions = data.tokens.colors.map((name) => ({
                 name: name,
-                value: getColorValueForToken(name)
+                value: getColorValueForToken(name),
+                type: 'ai-suggestion',
+                usage: 'AI-suggested token for this component',
+                suggestion: `Consider replacing current colors with this semantic token`
             }));
+            // Add AI suggestions that aren't already covered by extracted tokens
+            aiSuggestions.forEach(aiToken => {
+                const exists = tokens.colors.find(existing => existing.value === aiToken.value);
+                if (!exists) {
+                    tokens.colors.push(aiToken);
+                }
+            });
         }
-        // Use real spacing from the component
-        if (data.tokens.spacing && extractedTokens.spacing.length > 0) {
-            tokens.spacing = extractedTokens.spacing.slice(0, 5); // Limit to 5 tokens
-        }
-        else if (data.tokens.spacing) {
-            // Fallback to mock if no real spacing found
-            tokens.spacing = data.tokens.spacing.map((name) => ({
+
+        if (data.tokens.spacing && data.tokens.spacing.length > 0) {
+            const aiSpacingTokens = data.tokens.spacing.map((name) => ({
                 name: name,
-                value: getSpacingValueForToken(name)
+                value: getSpacingValueForToken(name),
+                type: 'ai-suggestion',
+                usage: 'AI-suggested spacing token'
             }));
+            // Add AI suggestions for spacing
+            aiSpacingTokens.forEach(aiToken => {
+                const exists = tokens.spacing.find(existing => existing.value === aiToken.value);
+                if (!exists) {
+                    tokens.spacing.push(aiToken);
+                }
+            });
         }
-        // Use real typography from the component
-        if (data.tokens.typography && extractedTokens.typography.length > 0) {
-            tokens.typography = extractedTokens.typography.slice(0, 5); // Limit to 5 tokens
-        }
-        else if (data.tokens.typography) {
-            // Fallback to mock if no real typography found
-            tokens.typography = data.tokens.typography.map((name) => ({
+
+        if (data.tokens.typography && data.tokens.typography.length > 0) {
+            const aiTypographyTokens = data.tokens.typography.map((name) => ({
                 name: name,
                 size: getTypographyValueForToken(name).size,
-                weight: getTypographyValueForToken(name).weight
+                weight: getTypographyValueForToken(name).weight,
+                type: 'ai-suggestion',
+                usage: 'AI-suggested typography token'
             }));
+            // Add AI suggestions for typography
+            aiTypographyTokens.forEach(aiToken => {
+                const exists = tokens.typography.find(existing =>
+                    existing.size === aiToken.size && existing.weight === aiToken.weight);
+                if (!exists) {
+                    tokens.typography.push(aiToken);
+                }
+            });
         }
     }
+
+    console.log('Enhanced tokens (extracted + AI suggestions):', tokens);
     return {
         metadata: {
             component: data.component,
@@ -583,7 +609,7 @@ function processEnhancedAnalysis(data, node) {
         tokens: tokens
     };
 }
-// Extract real design tokens from the component
+// Extract and analyze design tokens from the component
 function extractDesignTokensFromNode(node) {
     const colors = [];
     const spacing = [];
@@ -591,6 +617,7 @@ function extractDesignTokensFromNode(node) {
     const colorSet = new Set();
     const spacingSet = new Set();
     const typographySet = new Set();
+
     function rgbToHex(r, g, b) {
         const toHex = (n) => {
             const hex = Math.round(n * 255).toString(16);
@@ -598,32 +625,81 @@ function extractDesignTokensFromNode(node) {
         };
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
     }
+
+    // Helper to suggest semantic token names based on color values and usage
+    function suggestTokenName(hex, type, nodeType) {
+        const color = hex.toLowerCase();
+
+        // Brand/Primary colors (blues, teals)
+        if (color.includes('18a0fb') || color.includes('0099ff') || color.includes('007bff')) {
+            return type === 'stroke' ? 'primary-border' : 'primary-background';
+        }
+
+        // Neutral colors
+        if (color.includes('ffffff') || color === '#ffffff') {
+            return type === 'stroke' ? 'white-border' : 'white-background';
+        }
+        if (color.includes('000000') || color === '#000000') {
+            return type === 'stroke' ? 'black-border' : 'black-text';
+        }
+
+        // Gray scale detection
+        const r = parseInt(color.substr(1, 2), 16);
+        const g = parseInt(color.substr(3, 2), 16);
+        const b = parseInt(color.substr(5, 2), 16);
+        const isGrayscale = Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && Math.abs(r - b) < 10;
+
+        if (isGrayscale) {
+            const brightness = (r + g + b) / 3;
+            if (brightness > 240) return type === 'stroke' ? 'light-border' : 'light-background';
+            if (brightness > 200) return type === 'stroke' ? 'medium-border' : 'medium-background';
+            if (brightness > 100) return type === 'stroke' ? 'dark-border' : 'dark-text';
+            return type === 'stroke' ? 'darker-border' : 'darker-text';
+        }
+
+        // Default semantic names
+        if (type === 'stroke') {
+            return nodeType === 'ELLIPSE' ? 'avatar-border' : 'component-border';
+        } else {
+            return nodeType === 'ELLIPSE' ? 'avatar-background' : 'component-background';
+        }
+    }
+
     function traverseNode(currentNode) {
-        // Extract colors
+        // Extract colors from fills
         if ('fills' in currentNode && currentNode.fills && Array.isArray(currentNode.fills)) {
             currentNode.fills.forEach(fill => {
                 if (fill.type === 'SOLID' && fill.visible !== false) {
                     const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
-                    if (!colorSet.has(hex)) {
-                        colorSet.add(hex);
+                    const colorKey = `${hex}-fill`;
+                    if (!colorSet.has(colorKey)) {
+                        colorSet.add(colorKey);
                         colors.push({
-                            name: `color-${colors.length + 1}`,
-                            value: hex
+                            name: suggestTokenName(hex, 'fill', currentNode.type),
+                            value: hex,
+                            type: 'fill',
+                            usage: 'Currently used as background/fill color',
+                            suggestion: `Consider using semantic token: ${suggestTokenName(hex, 'fill', currentNode.type)}`
                         });
                     }
                 }
             });
         }
-        // Extract strokes
+
+        // Extract colors from strokes
         if ('strokes' in currentNode && currentNode.strokes && Array.isArray(currentNode.strokes)) {
             currentNode.strokes.forEach(stroke => {
                 if (stroke.type === 'SOLID' && stroke.visible !== false) {
                     const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
-                    if (!colorSet.has(hex)) {
-                        colorSet.add(hex);
+                    const colorKey = `${hex}-stroke`;
+                    if (!colorSet.has(colorKey)) {
+                        colorSet.add(colorKey);
                         colors.push({
-                            name: `stroke-color-${colors.length + 1}`,
-                            value: hex
+                            name: suggestTokenName(hex, 'stroke', currentNode.type),
+                            value: hex,
+                            type: 'stroke',
+                            usage: 'Currently used as border/stroke color',
+                            suggestion: `Consider using semantic token: ${suggestTokenName(hex, 'stroke', currentNode.type)}`
                         });
                     }
                 }
