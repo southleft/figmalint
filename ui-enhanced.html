@@ -698,6 +698,15 @@
       transform: scale(1.1);
     }
 
+    .token-swatch-spacing {
+      height: 12px;
+      min-width: 8px;
+      max-width: 40px;
+      border-radius: 2px;
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+    }
+
     .token-details {
       flex: 1;
       min-width: 0;
@@ -1949,19 +1958,47 @@
       if (tokens.spacing && tokens.spacing.length > 0) {
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📐 Spacing Tokens</h4>';
-        tokens.spacing.forEach(token => {
-          const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
-          html += `
-            <div class="token-item-enhanced">
-              <div class="token-preview-spacing" style="width: ${token.value}; height: 12px; background: var(--primary-light); border-radius: 2px;"></div>
-              <div class="token-info">
-                <div class="token-name">${spaceIcon} ${token.name}</div>
-                <div class="token-usage">${token.usage || 'Spacing value used in layout'}</div>
-                <div class="token-value">${token.value}</div>
+
+        // Separate actual spacing tokens from suggestions
+        const actualSpacingTokens = tokens.spacing.filter(token => token.isActualToken);
+        const suggestedSpacingTokens = tokens.spacing.filter(token => !token.isActualToken);
+
+        if (actualSpacingTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Design Tokens in Use</h5>';
+          actualSpacingTokens.forEach(token => {
+            const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
+            html += `
+              <div class="token-item-compact">
+                <div class="token-swatch-spacing" style="width: ${Math.min(parseInt(token.value), 40)}px; height: 12px; background: var(--success);" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">${spaceIcon} ${token.name}</div>
+                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
+                </div>
               </div>
-            </div>
-          `;
-        });
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (suggestedSpacingTokens.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Spacing</h5>';
+          suggestedSpacingTokens.forEach(token => {
+            const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-swatch-spacing" style="width: ${Math.min(parseInt(token.value), 40)}px; height: 12px; background: var(--warning);" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">${spaceIcon} ${token.value}</div>
+                  <div class="token-usage" title="${token.suggestion}">${token.suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
         html += '</div>';
       }
 
@@ -1969,18 +2006,48 @@
       if (tokens.typography && tokens.typography.length > 0) {
         html += '<div>';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Typography Tokens</h4>';
-        tokens.typography.forEach(token => {
-          html += `
-            <div class="token-item-enhanced">
-              <div class="token-preview-text" style="font-size: ${token.size}; font-weight: ${token.weight};">Aa</div>
-              <div class="token-info">
-                <div class="token-name">📝 ${token.name}</div>
-                <div class="token-usage">${token.usage || 'Typography style used in component'}</div>
-                <div class="token-value">${token.size} / ${token.weight}</div>
+
+        // Separate actual typography tokens from suggestions
+        const actualTypographyTokens = tokens.typography.filter(token => token.isActualToken);
+        const suggestedTypographyTokens = tokens.typography.filter(token => !token.isActualToken);
+
+        if (actualTypographyTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Design Tokens in Use</h5>';
+          actualTypographyTokens.forEach(token => {
+            const typeIcon = token.type === 'fontSize' ? '📝' :
+                           token.type === 'letterSpacing' ? '📐' :
+                           token.type === 'lineHeight' ? '📏' : '📝';
+            html += `
+              <div class="token-item-compact">
+                <div class="token-preview-text" style="font-size: ${token.size || '14px'}; font-weight: ${token.weight || '400'};">Aa</div>
+                <div class="token-details">
+                  <div class="token-name">${typeIcon} ${token.name}</div>
+                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
+                </div>
               </div>
-            </div>
-          `;
-        });
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (suggestedTypographyTokens.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Typography</h5>';
+          suggestedTypographyTokens.forEach(token => {
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-preview-text" style="font-size: ${token.size}; font-weight: ${token.weight};">Aa</div>
+                <div class="token-details">
+                  <div class="token-name">📝 ${token.size} / ${token.weight}</div>
+                  <div class="token-usage" title="${token.suggestion}">${token.suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
         html += '</div>';
       }
 

@@ -629,14 +629,111 @@ function extractDesignTokensFromNode(node) {
     // Helper to get actual Figma variable name
     function getVariableName(variableId) {
         try {
-            if (figma && figma.variables && figma.variables.getVariableById) {
+            // Try different API structures
+            if (figma.variables && typeof figma.variables.getVariableById === 'function') {
                 const variable = figma.variables.getVariableById(variableId);
+                console.log('Found variable:', variable);
+                return variable ? variable.name : null;
+            } else if (figma.getVariableById && typeof figma.getVariableById === 'function') {
+                const variable = figma.getVariableById(variableId);
+                console.log('Found variable (alt API):', variable);
                 return variable ? variable.name : null;
             }
+            console.log('No variable API found, variable ID:', variableId);
         } catch (error) {
-            console.log('Could not access variable:', error);
+            console.log('Could not access variable:', variableId, error);
         }
         return null;
+    }
+
+    // Helper to extract all bound variables from a node
+    function extractBoundVariables(currentNode) {
+        const boundVars = {
+            fills: [],
+            strokes: [],
+            fontSize: null,
+            fontFamily: null,
+            letterSpacing: null,
+            lineHeight: null,
+            paddingTop: null,
+            paddingRight: null,
+            paddingBottom: null,
+            paddingLeft: null,
+            itemSpacing: null,
+            cornerRadius: null
+        };
+
+        try {
+            if (currentNode.boundVariables) {
+                console.log('Found bound variables on node:', currentNode.name, currentNode.boundVariables);
+
+                // Fill variables
+                if (currentNode.boundVariables.fills) {
+                    currentNode.boundVariables.fills.forEach(fillVar => {
+                        if (fillVar && fillVar.id) {
+                            const varName = getVariableName(fillVar.id);
+                            if (varName) {
+                                boundVars.fills.push(varName);
+                            }
+                        }
+                    });
+                }
+
+                // Stroke variables
+                if (currentNode.boundVariables.strokes) {
+                    currentNode.boundVariables.strokes.forEach(strokeVar => {
+                        if (strokeVar && strokeVar.id) {
+                            const varName = getVariableName(strokeVar.id);
+                            if (varName) {
+                                boundVars.strokes.push(varName);
+                            }
+                        }
+                    });
+                }
+
+                // Typography variables
+                if (currentNode.boundVariables.fontSize && currentNode.boundVariables.fontSize.id) {
+                    boundVars.fontSize = getVariableName(currentNode.boundVariables.fontSize.id);
+                }
+                if (currentNode.boundVariables.fontFamily && currentNode.boundVariables.fontFamily.id) {
+                    boundVars.fontFamily = getVariableName(currentNode.boundVariables.fontFamily.id);
+                }
+                if (currentNode.boundVariables.letterSpacing && currentNode.boundVariables.letterSpacing.id) {
+                    boundVars.letterSpacing = getVariableName(currentNode.boundVariables.letterSpacing.id);
+                }
+                if (currentNode.boundVariables.lineHeight && currentNode.boundVariables.lineHeight.id) {
+                    boundVars.lineHeight = getVariableName(currentNode.boundVariables.lineHeight.id);
+                }
+
+                // Spacing variables
+                if (currentNode.boundVariables.paddingTop && currentNode.boundVariables.paddingTop.id) {
+                    boundVars.paddingTop = getVariableName(currentNode.boundVariables.paddingTop.id);
+                }
+                if (currentNode.boundVariables.paddingRight && currentNode.boundVariables.paddingRight.id) {
+                    boundVars.paddingRight = getVariableName(currentNode.boundVariables.paddingRight.id);
+                }
+                if (currentNode.boundVariables.paddingBottom && currentNode.boundVariables.paddingBottom.id) {
+                    boundVars.paddingBottom = getVariableName(currentNode.boundVariables.paddingBottom.id);
+                }
+                if (currentNode.boundVariables.paddingLeft && currentNode.boundVariables.paddingLeft.id) {
+                    boundVars.paddingLeft = getVariableName(currentNode.boundVariables.paddingLeft.id);
+                }
+                if (currentNode.boundVariables.itemSpacing && currentNode.boundVariables.itemSpacing.id) {
+                    boundVars.itemSpacing = getVariableName(currentNode.boundVariables.itemSpacing.id);
+                }
+
+                // Other properties
+                if (currentNode.boundVariables.cornerRadius && currentNode.boundVariables.cornerRadius.id) {
+                    boundVars.cornerRadius = getVariableName(currentNode.boundVariables.cornerRadius.id);
+                }
+            } else {
+                console.log('No bound variables found on node:', currentNode.name);
+            }
+        } catch (error) {
+            console.log('Error extracting bound variables:', error);
+        }
+
+        return boundVars;
     }
 
     // Helper to suggest semantic token names based on color values and usage
@@ -678,36 +775,13 @@ function extractDesignTokensFromNode(node) {
         }
     }
 
-        function traverseNode(currentNode) {
-        // Check for bound variables (actual Figma tokens) first
-        let fillVariableName = null;
-        let strokeVariableName = null;
+            function traverseNode(currentNode) {
+        // Extract all bound variables from this node
+        const boundVars = extractBoundVariables(currentNode);
 
-        try {
-            if (currentNode.boundVariables) {
-                // Check for fill variable
-                if (currentNode.boundVariables.fills && currentNode.boundVariables.fills.length > 0) {
-                    const fillVariable = currentNode.boundVariables.fills[0];
-                    if (fillVariable && fillVariable.id) {
-                        fillVariableName = getVariableName(fillVariable.id);
-                    }
-                }
-
-                // Check for stroke variable
-                if (currentNode.boundVariables.strokes && currentNode.boundVariables.strokes.length > 0) {
-                    const strokeVariable = currentNode.boundVariables.strokes[0];
-                    if (strokeVariable && strokeVariable.id) {
-                        strokeVariableName = getVariableName(strokeVariable.id);
-                    }
-                }
-            }
-        } catch (error) {
-            console.log('Error accessing bound variables:', error);
-        }
-
-        // Extract colors from fills
+                // Extract colors from fills
         if ('fills' in currentNode && currentNode.fills && Array.isArray(currentNode.fills)) {
-            currentNode.fills.forEach(fill => {
+            currentNode.fills.forEach((fill, index) => {
                 if (fill.type === 'SOLID' && fill.visible !== false) {
                     const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
                     const colorKey = `${hex}-fill`;
@@ -715,8 +789,8 @@ function extractDesignTokensFromNode(node) {
                         colorSet.add(colorKey);
 
                         // Use actual token name if available, otherwise suggest one
-                        const tokenName = fillVariableName || suggestTokenName(hex, 'fill', currentNode.type);
-                        const isRealToken = !!fillVariableName;
+                        const tokenName = boundVars.fills[index] || suggestTokenName(hex, 'fill', currentNode.type);
+                        const isRealToken = !!boundVars.fills[index];
 
                         colors.push({
                             name: tokenName,
@@ -737,7 +811,7 @@ function extractDesignTokensFromNode(node) {
 
         // Extract colors from strokes
         if ('strokes' in currentNode && currentNode.strokes && Array.isArray(currentNode.strokes)) {
-            currentNode.strokes.forEach(stroke => {
+            currentNode.strokes.forEach((stroke, index) => {
                 if (stroke.type === 'SOLID' && stroke.visible !== false) {
                     const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
                     const colorKey = `${hex}-stroke`;
@@ -745,8 +819,8 @@ function extractDesignTokensFromNode(node) {
                         colorSet.add(colorKey);
 
                         // Use actual token name if available, otherwise suggest one
-                        const tokenName = strokeVariableName || suggestTokenName(hex, 'stroke', currentNode.type);
-                        const isRealToken = !!strokeVariableName;
+                        const tokenName = boundVars.strokes[index] || suggestTokenName(hex, 'stroke', currentNode.type);
+                        const isRealToken = !!boundVars.strokes[index];
 
                         colors.push({
                             name: tokenName,
@@ -764,51 +838,134 @@ function extractDesignTokensFromNode(node) {
                 }
             });
         }
-        // Extract spacing (padding, gaps)
+
+        // Extract typography tokens from text nodes
+        if (currentNode.type === 'TEXT') {
+            const textNode = currentNode;
+            const fontSize = textNode.fontSize;
+            const fontName = textNode.fontName;
+
+            // Font size token
+            if (fontSize && typeof fontSize === 'number') {
+                const sizeKey = `${fontSize}px`;
+                if (!typographySet.has(sizeKey)) {
+                    typographySet.add(sizeKey);
+
+                    const fontSizeTokenName = boundVars.fontSize || `text-${fontSize}px`;
+                    const isRealFontSizeToken = !!boundVars.fontSize;
+
+                    typography.push({
+                        name: fontSizeTokenName,
+                        size: `${fontSize}px`,
+                        weight: (fontName && fontName.style && fontName.style.toLowerCase().includes('bold')) ? '700' :
+                               (fontName && fontName.style && fontName.style.toLowerCase().includes('medium')) ? '500' : '400',
+                        family: fontName ? fontName.family : 'Unknown',
+                        type: 'fontSize',
+                        isActualToken: isRealFontSizeToken,
+                        usage: isRealFontSizeToken ?
+                            `Bound to design token: ${fontSizeTokenName}` :
+                            'Currently used font size',
+                        suggestion: isRealFontSizeToken ?
+                            `✅ Using semantic token` :
+                            `Consider using semantic token: ${fontSizeTokenName}`
+                    });
+                }
+            }
+
+            // Letter spacing token
+            if (boundVars.letterSpacing) {
+                const letterSpacingKey = `ls-${boundVars.letterSpacing}`;
+                if (!typographySet.has(letterSpacingKey)) {
+                    typographySet.add(letterSpacingKey);
+
+                    typography.push({
+                        name: boundVars.letterSpacing,
+                        type: 'letterSpacing',
+                        isActualToken: true,
+                        usage: `Bound to design token: ${boundVars.letterSpacing}`,
+                        suggestion: `✅ Using semantic token`
+                    });
+                }
+            }
+
+            // Line height token
+            if (boundVars.lineHeight) {
+                const lineHeightKey = `lh-${boundVars.lineHeight}`;
+                if (!typographySet.has(lineHeightKey)) {
+                    typographySet.add(lineHeightKey);
+
+                    typography.push({
+                        name: boundVars.lineHeight,
+                        type: 'lineHeight',
+                        isActualToken: true,
+                        usage: `Bound to design token: ${boundVars.lineHeight}`,
+                        suggestion: `✅ Using semantic token`
+                    });
+                }
+            }
+        }
+
+        // Extract spacing tokens from layout properties
         if ('paddingLeft' in currentNode) {
             const paddings = [
-                currentNode.paddingLeft,
-                currentNode.paddingRight,
-                currentNode.paddingTop,
-                currentNode.paddingBottom
+                { prop: 'paddingTop', value: currentNode.paddingTop, token: boundVars.paddingTop },
+                { prop: 'paddingRight', value: currentNode.paddingRight, token: boundVars.paddingRight },
+                { prop: 'paddingBottom', value: currentNode.paddingBottom, token: boundVars.paddingBottom },
+                { prop: 'paddingLeft', value: currentNode.paddingLeft, token: boundVars.paddingLeft }
             ];
-            paddings.forEach(padding => {
-                if (padding && !spacingSet.has(padding)) {
-                    spacingSet.add(padding);
-                    spacing.push({
-                        name: `spacing-${padding}`,
-                        value: `${padding}px`
-                    });
+
+            paddings.forEach(({ prop, value, token }) => {
+                if (value && value > 0) {
+                    const spacingKey = `${prop}-${value}`;
+                    if (!spacingSet.has(spacingKey)) {
+                        spacingSet.add(spacingKey);
+
+                        const tokenName = token || `${prop}-${value}px`;
+                        const isRealToken = !!token;
+
+                        spacing.push({
+                            name: tokenName,
+                            value: `${value}px`,
+                            type: 'padding',
+                            property: prop,
+                            isActualToken: isRealToken,
+                            usage: isRealToken ?
+                                `Bound to design token: ${tokenName}` :
+                                `Currently used ${prop}`,
+                            suggestion: isRealToken ?
+                                `✅ Using semantic token` :
+                                `Consider using semantic token: ${tokenName}`
+                        });
+                    }
                 }
             });
         }
-        if ('itemSpacing' in currentNode && currentNode.itemSpacing) {
-            if (!spacingSet.has(currentNode.itemSpacing)) {
-                spacingSet.add(currentNode.itemSpacing);
+
+        // Item spacing token
+        if ('itemSpacing' in currentNode && currentNode.itemSpacing && currentNode.itemSpacing > 0) {
+            const spacingKey = `itemSpacing-${currentNode.itemSpacing}`;
+            if (!spacingSet.has(spacingKey)) {
+                spacingSet.add(spacingKey);
+
+                const tokenName = boundVars.itemSpacing || `gap-${currentNode.itemSpacing}px`;
+                const isRealToken = !!boundVars.itemSpacing;
+
                 spacing.push({
-                    name: `gap-${currentNode.itemSpacing}`,
-                    value: `${currentNode.itemSpacing}px`
+                    name: tokenName,
+                    value: `${currentNode.itemSpacing}px`,
+                    type: 'gap',
+                    property: 'itemSpacing',
+                    isActualToken: isRealToken,
+                    usage: isRealToken ?
+                        `Bound to design token: ${tokenName}` :
+                        'Currently used gap spacing',
+                    suggestion: isRealToken ?
+                        `✅ Using semantic token` :
+                        `Consider using semantic token: ${tokenName}`
                 });
             }
         }
-        // Extract typography
-        if (currentNode.type === 'TEXT') {
-            const textNode = currentNode;
-            const fontName = textNode.fontName;
-            const fontSize = textNode.fontSize;
-            if (fontName && fontSize) {
-                const typographyKey = `${fontName.family}-${fontName.style}-${fontSize}`;
-                if (!typographySet.has(typographyKey)) {
-                    typographySet.add(typographyKey);
-                    typography.push({
-                        name: `text-${typography.length + 1}`,
-                        size: `${fontSize}px`,
-                        weight: fontName.style.toLowerCase().includes('bold') ? '700' :
-                            fontName.style.toLowerCase().includes('medium') ? '500' : '400'
-                    });
-                }
-            }
-        }
+
         // Traverse children
         if ('children' in currentNode) {
             currentNode.children.forEach(child => traverseNode(child));
