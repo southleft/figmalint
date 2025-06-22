@@ -3,9 +3,9 @@
   "id": "ai-design-copilot",
   "api": "1.0.0",
   "main": "code.js",
-  "ui": "ui.html",
-  "editorType": ["figma", "dev"],
-  "capabilities": ["inspect"],
+  "ui": "ui-enhanced.html",
+  "editorType": ["figma"],
+  "permissions": ["currentuser"],
   "documentAccess": "dynamic-page",
   "networkAccess": {
     "allowedDomains": ["https://api.anthropic.com"]

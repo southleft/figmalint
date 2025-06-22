@@ -1,138 +1,113 @@
-# AI Design Co-Pilot - Figma Plugin
+# AI Design Co-Pilot v2.0
 
-A Figma plugin that analyzes selected design components and generates metadata and suggested variants using Claude AI.
-
-## Project Structure
-
-```
-ai-design-copilot/
-├── manifest.json    # Figma plugin configuration
-├── code.ts         # Main plugin thread (backend)
-├── ui.html         # Plugin user interface
-├── ui.ts           # UI logic and messaging
-├── styles.css      # Plugin styling
-├── claude.ts       # Claude API helper functions
-├── figma.d.ts      # TypeScript definitions for Figma API
-└── README.md       # This file
-```
+An enhanced Figma plugin that provides AI-powered component analysis, documentation, and validation for design systems designers.
 
 ## Features
 
-- **API Key Management**: Securely store and manage your Claude API key
-- **Component Analysis**: Analyze selected Figma components with AI
-- **Design Insights**: Get suggestions for variants, accessibility, and best practices
-- **Clean UI**: Simple, focused interface for easy interaction
+### 🎯 Three Main Tabs
 
-## Setup
+#### 1. Analyze Tab
+- **Component Audit View**: Automatically checks for missing states, accessibility issues, and naming conventions
+- **Property Cheat Sheet**: Lists recommended Figma properties with accepted values and defaults
+- **Token Suggestions**: Suggests design tokens for colors, spacing, and typography
+- **Validation Logic**: Checks for missing interactive states, inconsistent naming, and poor color contrast
 
-1. **Get Claude API Key**:
-   - Sign up at [Anthropic Console](https://console.anthropic.com/)
-   - Create an API key
+#### 2. Playground Tab
+- **Automatic Instance Generation**: Creates a visual grid of all component variants and states
+- **State Variations**: Generates hover, focus, disabled, and pressed states
+- **Variant Combinations**: Creates all possible combinations of component variants
+- **Visual Organization**: Clean grid layout with proper labeling
 
-2. **Install the Plugin**:
-   - Open Figma Desktop
-   - Go to Plugins → Development → Import plugin from manifest
-   - Select the `manifest.json` file from this directory
+#### 3. Documentation Tab
+- **Auto-Generated Documentation**: Creates comprehensive component documentation
+- **Export Options**: Export as Markdown or JSON format
+- **In-Figma Documentation**: Generate documentation frames directly in your Figma file
+- **Collaboration Notes**: Add and save notes for team members
 
-3. **Configure API Key**:
-   - Run the plugin in Figma
-   - Enter your Claude API key
-   - Click "Save Key"
+### 🚀 Additional Features
+
+- **Batch Mode**: Analyze multiple components at once
+- **Accessibility Validation**: Automatic checks for color contrast and focus states
+- **Token Integration**: Suggests appropriate design tokens based on component analysis
+- **Smart State Detection**: Identifies missing interactive states
+- **Collapsible UI Sections**: Clean, organized interface that adapts to component complexity
+
+## Installation
+
+1. Open Figma
+2. Go to Plugins → Development → Import plugin from manifest
+3. Select the `manifest.json` file from this directory
+4. The plugin will appear in your Figma plugins menu
 
 ## Usage
 
-1. **Select a Component**: Choose any Figma component, frame, or element to analyze
-2. **Run Analysis**: Click "Analyze Selected Component"
-3. **View Results**: Check Figma notifications for the AI-generated insights
+### Initial Setup
+1. Launch the plugin from Figma's plugins menu
+2. Enter your Claude API key (starts with `sk-ant-`)
+3. Save the key (it's stored securely in your session)
 
-## Development Notes
+### Analyzing Components
+1. Select a component in Figma
+2. Click "Analyze Component"
+3. Review the comprehensive analysis results:
+   - Audit score and issues
+   - Suggested properties
+   - Token recommendations
+   - Component metadata
 
-### File Descriptions
+### Generating Playground
+1. After analysis, switch to the Playground tab
+2. Click "Generate Instances"
+3. A grid of all component variations will be created in your Figma file
 
-- **`manifest.json`**: Defines plugin metadata, permissions, and entry points
-- **`code.ts`**: Main plugin logic running in Figma's sandbox environment
-- **`ui.html`** & **`ui.ts`**: User interface and client-side interaction logic
-- **`claude.ts`**: API helper for communicating with Claude 3
-- **`figma.d.ts`**: TypeScript definitions for Figma Plugin API
+### Creating Documentation
+1. Switch to the Documentation tab after analysis
+2. Choose export format (Markdown or JSON)
+3. Click "Export" to copy to clipboard, or
+4. Click "Generate in Figma" to create a documentation frame
 
-### API Integration
+### Batch Analysis
+1. Select multiple components
+2. Enable "Batch Mode" when it appears
+3. Click "Analyze Component" to analyze all selected components
 
-The plugin makes direct API calls to Anthropic's Claude API. The `manifest.json` file includes the necessary network permissions:
+## Component Types Tested
 
-```json
-"networkAccess": {
-  "allowedDomains": ["https://api.anthropic.com"]
-}
-```
+The plugin works best with:
+- **Simple**: Icons, Avatars, Badges
+- **Medium**: Buttons, Input Fields, Toggles
+- **Complex**: Cards, Table Rows, Dropdown Menus
 
-This allows the plugin to communicate directly with the Claude API without needing a proxy server.
+## Requirements
 
-### Building the Plugin
+- Figma desktop app or web version
+- Claude API key from Anthropic
+- Internet connection for AI analysis
 
-To compile TypeScript files:
+## Version History
 
-```bash
-npm run build
-```
+### v2.0.0
+- Added tabbed interface (Analyze, Playground, Documentation)
+- Implemented comprehensive audit view with scoring
+- Added property cheat sheet generation
+- Integrated token suggestions with visual previews
+- Added playground generation for variants and states
+- Implemented documentation export (Markdown/JSON)
+- Added batch mode for multiple components
+- Enhanced UI with collapsible sections
+- Added collaboration notes feature
 
-For development with auto-recompilation:
+### v1.0.0
+- Initial release with basic component analysis
+- Claude AI integration
+- Simple variant generation
 
-```bash
-npm run dev
-```
+## Privacy & Security
 
-## Troubleshooting
+- API keys are stored locally in your Figma session
+- No data is sent to external servers except the Claude API
+- All processing happens within your Figma environment
 
-### API Connection Issues
+## Support
 
-- **Invalid API Key**: Ensure your API key starts with `sk-ant-` and is valid
-- **Rate Limits**: If you see rate limit errors, wait a moment before trying again
-- **Network Issues**: Check your internet connection
-
-### Plugin Issues
-
-- **Component Not Selected**: Make sure to select a Figma component before analyzing
-- **Plugin Not Loading**: Try reloading the plugin or restarting Figma
-
-## Security Notes
-
-- API keys are stored in memory during the plugin session
-- For production use, consider implementing secure key storage using Figma's clientStorage API
-- Never commit API keys to version control
-
-## Future Enhancements
-
-- Persistent API key storage
-- Batch component analysis
-- Export analysis results
-- Custom analysis prompts
-- Integration with design systems
-
-## Extending the Plugin
-
-The plugin is designed to be easily extensible:
-
-1. **Add New Analysis Types**: Modify `createDesignAnalysisPrompt()` in `claude.ts`
-2. **Enhance Component Extraction**: Update `extractComponentInfo()` in `code.ts`
-3. **Improve UI**: Add new controls in `ui.html` and handle them in `ui.ts`
-4. **Add Persistence**: Implement `figma.clientStorage` for API key persistence
-
-## Development Commands
-
-Since this is a vanilla TypeScript project, you'll need to:
-
-1. **Compile TypeScript**: Use `tsc` to compile `.ts` files to `.js`
-2. **Load in Figma**: Import the compiled plugin via Figma Desktop
-3. **Debug**: Use `console.log()` statements (viewable in Figma's developer console)
-
-## Next Steps
-
-- [ ] Add component variant generation
-- [ ] Implement design system analysis
-- [ ] Add export functionality for analysis results
-- [ ] Create plugin store listing
-- [ ] Add unit tests for core functions
-
-## License
-
-This project is a development scaffold - add your preferred license.
+For issues or feature requests, please contact the development team or submit feedback through the plugin interface.

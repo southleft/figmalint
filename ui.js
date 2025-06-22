@@ -1,3 +1,4 @@
+"use strict";
 // UI Logic for AI Design Co-Pilot Figma Plugin
 // Handles user interactions and communication with the plugin backend
 // DOM Elements

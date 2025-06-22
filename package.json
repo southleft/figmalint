@@ -1,11 +1,11 @@
 {
   "name": "ai-design-co-pilot",
-  "version": "1.0.0",
-  "description": "A Figma plugin that analyzes selected design components and generates metadata and suggested variants using Claude AI.",
+  "version": "2.0.0",
+  "description": "Enhanced Figma plugin with AI-powered component analysis, audit views, playground generation, documentation export, and design system validation using Claude AI.",
   "main": "code.js",
   "scripts": {
-    "build": "tsc --target ES2020 --lib ES2020,DOM figma.d.ts code.ts ui.ts",
-    "dev": "tsc --target ES2020 --lib ES2020,DOM --watch figma.d.ts code.ts ui.ts",
+    "build": "tsc",
+    "dev": "tsc --watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -19,6 +19,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "webpack-cli": "^6.0.1"
   }
 }
