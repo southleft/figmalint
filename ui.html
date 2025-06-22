@@ -1232,15 +1232,16 @@
           <div style="display: flex; gap: 16px; flex-wrap: wrap;">
       `;
 
-      // Count tokens vs hard-coded values across all token types
+      // Count tokens vs hard-coded values across all token types using same logic as categorization
       let tokenCount = 0;
       let hardCodedCount = 0;
 
-      // Count across all token types
+      // Count across all token types - exclude AI suggestions from hard-coded count
       Object.keys(data.tokens || {}).forEach(tokenType => {
         const tokens = data.tokens[tokenType] || [];
         tokenCount += tokens.filter(t => t.isToken).length;
-        hardCodedCount += tokens.filter(t => !t.isToken).length;
+        // Only count as hard-coded if it's not a token AND not an AI suggestion
+        hardCodedCount += tokens.filter(t => !t.isToken && t.type !== 'ai-suggestion' && t.isActualToken !== false).length;
       });
 
       html += `
