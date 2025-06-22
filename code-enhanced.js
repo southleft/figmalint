@@ -451,6 +451,75 @@ function processEnhancedAnalysis(data, node) {
             });
         });
     }
+
+    // Add client-side naming validation to catch obvious issues
+    function validateLayerNaming(node) {
+        const issues = [];
+
+        function checkNode(currentNode) {
+            const name = currentNode.name;
+
+            // Check for obvious problematic patterns
+            if (name.includes('renamed to ')) {
+                const suggestedName = name.split('renamed to ')[1].trim();
+                issues.push({
+                    layer: name,
+                    name: name,
+                    valid: false,
+                    suggestion: suggestedName
+                });
+            }
+            else if (name.includes('should be ')) {
+                const suggestedName = name.split('should be ')[1].trim();
+                issues.push({
+                    layer: name,
+                    name: name,
+                    valid: false,
+                    suggestion: suggestedName
+                });
+            }
+            // Check for generic layer names that should be more descriptive
+            else if (/^(Ellipse|Rectangle|Frame|Group)\s*\d*$/i.test(name)) {
+                const nodeType = currentNode.type.toLowerCase();
+                let suggestion = '';
+
+                if (nodeType === 'ellipse') {
+                    suggestion = name.toLowerCase().includes('avatar') ? 'avatar-image' : 'icon';
+                } else if (nodeType === 'rectangle') {
+                    suggestion = 'background';
+                } else if (nodeType === 'frame') {
+                    suggestion = 'container';
+                } else {
+                    suggestion = 'element';
+                }
+
+                issues.push({
+                    layer: name,
+                    name: name,
+                    valid: false,
+                    suggestion: suggestion
+                });
+            }
+
+            // Check children if they exist
+            if ('children' in currentNode && currentNode.children) {
+                currentNode.children.forEach(child => checkNode(child));
+            }
+        }
+
+        checkNode(node);
+        return issues;
+    }
+
+    // Add client-side detected issues
+    const clientSideIssues = validateLayerNaming(node);
+    clientSideIssues.forEach(issue => {
+        // Avoid duplicates
+        const existingIssue = audit.naming.find(existing => existing.layer === issue.layer);
+        if (!existingIssue) {
+            audit.naming.push(issue);
+        }
+    });
     // Generate property cheat sheet
     const properties = data.propertyCheatSheet || [];
     // Generate token suggestions with visual previews

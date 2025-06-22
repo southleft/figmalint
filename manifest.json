@@ -2,7 +2,7 @@
   "name": "AI Design Co-Pilot",
   "id": "ai-design-copilot",
   "api": "1.0.0",
-  "main": "code.js",
+  "main": "code-enhanced.js",
   "ui": "ui-enhanced.html",
   "editorType": ["figma"],
   "permissions": ["currentuser"],

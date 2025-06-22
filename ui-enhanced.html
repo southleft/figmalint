@@ -1592,7 +1592,7 @@
       let totalCount = 0;
 
       // States Audit
-      if (audit.states) {
+      if (audit.states && audit.states.length > 0) {
         html += '<div class="audit-section">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Interactive States</h4>';
 
@@ -1603,11 +1603,11 @@
 
           html += `
             <div class="audit-item">
-                                ${state.found
-                    ? '<span class="audit-status pass">✓</span>'
-                    : '<span class="audit-status fail">✗</span>'}
-                  <span class="audit-label">${state.name}</span>
-                  ${!state.found ? `<button class="audit-action-button" onclick="handleAddState('${state.name.replace(/'/g, "\\'")}')" title="Click to add ${state.name} state">Add state</button>` : ''}
+              ${state.found
+                ? '<span class="audit-status pass">✓</span>'
+                : '<span class="audit-status fail">✗</span>'}
+              <span class="audit-label">${state.name}</span>
+              ${!state.found ? `<button class="audit-action-button" onclick="handleAddState('${state.name.replace(/'/g, "\\'")}')" title="Click to add ${state.name} state">Add state</button>` : ''}
             </div>
           `;
         });
@@ -1615,7 +1615,7 @@
       }
 
       // Accessibility Audit
-      if (audit.accessibility) {
+      if (audit.accessibility && audit.accessibility.length > 0) {
         html += '<div class="audit-section">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Accessibility</h4>';
 
@@ -1638,7 +1638,7 @@
       }
 
       // Naming Conventions
-      if (audit.naming) {
+      if (audit.naming && audit.naming.length > 0) {
         html += '<div class="audit-section">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Naming Conventions</h4>';
 
@@ -1651,7 +1651,40 @@
             <div class="audit-item">
               <span class="audit-status ${status}">${item.valid ? '✅' : '⚠️'}</span>
               <span class="audit-label">${item.layer}: ${item.name}</span>
-              ${item.suggestion ? `<button class="audit-action-button" onclick="handleFixNaming('${item.layer.replace(/'/g, "\\'")}', '${item.suggestion.replace(/'/g, "\\'")}')" title="Click to rename to ${item.suggestion}">→ ${item.suggestion}</button>` : ''}
+              ${item.suggestion ? `<button class="audit-action-button" onclick="handleFixNaming('${item.layer.replace(/'/g, "\\'")}', '${item.suggestion.replace(/'/g, "\\'")}')" title="Click to rename to ${getCleanSuggestionName(item.suggestion)}">→ ${getCleanSuggestionName(item.suggestion)}</button>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      } else {
+        // Show fallback for naming when no issues found
+        html += '<div class="audit-section">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Naming Conventions</h4>';
+        html += `
+          <div class="audit-item">
+            <span class="audit-status pass">✅</span>
+            <span class="audit-label">Layer names follow good conventions</span>
+          </div>
+        `;
+        html += '</div>';
+        totalCount++;
+        passCount++;
+      }
+
+      // Consistency Audit (if available)
+      if (audit.consistency && audit.consistency.length > 0) {
+        html += '<div class="audit-section">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Design Consistency</h4>';
+
+        audit.consistency.forEach(item => {
+          totalCount++;
+          const status = item.status === 'pass' ? 'pass' : 'warning';
+          if (status === 'pass') passCount++;
+
+          html += `
+            <div class="audit-item">
+              <span class="audit-status ${status}">${status === 'pass' ? '✅' : '⚠️'}</span>
+              <span class="audit-label">${item.check}</span>
             </div>
           `;
         });
@@ -1673,24 +1706,35 @@
 
     // Update Property Cheat Sheet
     function updatePropertyCheatSheet(properties) {
-      let html = '<table class="property-table">';
-      html += '<thead><tr><th>Property</th><th>Values</th><th>Default</th></tr></thead>';
-      html += '<tbody>';
+      if (properties && properties.length > 0) {
+        let html = '<table class="property-table">';
+        html += '<thead><tr><th>Property</th><th>Values</th><th>Default</th></tr></thead>';
+        html += '<tbody>';
 
-      properties.forEach(prop => {
-        html += '<tr>';
-        html += `<td>${prop.name}</td>`;
-        html += '<td>';
-        prop.values.forEach(value => {
-          html += `<span class="property-value">${value}</span>`;
+        properties.forEach(prop => {
+          html += '<tr>';
+          html += `<td>${prop.name}</td>`;
+          html += '<td>';
+          prop.values.forEach(value => {
+            html += `<span class="property-value">${value}</span>`;
+          });
+          html += '</td>';
+          html += `<td>${prop.default || '-'}</td>`;
+          html += '</tr>';
         });
-        html += '</td>';
-        html += `<td>${prop.default || '-'}</td>`;
-        html += '</tr>';
-      });
 
-      html += '</tbody></table>';
-      propertyCheatsheet.innerHTML = html;
+        html += '</tbody></table>';
+        propertyCheatsheet.innerHTML = html;
+      } else {
+        // Show fallback content when no properties are available
+        propertyCheatsheet.innerHTML = `
+          <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
+            <div style="font-size: 24px; margin-bottom: var(--space-sm);">📋</div>
+            <p>This component has no configurable properties</p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">Simple components may not have customizable props</p>
+          </div>
+        `;
+      }
     }
 
     // Update Token Suggestions
@@ -1749,7 +1793,13 @@
       }
 
       if (html === '') {
-        html = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">No design tokens detected for this component</p>';
+        html = `
+          <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
+            <div style="font-size: 24px; margin-bottom: var(--space-sm);">🎨</div>
+            <p>No design tokens detected</p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">This component uses simple styling without extractable tokens</p>
+          </div>
+        `;
       }
       tokenSuggestions.innerHTML = html;
     }
@@ -2021,14 +2071,38 @@
       updateStatus(`Fixing ${issue}...`, 'info');
     }
 
+        // Helper function to extract clean suggestion name for display
+    function getCleanSuggestionName(suggestion) {
+      let actualName = suggestion;
+
+      // Handle "renamed to X" format
+      if (suggestion.includes('renamed to ')) {
+        actualName = suggestion.split('renamed to ')[1].trim();
+      }
+      // Handle "should be X" format
+      else if (suggestion.includes('should be ')) {
+        actualName = suggestion.split('should be ')[1].trim();
+      }
+      // Handle "→ X" format
+      else if (suggestion.startsWith('→ ')) {
+        actualName = suggestion.substring(2).trim();
+      }
+
+      // Remove any quotes that might be around the name
+      return actualName.replace(/['"]/g, '').trim();
+    }
+
     // Handle Fix Naming Button Click
     window.handleFixNaming = function(layerName, suggestion) {
+      // Parse the actual suggested name from various formats
+      const actualName = getCleanSuggestionName(suggestion);
+
       sendMessageToPlugin('fix-naming', {
         layer: layerName,
-        newName: suggestion,
+        newName: actualName,
         metadata: currentMetadata
       });
-      updateStatus(`Renaming ${layerName} to ${suggestion}...`, 'info');
+      updateStatus(`Renaming ${layerName} to ${actualName}...`, 'info');
     }
 
     // Update Analyze Button State
