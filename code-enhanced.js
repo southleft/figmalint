@@ -626,6 +626,19 @@ function extractDesignTokensFromNode(node) {
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
     }
 
+    // Helper to get actual Figma variable name
+    function getVariableName(variableId) {
+        try {
+            if (figma && figma.variables && figma.variables.getVariableById) {
+                const variable = figma.variables.getVariableById(variableId);
+                return variable ? variable.name : null;
+            }
+        } catch (error) {
+            console.log('Could not access variable:', error);
+        }
+        return null;
+    }
+
     // Helper to suggest semantic token names based on color values and usage
     function suggestTokenName(hex, type, nodeType) {
         const color = hex.toLowerCase();
@@ -665,7 +678,33 @@ function extractDesignTokensFromNode(node) {
         }
     }
 
-    function traverseNode(currentNode) {
+        function traverseNode(currentNode) {
+        // Check for bound variables (actual Figma tokens) first
+        let fillVariableName = null;
+        let strokeVariableName = null;
+
+        try {
+            if (currentNode.boundVariables) {
+                // Check for fill variable
+                if (currentNode.boundVariables.fills && currentNode.boundVariables.fills.length > 0) {
+                    const fillVariable = currentNode.boundVariables.fills[0];
+                    if (fillVariable && fillVariable.id) {
+                        fillVariableName = getVariableName(fillVariable.id);
+                    }
+                }
+
+                // Check for stroke variable
+                if (currentNode.boundVariables.strokes && currentNode.boundVariables.strokes.length > 0) {
+                    const strokeVariable = currentNode.boundVariables.strokes[0];
+                    if (strokeVariable && strokeVariable.id) {
+                        strokeVariableName = getVariableName(strokeVariable.id);
+                    }
+                }
+            }
+        } catch (error) {
+            console.log('Error accessing bound variables:', error);
+        }
+
         // Extract colors from fills
         if ('fills' in currentNode && currentNode.fills && Array.isArray(currentNode.fills)) {
             currentNode.fills.forEach(fill => {
@@ -674,12 +713,22 @@ function extractDesignTokensFromNode(node) {
                     const colorKey = `${hex}-fill`;
                     if (!colorSet.has(colorKey)) {
                         colorSet.add(colorKey);
+
+                        // Use actual token name if available, otherwise suggest one
+                        const tokenName = fillVariableName || suggestTokenName(hex, 'fill', currentNode.type);
+                        const isRealToken = !!fillVariableName;
+
                         colors.push({
-                            name: suggestTokenName(hex, 'fill', currentNode.type),
+                            name: tokenName,
                             value: hex,
                             type: 'fill',
-                            usage: 'Currently used as background/fill color',
-                            suggestion: `Consider using semantic token: ${suggestTokenName(hex, 'fill', currentNode.type)}`
+                            isActualToken: isRealToken,
+                            usage: isRealToken ?
+                                `Bound to design token: ${tokenName}` :
+                                'Currently used as background/fill color',
+                            suggestion: isRealToken ?
+                                `✅ Using semantic token` :
+                                `Consider using semantic token: ${tokenName}`
                         });
                     }
                 }
@@ -694,12 +743,22 @@ function extractDesignTokensFromNode(node) {
                     const colorKey = `${hex}-stroke`;
                     if (!colorSet.has(colorKey)) {
                         colorSet.add(colorKey);
+
+                        // Use actual token name if available, otherwise suggest one
+                        const tokenName = strokeVariableName || suggestTokenName(hex, 'stroke', currentNode.type);
+                        const isRealToken = !!strokeVariableName;
+
                         colors.push({
-                            name: suggestTokenName(hex, 'stroke', currentNode.type),
+                            name: tokenName,
                             value: hex,
                             type: 'stroke',
-                            usage: 'Currently used as border/stroke color',
-                            suggestion: `Consider using semantic token: ${suggestTokenName(hex, 'stroke', currentNode.type)}`
+                            isActualToken: isRealToken,
+                            usage: isRealToken ?
+                                `Bound to design token: ${tokenName}` :
+                                'Currently used as border/stroke color',
+                            suggestion: isRealToken ?
+                                `✅ Using semantic token` :
+                                `Consider using semantic token: ${tokenName}`
                         });
                     }
                 }

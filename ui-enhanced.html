@@ -655,6 +655,73 @@
       color: var(--text-primary);
     }
 
+    /* Compact Token Layout */
+    .token-item-compact {
+      display: flex;
+      align-items: center;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+      gap: var(--space-sm);
+      border: 1px solid var(--border);
+      transition: all var(--transition-base);
+    }
+
+    .token-item-compact:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .token-item-compact.warning {
+      background: rgba(255, 244, 224, 0.3);
+      border-color: var(--warning);
+    }
+
+    .token-item-compact.suggestion {
+      background: var(--primary-light);
+      border-color: var(--primary);
+    }
+
+    .token-swatch {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: transform var(--transition-fast);
+    }
+
+    .token-swatch:hover {
+      transform: scale(1.1);
+    }
+
+    .token-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .token-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .token-usage {
+      font-size: 10px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: help;
+    }
+
     /* Playground Grid */
     .playground-grid {
       display: grid;
@@ -1802,7 +1869,7 @@
       }
     }
 
-    // Update Token Suggestions
+        // Update Token Suggestions
     function updateTokenSuggestions(tokens) {
       console.log('UI updateTokenSuggestions called with:', tokens);
 
@@ -1814,22 +1881,23 @@
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🎨 Color Tokens</h4>';
 
-        // Separate current usage from suggestions
-        const currentTokens = tokens.colors.filter(token => token.type !== 'ai-suggestion');
+        // Separate actual tokens from suggestions and AI suggestions
+        const actualTokens = tokens.colors.filter(token => token.isActualToken);
+        const currentTokens = tokens.colors.filter(token => !token.isActualToken && token.type !== 'ai-suggestion');
         const suggestedTokens = tokens.colors.filter(token => token.type === 'ai-suggestion');
 
-        if (currentTokens.length > 0) {
+        // Show actual design tokens first
+        if (actualTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Currently Used</h5>';
-          currentTokens.forEach(token => {
-            const tokenType = token.type === 'stroke' ? '🔲' : '🎨';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Design Tokens in Use</h5>';
+          actualTokens.forEach(token => {
+            const tokenIcon = token.type === 'stroke' ? '🔲' : '🎨';
             html += `
-              <div class="token-item-enhanced">
-                <div class="token-preview" style="background: ${token.value}; border: 1px solid #ddd;"></div>
-                <div class="token-info">
-                  <div class="token-name">${tokenType} ${token.name}</div>
-                  <div class="token-usage">${token.usage || 'Used in component'}</div>
-                  <div class="token-value">${token.value}</div>
+              <div class="token-item-compact">
+                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">${tokenIcon} ${token.name}</div>
+                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
                 </div>
               </div>
             `;
@@ -1837,17 +1905,36 @@
           html += '</div>';
         }
 
+        // Show current tokens without design system binding
+        if (currentTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Colors</h5>';
+          currentTokens.forEach(token => {
+            const tokenIcon = token.type === 'stroke' ? '🔲' : '🎨';
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">${tokenIcon} ${token.value}</div>
+                  <div class="token-usage" title="${token.suggestion}">${token.suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        // Show AI suggested tokens
         if (suggestedTokens.length > 0) {
           html += '<div>';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--primary); margin-bottom: 6px;">💡 Suggested Tokens</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--primary); margin-bottom: 6px;">💡 AI Suggested Tokens</h5>';
           suggestedTokens.forEach(token => {
             html += `
-              <div class="token-item-enhanced suggestion">
-                <div class="token-preview" style="background: ${token.value}; border: 1px solid var(--primary);"></div>
-                <div class="token-info">
+              <div class="token-item-compact suggestion">
+                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
                   <div class="token-name">💡 ${token.name}</div>
-                  <div class="token-usage">${token.usage || 'Suggested for this component'}</div>
-                  <div class="token-value">${token.value}</div>
+                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
                 </div>
               </div>
             `;
