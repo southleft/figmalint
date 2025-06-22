@@ -1029,7 +1029,10 @@
             <span>Analyze Component</span>
           </button>
           <button id="show-config" class="button button-ghost" title="Show configuration">
-            <span>⚙️</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M8 5.5C6.61929 5.5 5.5 6.61929 5.5 8C5.5 9.38071 6.61929 10.5 8 10.5C9.38071 10.5 10.5 9.38071 10.5 8C10.5 6.61929 9.38071 5.5 8 5.5ZM4.5 8C4.5 6.067 6.067 4.5 8 4.5C9.933 4.5 11.5 6.067 11.5 8C11.5 9.933 9.933 11.5 8 11.5C6.067 11.5 4.5 9.933 4.5 8Z" fill="currentColor"/>
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M7.06592 1.5H8.93408L9.34687 3.02356C9.83877 3.19824 10.2966 3.44904 10.7047 3.76233L12.1868 3.1572L13.1209 4.62859L12.1399 5.67203C12.2118 6.10314 12.25 6.54716 12.25 7C12.25 7.45284 12.2118 7.89686 12.1399 8.32797L13.1209 9.37141L12.1868 10.8428L10.7047 10.2377C10.2966 10.551 9.83877 10.8018 9.34687 10.9764L8.93408 12.5H7.06592L6.65313 10.9764C6.16123 10.8018 5.70339 10.551 5.29529 10.2377L3.81323 10.8428L2.87915 9.37141L3.86007 8.32797C3.78819 7.89686 3.75 7.45284 3.75 7C3.75 6.54716 3.78819 6.10314 3.86007 5.67203L2.87915 4.62859L3.81323 3.1572L5.29529 3.76233C5.70339 3.44904 6.16123 3.19824 6.65313 3.02356L7.06592 1.5ZM6.93408 2.5L6.56787 3.86039L6.35937 3.92882C5.85493 4.08829 5.39163 4.34308 4.99451 4.67338L4.82212 4.81023L3.5132 4.2928L3.12085 4.87141L3.99319 5.79559L3.92151 5.9935C3.80942 6.3114 3.75 6.65086 3.75 7C3.75 7.34914 3.80942 7.6886 3.92151 8.0065L3.99319 8.20441L3.12085 9.12859L3.5132 9.7072L4.82212 9.18977L4.99451 9.32662C5.39163 9.65692 5.85493 9.91171 6.35937 10.0712L6.56787 10.1396L6.93408 11.5H8.06592L8.43213 10.1396L8.64063 10.0712C9.14507 9.91171 9.60837 9.65692 10.0055 9.32662L10.1779 9.18977L11.4868 9.7072L11.8791 9.12859L11.0068 8.20441L11.0785 8.0065C11.1906 7.6886 11.25 7.34914 11.25 7C11.25 6.65086 11.1906 6.3114 11.0785 5.9935L11.0068 5.79559L11.8791 4.87141L11.4868 4.2928L10.1779 4.81023L10.0055 4.67338C9.60837 4.34308 9.14507 4.08829 8.64063 3.92882L8.43213 3.86039L8.06592 2.5H6.93408Z" fill="currentColor"/>
+            </svg>
           </button>
         </div>
 
@@ -1254,6 +1257,7 @@
     let apiKeySaved = false;
     let currentMetadata = null;
     let currentAuditResults = null;
+    let currentTokenSummary = null;
     let batchMode = false;
     let selectedComponents = [];
 
@@ -1659,11 +1663,13 @@
       // Debug logging
       console.log('UI received enhanced analysis result:', data);
       console.log('Audit data received in UI:', data.audit);
+      console.log('Token summary received in UI:', data.tokenSummary);
 
       analyzeButton.disabled = false;
       quickAnalyzeButton.disabled = false;
       currentMetadata = data.metadata;
       currentAuditResults = data.audit;
+      currentTokenSummary = data.tokenSummary;
 
       // Update Audit View
       if (data.audit) {
@@ -1883,6 +1889,34 @@
       console.log('UI updateTokenSuggestions called with:', tokens);
 
       let html = '';
+      
+      // Display token summary if available
+      if (currentTokenSummary) {
+        html += '<div class="token-summary" style="background: var(--surface-secondary); padding: 12px; border-radius: 8px; margin-bottom: 16px;">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📊 Token Analysis Summary</h4>';
+        html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px;">';
+        html += `<div><strong>Total Items:</strong> ${currentTokenSummary.totalTokens}</div>`;
+        html += `<div><strong>Design Tokens:</strong> <span style="color: var(--success)">${currentTokenSummary.actualTokens}</span></div>`;
+        html += `<div><strong>Hard-coded:</strong> <span style="color: var(--warning)">${currentTokenSummary.hardCodedValues}</span></div>`;
+        html += `<div><strong>AI Suggestions:</strong> <span style="color: var(--primary)">${currentTokenSummary.aiSuggestions}</span></div>`;
+        html += '</div>';
+        
+        // Show breakdown by category
+        if (currentTokenSummary.byCategory) {
+          html += '<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">';
+          html += '<div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 4px;">By Category:</div>';
+          html += '<div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 10px;">';
+          Object.entries(currentTokenSummary.byCategory).forEach(([category, stats]) => {
+            if (stats.total > 0) {
+              html += `<div><strong>${category}:</strong> ${stats.tokens}/${stats.total}</div>`;
+            }
+          });
+          html += '</div>';
+          html += '</div>';
+        }
+        
+        html += '</div>';
+      }
 
       // Colors - Enhanced with comprehensive analysis
       if (tokens.colors && tokens.colors.length > 0) {
@@ -1891,9 +1925,17 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🎨 Color Tokens</h4>';
 
         // Separate actual tokens from hard-coded values
+        console.log('Color tokens before filtering:', tokens.colors);
         const actualTokens = tokens.colors.filter(token => token.isActualToken);
-        const hardCodedTokens = tokens.colors.filter(token => !token.isActualToken && token.type !== 'ai-suggestion');
-        const aiSuggestions = tokens.colors.filter(token => token.type === 'ai-suggestion');
+        const hardCodedTokens = tokens.colors.filter(token => !token.isActualToken && token.source === 'hard-coded');
+        const aiSuggestions = tokens.colors.filter(token => token.source === 'ai-suggestion');
+        
+        console.log('Filtered results:', {
+          actualTokens: actualTokens.length,
+          hardCodedTokens: hardCodedTokens.length,
+          aiSuggestions: aiSuggestions.length,
+          hardCodedDetails: hardCodedTokens
+        });
 
         // Show actual design tokens first
         if (actualTokens.length > 0) {

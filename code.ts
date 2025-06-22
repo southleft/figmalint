@@ -1795,12 +1795,14 @@ async function handleEnhancedAnalyze(options: any) {
       }
 
       // Process the enhanced data
-      const result = processEnhancedAnalysis(enhancedData, selectedNode);
+      const result = await processEnhancedAnalysis(enhancedData, selectedNode);
 
       // Debug logging
       console.log('Raw Claude response data:', enhancedData);
       console.log('Processed analysis result:', result);
       console.log('Audit data being sent:', result.audit);
+      console.log('Token summary being sent:', result.tokenSummary);
+      console.log('Full result keys:', Object.keys(result));
 
       // Store metadata for later use
       (globalThis as any).lastAnalyzedMetadata = result.metadata;
@@ -1828,7 +1830,7 @@ async function handleEnhancedAnalyze(options: any) {
 }
 
 // Process enhanced analysis data with proper audit scoring
-function processEnhancedAnalysis(data: any, node: SceneNode): any {
+async function processEnhancedAnalysis(data: any, node: SceneNode): Promise<any> {
   // Extract audit results with proper scoring
   const audit: {
     states: any[];
@@ -1916,17 +1918,22 @@ function processEnhancedAnalysis(data: any, node: SceneNode): any {
   console.log('Properties being sent (100% AI-generated):', properties);
 
   // Extract real design tokens from the component
-  const extractedTokens = extractDesignTokensFromNode(node);
+  const extractedTokens = await extractDesignTokensFromNode(node);
 
   console.log('Extracted tokens from node:', extractedTokens);
 
-  const tokens = {
-    colors: extractedTokens.colors.length > 0 ? extractedTokens.colors : [],
-    spacing: extractedTokens.spacing.length > 0 ? extractedTokens.spacing : [],
-    typography: extractedTokens.typography.length > 0 ? extractedTokens.typography : []
-  };
-
-  console.log('Final tokens being sent to UI:', tokens);
+  // Use Design System Analyzer for consistent token analysis
+  // For now, we'll create a simplified version inline until we can properly import
+  const tokenAnalysis = analyzeTokensConsistently(extractedTokens, data.tokens);
+  
+  console.log('Token analysis summary:', tokenAnalysis.summary);
+  console.log('Final tokens being sent to UI:', {
+    colors: tokenAnalysis.colors,
+    spacing: tokenAnalysis.spacing,
+    typography: tokenAnalysis.typography,
+    effects: tokenAnalysis.effects,
+    borders: tokenAnalysis.borders
+  });
 
   return {
     metadata: {
@@ -1942,18 +1949,29 @@ function processEnhancedAnalysis(data: any, node: SceneNode): any {
     },
     audit: audit,
     properties: properties,
-    tokens: tokens
+    tokens: {
+      colors: tokenAnalysis.colors,
+      spacing: tokenAnalysis.spacing,
+      typography: tokenAnalysis.typography,
+      effects: tokenAnalysis.effects,
+      borders: tokenAnalysis.borders
+    },
+    tokenSummary: tokenAnalysis.summary
   };
 }
 
 // Extract real design tokens from the component with proper Figma styles detection
-function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing: any[], typography: any[] } {
+async function extractDesignTokensFromNode(node: SceneNode): Promise<{ colors: any[], spacing: any[], typography: any[], effects: any[], borders: any[] }> {
   const colors: any[] = [];
   const spacing: any[] = [];
   const typography: any[] = [];
+  const effects: any[] = [];
+  const borders: any[] = [];
   const colorSet = new Set<string>();
   const spacingSet = new Set<string>(); // Changed to string to handle both variable names and values
   const typographySet = new Set<string>();
+  const effectSet = new Set<string>();
+  const borderSet = new Set<string>();
 
   function rgbToHex(r: number, g: number, b: number): string {
     const toHex = (n: number) => {
@@ -1964,9 +1982,9 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
   }
 
   // Helper function to safely get style names by ID
-  function getStyleName(styleId: string): string | null {
+  async function getStyleName(styleId: string): Promise<string | null> {
     try {
-      const style = figma.getStyleById(styleId);
+      const style = await figma.getStyleByIdAsync(styleId);
       return style ? style.name : null;
     } catch (error) {
       console.warn('Could not access style:', styleId, error);
@@ -1985,7 +2003,7 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
     }
   }
 
-  function traverseNode(currentNode: SceneNode) {
+  async function traverseNode(currentNode: SceneNode) {
     console.log('🔍 Checking node for design tokens:', currentNode.name, 'Type:', currentNode.type);
 
     // **COMPREHENSIVE DEBUGGING - Check what properties exist**
@@ -2009,7 +2027,7 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
     if ('fillStyleId' in currentNode && (currentNode as any).fillStyleId) {
       const styleId = (currentNode as any).fillStyleId;
       console.log('🎨 Attempting to get fill style for ID:', styleId);
-      const styleName = getStyleName(styleId);
+      const styleName = await getStyleName(styleId);
       if (styleName && !colorSet.has(styleName)) {
         colorSet.add(styleName);
         colors.push({
@@ -2017,6 +2035,7 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
           value: styleName, // The style name IS the token value
           type: 'fill-style',
           isToken: true,
+          isActualToken: true,
           source: 'figma-style'
         });
         console.log('🎨 ✅ Found fill style token:', styleName);
@@ -2029,7 +2048,7 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
     if ('strokeStyleId' in currentNode && (currentNode as any).strokeStyleId) {
       const styleId = (currentNode as any).strokeStyleId;
       console.log('🖊️ Attempting to get stroke style for ID:', styleId);
-      const styleName = getStyleName(styleId);
+      const styleName = await getStyleName(styleId);
       if (styleName && !colorSet.has(styleName)) {
         colorSet.add(styleName);
         colors.push({
@@ -2037,6 +2056,7 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
           value: styleName,
           type: 'stroke-style',
           isToken: true,
+          isActualToken: true,
           source: 'figma-style'
         });
         console.log('🖊️ ✅ Found stroke style token:', styleName);
@@ -2049,7 +2069,7 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
     if (currentNode.type === 'TEXT' && 'textStyleId' in currentNode && (currentNode as any).textStyleId) {
       const styleId = (currentNode as any).textStyleId;
       console.log('📝 Attempting to get text style for ID:', styleId);
-      const styleName = getStyleName(styleId);
+      const styleName = await getStyleName(styleId);
       if (styleName && !typographySet.has(styleName)) {
         typographySet.add(styleName);
         typography.push({
@@ -2057,6 +2077,7 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
           value: styleName,
           type: 'text-style',
           isToken: true,
+          isActualToken: true,
           source: 'figma-style'
         });
         console.log('📝 ✅ Found text style token:', styleName);
@@ -2069,15 +2090,16 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
     if ('effectStyleId' in currentNode && (currentNode as any).effectStyleId) {
       const styleId = (currentNode as any).effectStyleId;
       console.log('✨ Attempting to get effect style for ID:', styleId);
-      const styleName = getStyleName(styleId);
+      const styleName = await getStyleName(styleId);
       if (styleName) {
         // Add to appropriate category based on style name
         if (styleName.toLowerCase().includes('shadow') || styleName.toLowerCase().includes('elevation')) {
-          colors.push({
+          effects.push({
             name: styleName,
             value: styleName,
             type: 'effect-style',
             isToken: true,
+            isActualToken: true,
             source: 'figma-style'
           });
           console.log('✨ ✅ Found effect style token:', styleName);
@@ -2258,24 +2280,191 @@ function extractDesignTokensFromNode(node: SceneNode): { colors: any[], spacing:
       }
     }
 
+    // Extract effects from nodes
+    if ('effects' in currentNode && currentNode.effects && Array.isArray(currentNode.effects)) {
+      currentNode.effects.forEach((effect: any, index: number) => {
+        if (effect.visible !== false) {
+          let effectKey = '';
+          let effectValue = '';
+          
+          if (effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW') {
+            effectValue = `${effect.offset.x}px ${effect.offset.y}px ${effect.radius}px rgba(${Math.round(effect.color.r * 255)}, ${Math.round(effect.color.g * 255)}, ${Math.round(effect.color.b * 255)}, ${effect.color.a})`;
+            effectKey = `shadow-${effectValue}`;
+          } else if (effect.type === 'LAYER_BLUR' || effect.type === 'BACKGROUND_BLUR') {
+            effectValue = `blur(${effect.radius}px)`;
+            effectKey = `blur-${effect.radius}`;
+          }
+          
+          if (effectKey && !effectSet.has(effectKey)) {
+            effectSet.add(effectKey);
+            effects.push({
+              name: `hard-coded-${effect.type.toLowerCase()}-${effects.length + 1}`,
+              value: effectValue,
+              type: effect.type.toLowerCase(),
+              isToken: false,
+              source: 'hard-coded',
+              context: {
+                nodeType: currentNode.type,
+                nodeName: currentNode.name
+              }
+            });
+            console.log(`✨ ⚠️ Added hard-coded effect:`, effectKey);
+          }
+        }
+      });
+    }
+
+    // Extract border radius
+    if ('cornerRadius' in currentNode) {
+      const radius = (currentNode as any).cornerRadius;
+      if (radius && radius > 0 && !borderSet.has(radius.toString())) {
+        borderSet.add(radius.toString());
+        borders.push({
+          name: `hard-coded-radius-${radius}`,
+          value: `${radius}px`,
+          type: 'radius',
+          isToken: false,
+          source: 'hard-coded',
+          context: {
+            nodeType: currentNode.type,
+            nodeName: currentNode.name
+          }
+        });
+        console.log(`🔲 ⚠️ Added hard-coded border radius:`, radius);
+      }
+    }
+
     // Traverse children
     if ('children' in currentNode) {
-      currentNode.children.forEach(child => traverseNode(child));
+      for (const child of currentNode.children) {
+        await traverseNode(child);
+      }
     }
   }
 
-  traverseNode(node);
+  await traverseNode(node);
 
     // Log final results
-  const tokenCount = [...colors, ...spacing, ...typography].filter(item => item.isToken).length;
-  const hardCodedCount = [...colors, ...spacing, ...typography].filter(item => !item.isToken).length;
+  const tokenCount = [...colors, ...spacing, ...typography, ...effects, ...borders].filter(item => item.isToken).length;
+  const hardCodedCount = [...colors, ...spacing, ...typography, ...effects, ...borders].filter(item => !item.isToken).length;
 
   console.log(`🎯 Token extraction complete: ${tokenCount} design tokens, ${hardCodedCount} hard-coded values`);
   console.log('📊 Colors found:', colors);
   console.log('📊 Spacing found:', spacing);
   console.log('📊 Typography found:', typography);
+  console.log('📊 Effects found:', effects);
+  console.log('📊 Borders found:', borders);
 
   // Sort spacing values for better display (skip for now to avoid linter issues)
 
-  return { colors, spacing, typography };
+  return { colors, spacing, typography, effects, borders };
+}
+
+// Analyze tokens consistently to avoid discrepancies
+function analyzeTokensConsistently(extractedTokens: any, aiTokens?: any): any {
+  const result = {
+    colors: extractedTokens.colors || [],
+    spacing: extractedTokens.spacing || [],
+    typography: extractedTokens.typography || [],
+    effects: extractedTokens.effects || [],
+    borders: extractedTokens.borders || [],
+    summary: {
+      totalTokens: 0,
+      actualTokens: 0,
+      hardCodedValues: 0,
+      aiSuggestions: 0,
+      byCategory: {} as any
+    }
+  };
+
+  // Process each category
+  const categories = ['colors', 'spacing', 'typography', 'effects', 'borders'] as const;
+  
+  categories.forEach(category => {
+    const tokens = result[category];
+    
+    // Ensure each token has proper structure
+    result[category] = tokens.map((token: any) => ({
+      ...token,
+      isActualToken: token.source === 'figma-style' || token.source === 'figma-variable',
+      recommendation: token.recommendation || getDefaultRecommendation(token, category),
+      suggestion: token.suggestion || getDefaultSuggestion(token, category)
+    }));
+    
+    // Calculate stats for this category
+    const categoryTokens = result[category];
+    const actualTokens = categoryTokens.filter((t: any) => t.isActualToken).length;
+    const hardCoded = categoryTokens.filter((t: any) => t.source === 'hard-coded').length;
+    const suggestions = categoryTokens.filter((t: any) => t.source === 'ai-suggestion').length;
+    
+    result.summary.byCategory[category] = {
+      total: categoryTokens.length,
+      tokens: actualTokens,
+      hardCoded: hardCoded,
+      suggestions: suggestions
+    };
+    
+    // Update totals
+    result.summary.totalTokens += categoryTokens.length;
+    result.summary.actualTokens += actualTokens;
+    result.summary.hardCodedValues += hardCoded;
+    result.summary.aiSuggestions += suggestions;
+  });
+
+  // Merge AI suggestions if provided
+  if (aiTokens && aiTokens.suggestedTokens) {
+    // Add AI suggestions that don't already exist
+    // This would be implemented if we have AI token suggestions
+  }
+
+  return result;
+}
+
+// Get default recommendation based on token type
+function getDefaultRecommendation(token: any, category: string): string {
+  if (token.isToken || token.isActualToken) {
+    return `Using ${token.name} token`;
+  }
+  
+  switch (category) {
+    case 'colors':
+      return `Consider using a color token instead of ${token.value}`;
+    case 'spacing':
+      return `Consider using spacing token instead of ${token.value}`;
+    case 'typography':
+      return 'Consider using typography token';
+    case 'effects':
+      return 'Consider using effect token';
+    case 'borders':
+      return 'Consider using border radius token';
+    default:
+      return 'Consider using a design token';
+  }
+}
+
+// Get default suggestion based on token type
+function getDefaultSuggestion(token: any, category: string): string {
+  switch (category) {
+    case 'colors':
+      if (token.value?.startsWith('#000')) return 'Use semantic color token (e.g., text.primary)';
+      if (token.value?.startsWith('#FFF')) return 'Use semantic color token (e.g., background.primary)';
+      return 'Create or use existing color token';
+    case 'spacing':
+      const value = parseInt(token.value);
+      if (value % 8 === 0) return `Use spacing.${value / 8} token (8px grid)`;
+      if (value % 4 === 0) return `Use spacing.${value / 4} token (4px grid)`;
+      return 'Create or use existing spacing token';
+    case 'typography':
+      return 'Use semantic typography token (e.g., heading.large, body.regular)';
+    case 'effects':
+      return 'Use semantic shadow token (e.g., shadow.small, shadow.medium)';
+    case 'borders':
+      const radius = parseInt(token.value);
+      if (radius === 0) return 'Use radius.none token';
+      if (radius <= 4) return 'Use radius.small token';
+      if (radius <= 8) return 'Use radius.medium token';
+      return 'Use radius.large token';
+    default:
+      return 'Create or use existing design token';
+  }
 }
