@@ -2008,11 +2008,12 @@ async function extractDesignTokensFromNode(node) {
             console.log(`🖊️ ✅ Skipping stroke extraction - using strokeStyleId:`, currentNode.strokeStyleId);
         }
         // Extract spacing from layout properties
+        // Skip very small values (≤ 1px) that are likely default Figma values
         if ('paddingLeft' in currentNode) {
             const node = currentNode;
             const paddings = [node.paddingLeft, node.paddingRight, node.paddingTop, node.paddingBottom];
             paddings.forEach((padding, index) => {
-                if (padding && padding > 0 && !spacingSet.has(padding.toString())) {
+                if (padding && padding > 1 && !spacingSet.has(padding.toString())) {
                     spacingSet.add(padding.toString());
                     const sides = ['left', 'right', 'top', 'bottom'];
                     spacing.push({
@@ -2028,7 +2029,8 @@ async function extractDesignTokensFromNode(node) {
         }
         if ('itemSpacing' in currentNode) {
             const gap = currentNode.itemSpacing;
-            if (gap && gap > 0 && !spacingSet.has(gap.toString())) {
+            // Skip very small values (≤ 1px) that are likely default Figma values
+            if (gap && gap > 1 && !spacingSet.has(gap.toString())) {
                 spacingSet.add(gap.toString());
                 spacing.push({
                     name: `hard-coded-gap-${gap}`,
@@ -2114,7 +2116,8 @@ async function extractDesignTokensFromNode(node) {
             }
         }
         // Extract stroke weight (border width) as spacing token
-        if ('strokeWeight' in currentNode && currentNode.strokeWeight > 0) {
+        // Skip very small values (≤ 1px) that are likely default Figma values
+        if ('strokeWeight' in currentNode && currentNode.strokeWeight > 1) {
             const strokeWeight = currentNode.strokeWeight;
             const spacingKey = `strokeWeight-${strokeWeight}`;
             if (!spacingSet.has(spacingKey)) {
@@ -2232,10 +2235,12 @@ function getDefaultSuggestion(token, category) {
             return 'Create or use existing color token';
         case 'spacing':
             const value = parseInt(token.value);
-            if (value % 8 === 0)
-                return `Use spacing.${value / 8} token (8px grid)`;
-            if (value % 4 === 0)
-                return `Use spacing.${value / 4} token (4px grid)`;
+            if (value % 8 === 0) {
+                return 'Create or use existing spacing token (follows 8px grid)';
+            }
+            if (value % 4 === 0) {
+                return 'Create or use existing spacing token (follows 4px grid)';
+            }
             return 'Create or use existing spacing token';
         case 'typography':
             return 'Use semantic typography token (e.g., heading.large, body.regular)';
