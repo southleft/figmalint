@@ -1,0 +1,2724 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AI Design Co-Pilot</title>
+  <style>
+    /* Modern UI Design System for AI Design Co-Pilot */
+    :root {
+      /* Color Palette - Figma-inspired */
+      --primary: #18A0FB;
+      --primary-hover: #0090F0;
+      --primary-light: #E6F4FF;
+      --secondary: #5E6470;
+      --background: #FFFFFF;
+      --surface: #F5F5F5;
+      --surface-hover: #EBEBEB;
+      --border: #E1E1E1;
+      --text-primary: #1C1C1C;
+      --text-secondary: #5E6470;
+      --text-tertiary: #8B8B8B;
+      --success: #06C167;
+      --error: #F24822;
+      --warning: #FFAA00;
+      --info: #18A0FB;
+
+      /* Spacing System */
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+
+      /* Border Radius */
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+      --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.1);
+
+      /* Transitions */
+      --transition-fast: 150ms ease;
+      --transition-base: 250ms ease;
+      --transition-slow: 350ms ease;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--background);
+      color: var(--text-primary);
+      font-size: 13px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: var(--background);
+    }
+
+    /* Header Section */
+    .header {
+      padding: var(--space-md);
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+      min-height: 60px;
+    }
+
+    .plugin-title {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xs);
+    }
+
+    .plugin-icon {
+      width: 20px;
+      height: 20px;
+      background: var(--primary);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    .plugin-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .plugin-description {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    /* Tabs Navigation */
+    .tabs-navigation {
+      display: flex;
+      padding: 0 var(--space-md) var(--space-xs);
+      border-bottom: 1px solid var(--border);
+      background: var(--background);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .tab-button {
+      padding: var(--space-sm) var(--space-md);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      position: relative;
+    }
+
+    .tab-button:hover:not(.active) {
+      color: var(--text-primary);
+      background: var(--surface);
+    }
+
+    .tab-button.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    .tab-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .tab-badge {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: var(--error);
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 8px;
+      min-width: 16px;
+      text-align: center;
+    }
+
+    /* Tab Content */
+    .tab-content {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Main Content */
+    .content {
+      flex: 1;
+      padding: var(--space-md);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    /* Card Component */
+    .card {
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-md);
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition-base);
+    }
+
+    .card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--primary-light);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-sm);
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 0;
+    }
+
+    .card-subtitle {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin: var(--space-xs) 0 0 0;
+    }
+
+    /* Collapsible Sections */
+    .collapsible {
+      margin-bottom: var(--space-md);
+    }
+
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-sm) var(--space-md);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      user-select: none;
+    }
+
+    .collapsible-header:hover {
+      background: var(--surface-hover);
+    }
+
+    .collapsible-header.active {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .collapsible-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .collapsible-icon {
+      transition: transform var(--transition-fast);
+    }
+
+    .collapsible-header.active .collapsible-icon {
+      transform: rotate(90deg);
+    }
+
+    .collapsible-content {
+      display: none;
+      padding: var(--space-md);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-bottom-left-radius: var(--radius-md);
+      border-bottom-right-radius: var(--radius-md);
+    }
+
+    .collapsible-content.active {
+      display: block;
+    }
+
+    /* Form Elements */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+
+    label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-family: inherit;
+      background: var(--background);
+      color: var(--text-primary);
+      transition: all var(--transition-fast);
+      min-height: 30px;
+    }
+
+    textarea {
+      min-height: 80px !important;
+      resize: vertical;
+    }
+
+    input:hover, textarea:hover, select:hover {
+      border-color: var(--text-tertiary);
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: var(--text-tertiary);
+    }
+
+    .input-icon {
+      position: absolute;
+      right: var(--space-sm);
+      color: var(--text-tertiary);
+      pointer-events: none;
+    }
+
+    /* Button Styles */
+    .button {
+      padding: 6px 14px;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+      min-height: 30px;
+    }
+
+    .button-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .button-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .button-primary:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .button-secondary {
+      background: var(--surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .button-secondary:hover:not(:disabled) {
+      background: var(--surface-hover);
+      border-color: var(--text-tertiary);
+    }
+
+    .button-ghost {
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid transparent;
+    }
+
+    .button-ghost:hover:not(:disabled) {
+      background: var(--primary-light);
+      border-color: var(--primary-light);
+    }
+
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .button-group {
+      display: flex;
+      gap: var(--space-sm);
+      align-items: center;
+    }
+
+    .button-icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Status Messages */
+    .status-banner {
+      padding: var(--space-sm) var(--space-md);
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      transition: all var(--transition-base);
+      margin-top: var(--space-sm);
+    }
+
+    .status-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .status-info {
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+
+    .status-success {
+      background: #E7F9F0;
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+
+    .status-error {
+      background: #FFEBE7;
+      color: var(--error);
+      border: 1px solid var(--error);
+    }
+
+    .status-warning {
+      background: #FFF4E0;
+      color: var(--warning);
+      border: 1px solid var(--warning);
+    }
+
+    /* Audit View Styles */
+    .audit-section {
+      margin-bottom: var(--space-lg);
+    }
+
+    .audit-item {
+      display: flex;
+      align-items: center;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-sm);
+      gap: var(--space-sm);
+    }
+
+    .audit-status {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .audit-status.pass {
+      color: var(--success);
+    }
+
+    .audit-status.fail {
+      color: var(--error);
+    }
+
+    .audit-status.warning {
+      color: var(--warning);
+    }
+
+    .audit-label {
+      flex: 1;
+      font-size: 12px;
+      color: var(--text-primary);
+    }
+
+    .audit-action {
+      font-size: 11px;
+      color: var(--primary);
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .audit-action:hover {
+      text-decoration: underline;
+    }
+
+    .audit-action-button {
+      font-size: 11px;
+      color: var(--primary);
+      background: transparent;
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-sm);
+      padding: 2px 8px;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .audit-action-button:hover {
+      background: var(--primary-light);
+      transform: translateY(-1px);
+    }
+
+    /* Property Cheat Sheet */
+    .property-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .property-table th {
+      text-align: left;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+
+    .property-table td {
+      padding: var(--space-sm);
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    .property-table tr:hover {
+      background: var(--surface);
+    }
+
+    .property-value {
+      display: inline-block;
+      padding: 2px 6px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      margin-right: var(--space-xs);
+    }
+
+    /* Token Suggestions */
+    .token-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: var(--space-sm);
+    }
+
+    .token-item {
+      padding: var(--space-sm);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .token-item:hover {
+      background: var(--surface-hover);
+      border-color: var(--primary);
+    }
+
+    .token-preview {
+      width: 100%;
+      height: 24px;
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+    }
+
+    /* Enhanced Token Display - Single Column */
+    .token-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+      margin-bottom: var(--space-md);
+    }
+
+    .token-item-single {
+      display: flex;
+      align-items: flex-start;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      gap: var(--space-sm);
+      border: 1px solid var(--border);
+      transition: all var(--transition-base);
+    }
+
+    .token-item-single:hover {
+      border-color: var(--primary);
+      background: var(--surface-hover);
+    }
+
+    .token-item-single.warning {
+      background: var(--warning-light);
+      border-color: var(--warning);
+    }
+
+    .token-item-single.suggestion {
+      background: var(--primary-light);
+      border-color: var(--primary);
+    }
+
+    .token-preview-icon {
+      flex-shrink: 0;
+    }
+
+    .token-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .token-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+      word-break: break-word;
+    }
+
+    .token-description {
+      font-size: 10px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .token-info {
+      flex: 1;
+    }
+
+    .token-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .token-usage {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-bottom: 2px;
+    }
+
+    .token-value {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    }
+
+    .token-preview-spacing {
+      max-width: 40px;
+      min-height: 8px;
+      border-radius: 2px;
+    }
+
+    .token-preview-text {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+    }
+
+    /* Compact Token Layout */
+    .token-item-compact {
+      display: flex;
+      align-items: center;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+      gap: var(--space-sm);
+      border: 1px solid var(--border);
+      transition: all var(--transition-base);
+    }
+
+    .token-item-compact:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .token-item-compact.warning {
+      background: rgba(255, 244, 224, 0.3);
+      border-color: var(--warning);
+    }
+
+    .token-item-compact.suggestion {
+      background: var(--primary-light);
+      border-color: var(--primary);
+    }
+
+    .token-swatch {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: transform var(--transition-fast);
+    }
+
+    .token-swatch:hover {
+      transform: scale(1.1);
+    }
+
+    .token-swatch-spacing {
+      height: 12px;
+      min-width: 8px;
+      max-width: 40px;
+      border-radius: 2px;
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+    }
+
+    .token-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .token-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .token-usage {
+      font-size: 10px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: help;
+    }
+
+    /* Playground Grid */
+    .playground-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: var(--space-md);
+      padding: var(--space-md);
+      background: var(--surface);
+      border-radius: var(--radius-md);
+    }
+
+    .playground-item {
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-md);
+      text-align: center;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-sm);
+    }
+
+    .playground-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Documentation Frame */
+    .doc-preview {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      min-height: 200px;
+    }
+
+    .doc-section {
+      margin-bottom: var(--space-lg);
+    }
+
+    .doc-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .doc-heading {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-sm);
+    }
+
+    .doc-content {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+
+    /* Export Options */
+    .export-options {
+      display: flex;
+      gap: var(--space-md);
+      align-items: stretch;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      min-width: 0;
+    }
+
+    .export-options .button {
+      font-size: 12px;
+      padding: 6px 16px;
+      min-height: 30px;
+      flex: 0 0 auto;
+    }
+
+    .export-options select {
+      font-size: 12px;
+      padding: 6px 12px;
+      min-height: 30px;
+    }
+
+    .export-select {
+      min-width: 120px;
+      font-size: 12px;
+    }
+
+    /* Batch Mode */
+    .batch-toggle {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm);
+      background: var(--warning);
+      color: white;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      margin-bottom: var(--space-md);
+    }
+
+    .batch-list {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm);
+    }
+
+    .batch-item {
+      display: flex;
+      align-items: center;
+      padding: var(--space-xs) var(--space-sm);
+      font-size: 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+
+    .batch-item:hover {
+      background: var(--surface);
+    }
+
+    .batch-item.selected {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    /* Loading States */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hover) 50%, var(--surface) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.5s infinite;
+      border-radius: var(--radius-sm);
+      height: 16px;
+      margin: var(--space-xs) 0;
+    }
+
+    @keyframes skeleton-loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--surface);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Footer Links */
+    .footer-links {
+      padding: var(--space-sm) var(--space-md);
+      text-align: center;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .footer-link {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      text-decoration: none;
+      transition: color var(--transition-fast);
+    }
+
+    .footer-link:hover {
+      color: var(--primary);
+      text-decoration: underline;
+    }
+
+    /* Utility Classes */
+    .hidden {
+      display: none !important;
+    }
+
+    .mt-sm { margin-top: var(--space-sm); }
+    .mt-md { margin-top: var(--space-md); }
+    .mb-sm { margin-bottom: var(--space-sm); }
+    .mb-md { margin-bottom: var(--space-md); }
+
+    /* Responsive Design */
+    @media (max-height: 600px) {
+      .header {
+        padding: var(--space-sm) var(--space-md);
+      }
+
+      .content {
+        padding: var(--space-sm) var(--space-md);
+      }
+    }
+
+    /* Toggle Switch */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--border);
+      transition: var(--transition-fast);
+      border-radius: 22px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: var(--transition-fast);
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+      background-color: var(--primary);
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(18px);
+    }
+
+    /* Quick Actions Bar */
+    .quick-actions-bar {
+      display: flex;
+      gap: var(--space-sm);
+      padding: var(--space-md);
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-md);
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .quick-actions-bar .button {
+      flex: 1;
+    }
+
+    .quick-actions-bar .button-ghost {
+      flex: 0 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="plugin-title">
+        <div class="plugin-icon">AI</div>
+        <h1 class="plugin-name">Design Co-Pilot</h1>
+      </div>
+      <p class="plugin-description">AI-powered component analysis &amp; documentation</p>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tabs-navigation">
+      <button class="tab-button active" id="tab-analyze" onclick="switchTab('analyze')">
+        Analyze
+      </button>
+      <button class="tab-button" id="tab-playground" onclick="switchTab('playground')">
+        Playground
+      </button>
+      <button class="tab-button" id="tab-documentation" onclick="switchTab('documentation')">
+        Documentation
+      </button>
+    </div>
+
+    <!-- Tab Content: Analyze -->
+    <div class="tab-content active" id="content-analyze">
+      <div class="content">
+        <!-- Quick Actions Bar (shown when API key is saved) -->
+        <div class="quick-actions-bar" id="quick-actions" style="display: none;">
+          <button id="quick-analyze-component" class="button button-primary">
+            <span>Analyze Component</span>
+          </button>
+          <button id="show-config" class="button button-ghost" title="Show configuration">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M8 5.5C6.61929 5.5 5.5 6.61929 5.5 8C5.5 9.38071 6.61929 10.5 8 10.5C9.38071 10.5 10.5 9.38071 10.5 8C10.5 6.61929 9.38071 5.5 8 5.5ZM4.5 8C4.5 6.067 6.067 4.5 8 4.5C9.933 4.5 11.5 6.067 11.5 8C11.5 9.933 9.933 11.5 8 11.5C6.067 11.5 4.5 9.933 4.5 8Z" fill="currentColor"/>
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M7.06592 1.5H8.93408L9.34687 3.02356C9.83877 3.19824 10.2966 3.44904 10.7047 3.76233L12.1868 3.1572L13.1209 4.62859L12.1399 5.67203C12.2118 6.10314 12.25 6.54716 12.25 7C12.25 7.45284 12.2118 7.89686 12.1399 8.32797L13.1209 9.37141L12.1868 10.8428L10.7047 10.2377C10.2966 10.551 9.83877 10.8018 9.34687 10.9764L8.93408 12.5H7.06592L6.65313 10.9764C6.16123 10.8018 5.70339 10.551 5.29529 10.2377L3.81323 10.8428L2.87915 9.37141L3.86007 8.32797C3.78819 7.89686 3.75 7.45284 3.75 7C3.75 6.54716 3.78819 6.10314 3.86007 5.67203L2.87915 4.62859L3.81323 3.1572L5.29529 3.76233C5.70339 3.44904 6.16123 3.19824 6.65313 3.02356L7.06592 1.5ZM6.93408 2.5L6.56787 3.86039L6.35937 3.92882C5.85493 4.08829 5.39163 4.34308 4.99451 4.67338L4.82212 4.81023L3.5132 4.2928L3.12085 4.87141L3.99319 5.79559L3.92151 5.9935C3.80942 6.3114 3.75 6.65086 3.75 7C3.75 7.34914 3.80942 7.6886 3.92151 8.0065L3.99319 8.20441L3.12085 9.12859L3.5132 9.7072L4.82212 9.18977L4.99451 9.32662C5.39163 9.65692 5.85493 9.91171 6.35937 10.0712L6.56787 10.1396L6.93408 11.5H8.06592L8.43213 10.1396L8.64063 10.0712C9.14507 9.91171 9.60837 9.65692 10.0055 9.32662L10.1779 9.18977L11.4868 9.7072L11.8791 9.12859L11.0068 8.20441L11.0785 8.0065C11.1906 7.6886 11.25 7.34914 11.25 7C11.25 6.65086 11.1906 6.3114 11.0785 5.9935L11.0068 5.79559L11.8791 4.87141L11.4868 4.2928L10.1779 4.81023L10.0055 4.67338C9.60837 4.34308 9.14507 4.08829 8.64063 3.92882L8.43213 3.86039L8.06592 2.5H6.93408Z" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- API Key Configuration -->
+        <div class="card" id="api-key-card">
+          <div class="card-header">
+            <h2 class="card-title">Configuration</h2>
+            <button id="hide-config" class="button button-ghost" style="display: none; padding: 4px 8px; font-size: 11px;">
+              <span>Hide</span>
+            </button>
+          </div>
+
+          <div id="config-content">
+            <div class="form-group">
+              <label for="api-key">Claude API Key</label>
+              <div class="input-wrapper">
+                <input
+                  type="password"
+                  id="api-key"
+                  placeholder="sk-ant-..."
+                  autocomplete="off"
+                >
+                <span class="input-icon">🔐</span>
+              </div>
+              <p class="card-subtitle">Your API key is stored securely in this session</p>
+            </div>
+
+            <div class="form-group">
+              <label for="model-select">Claude Model</label>
+              <select id="model-select">
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Recommended - High Performance)</option>
+                <option value="claude-opus-4-20250514">Claude Opus 4 (Most Capable)</option>
+                <option value="claude-3-7-sonnet-20250219">Claude Sonnet 3.7 (With Extended Thinking)</option>
+                <option value="claude-3-5-sonnet-20241022">Claude Sonnet 3.5 (Previous Version)</option>
+                <option value="claude-3-5-haiku-20241022">Claude Haiku 3.5 (Fastest)</option>
+                <option value="claude-3-opus-20240229">Claude Opus 3 (Complex Tasks)</option>
+                <option value="claude-3-haiku-20240307">Claude Haiku 3 (Fast & Compact)</option>
+              </select>
+              <p class="card-subtitle">Choose the Claude model that works best for your component analysis</p>
+            </div>
+
+            <div class="button-group mt-md">
+              <button id="save-key" class="button button-secondary">
+                <span>Save Key</span>
+              </button>
+              <button id="analyze-component" class="button button-primary" disabled>
+                <span>Analyze Component</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Status Message -->
+          <div id="status-container" class="hidden">
+            <div class="status-banner" id="status">
+              <span class="status-icon" id="status-icon"></span>
+              <span id="status-text">Ready to analyze</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Batch Mode Toggle (shown when multiple components selected) -->
+        <div class="batch-toggle hidden" id="batch-mode-toggle">
+          <span>🎯</span>
+          <span>Multiple components selected</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="batch-mode-switch">
+            <span class="toggle-slider"></span>
+          </label>
+          <span>Batch Mode</span>
+        </div>
+
+        <!-- Analysis Results -->
+        <div id="analysis-results" class="hidden">
+          <!-- Audit View -->
+          <div class="collapsible">
+            <div class="collapsible-header active" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Component Audit</span>
+              </div>
+              <span id="audit-score" class="status-banner status-info" style="padding: 2px 8px; font-size: 11px;">
+                <span>Score: --</span>
+              </span>
+            </div>
+            <div class="collapsible-content active" id="audit-content">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 80%;"></div>
+              <div class="skeleton" style="width: 60%;"></div>
+            </div>
+          </div>
+
+          <!-- Property Cheat Sheet -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Property Cheat Sheet</span>
+              </div>
+            </div>
+            <div class="collapsible-content" id="property-cheatsheet">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 70%;"></div>
+            </div>
+          </div>
+
+          <!-- Token Suggestions -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Token Suggestions</span>
+              </div>
+            </div>
+            <div class="collapsible-content" id="token-suggestions">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 90%;"></div>
+            </div>
+          </div>
+
+          <!-- Original Metadata Display -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Component Metadata</span>
+              </div>
+            </div>
+            <div class="collapsible-content" id="metadata-content">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 85%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Content: Playground -->
+    <div class="tab-content" id="content-playground">
+      <div class="content">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Component Playground</h2>
+            <button class="button button-primary" id="generate-playground" disabled>
+              Generate Instances
+            </button>
+          </div>
+
+          <div id="playground-empty" class="doc-preview" style="text-align: center; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: var(--space-md);">
+            <span style="font-size: 48px; opacity: 0.2;">🎮</span>
+            <p style="color: var(--text-tertiary);">Select and analyze a component first to generate playground instances</p>
+          </div>
+
+          <div id="playground-content" class="hidden">
+            <div class="playground-grid" id="playground-grid">
+              <!-- Playground instances will be generated here -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Content: Documentation -->
+    <div class="tab-content" id="content-documentation">
+      <div class="content">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Design Documentation</h2>
+          </div>
+          <div class="export-options" style="margin-bottom: var(--space-md);">
+            <select id="export-format" class="export-select">
+              <option value="markdown">Markdown</option>
+              <option value="json">JSON</option>
+            </select>
+            <button class="button button-secondary" id="export-docs" disabled>
+              Export
+            </button>
+            <button class="button button-primary" id="generate-docs-frame" disabled>
+              Generate in Figma
+            </button>
+          </div>
+
+          <div id="docs-empty" class="doc-preview" style="text-align: center; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: var(--space-md);">
+            <span style="font-size: 48px; opacity: 0.2;">📄</span>
+            <p style="color: var(--text-tertiary);">Select and analyze a component first to generate documentation</p>
+          </div>
+
+          <div id="docs-preview" class="doc-preview hidden">
+            <!-- Documentation preview will be rendered here -->
+          </div>
+
+          <div class="card mt-md">
+            <div class="card-header">
+              <h2 class="card-title">Collaboration Notes</h2>
+            </div>
+            <div class="form-group">
+              <textarea
+                id="collab-notes"
+                placeholder="Add notes about this component for your team..."
+                rows="4"
+              ></textarea>
+            </div>
+            <button class="button button-secondary mt-sm" id="save-notes" disabled>
+              Save Notes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer-links">
+      <a href="#" id="clear-api-key" class="footer-link hidden">Clear saved API key</a>
+    </div>
+  </div>
+
+  <!-- Enhanced JavaScript -->
+  <script>
+    console.log('Enhanced UI JavaScript loading...');
+
+    // UI State Management
+    let currentTab = 'analyze';
+    let apiKeySaved = false;
+    let currentMetadata = null;
+    let currentAuditResults = null;
+    let currentTokenSummary = null;
+    let batchMode = false;
+    let selectedComponents = [];
+
+    // DOM Elements
+    const apiKeyInput = document.getElementById('api-key');
+    const modelSelect = document.getElementById('model-select');
+    const saveKeyButton = document.getElementById('save-key');
+    const analyzeButton = document.getElementById('analyze-component');
+    const statusContainer = document.getElementById('status-container');
+    const statusDiv = document.getElementById('status');
+    const statusIcon = document.getElementById('status-icon');
+    const statusText = document.getElementById('status-text');
+    const clearApiKeyLink = document.getElementById('clear-api-key');
+
+    // Configuration UI Elements
+    const apiKeyCard = document.getElementById('api-key-card');
+    const quickActions = document.getElementById('quick-actions');
+    const quickAnalyzeButton = document.getElementById('quick-analyze-component');
+    const showConfigButton = document.getElementById('show-config');
+    const hideConfigButton = document.getElementById('hide-config');
+
+    // Batch Mode Elements
+    const batchModeToggle = document.getElementById('batch-mode-toggle');
+    const batchModeSwitch = document.getElementById('batch-mode-switch');
+
+    // Analysis Results Elements
+    const analysisResults = document.getElementById('analysis-results');
+    const auditContent = document.getElementById('audit-content');
+    const propertyCheatsheet = document.getElementById('property-cheatsheet');
+    const tokenSuggestions = document.getElementById('token-suggestions');
+    const metadataContent = document.getElementById('metadata-content');
+    const auditScore = document.getElementById('audit-score');
+
+    // Playground Elements
+    const generatePlaygroundButton = document.getElementById('generate-playground');
+    const playgroundEmpty = document.getElementById('playground-empty');
+    const playgroundContent = document.getElementById('playground-content');
+    const playgroundGrid = document.getElementById('playground-grid');
+
+    // Documentation Elements
+    const exportFormat = document.getElementById('export-format');
+    const exportDocsButton = document.getElementById('export-docs');
+    const generateDocsFrameButton = document.getElementById('generate-docs-frame');
+    const docsEmpty = document.getElementById('docs-empty');
+    const docsPreview = document.getElementById('docs-preview');
+    const collabNotes = document.getElementById('collab-notes');
+    const saveNotesButton = document.getElementById('save-notes');
+
+    // Status Icons
+    const statusIcons = {
+      info: 'ℹ️',
+      success: '✅',
+      error: '❌',
+      warning: '⚠️'
+    };
+
+    // Initialize UI
+    function initializeUI() {
+      console.log('Initializing enhanced UI...');
+
+      // Event Listeners
+      saveKeyButton.addEventListener('click', handleSaveApiKey);
+      analyzeButton.addEventListener('click', handleAnalyzeComponent);
+      quickAnalyzeButton.addEventListener('click', handleAnalyzeComponent);
+      apiKeyInput.addEventListener('input', handleApiKeyChange);
+      apiKeyInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && apiKeyInput.value.trim()) {
+          handleSaveApiKey();
+        }
+      });
+
+      // Model selection handling
+      modelSelect.addEventListener('change', handleModelChange);
+
+      clearApiKeyLink.addEventListener('click', handleClearApiKey);
+      batchModeSwitch.addEventListener('change', handleBatchModeToggle);
+
+      // Configuration visibility toggles
+      showConfigButton.addEventListener('click', () => {
+        apiKeyCard.style.display = 'block';
+        quickActions.style.display = 'none';
+      });
+
+      hideConfigButton.addEventListener('click', () => {
+        if (apiKeySaved) {
+          apiKeyCard.style.display = 'none';
+          quickActions.style.display = 'flex';
+        }
+      });
+
+      generatePlaygroundButton.addEventListener('click', handleGeneratePlayground);
+      exportDocsButton.addEventListener('click', handleExportDocs);
+      generateDocsFrameButton.addEventListener('click', handleGenerateDocsFrame);
+      saveNotesButton.addEventListener('click', handleSaveNotes);
+
+      // Listen for messages from plugin
+      window.addEventListener('message', handlePluginMessage);
+
+      // Request current API key status
+      sendMessageToPlugin('check-api-key', {});
+    }
+
+    // Tab Switching
+    function switchTab(tabName) {
+      // Update active tab button
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+
+      // Update active tab content
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.getElementById(`content-${tabName}`).classList.add('active');
+
+      currentTab = tabName;
+
+      // Update tab-specific UI
+      if (tabName === 'playground' && currentMetadata) {
+        updatePlaygroundTab();
+      } else if (tabName === 'documentation' && currentMetadata) {
+        updateDocumentationTab();
+      }
+    }
+
+    // Collapsible Sections
+    function toggleCollapsible(header) {
+      header.classList.toggle('active');
+      const content = header.nextElementSibling;
+      content.classList.toggle('active');
+    }
+
+    // Handle API Key Changes
+    function handleApiKeyChange() {
+      const hasApiKey = apiKeyInput.value.trim().length > 0;
+      if (hasApiKey && apiKeySaved) {
+        updateAnalyzeButtonState(true);
+      }
+    }
+
+    // Handle Save API Key
+    function handleSaveApiKey() {
+      const apiKey = apiKeyInput.value.trim();
+      const selectedModel = modelSelect.value;
+
+      if (!apiKey) {
+        updateStatus('Please enter an API key', 'error');
+        return;
+      }
+
+      saveKeyButton.disabled = true;
+      updateStatus('Saving API key and model selection...', 'info');
+      sendMessageToPlugin('save-api-key', {
+        apiKey,
+        model: selectedModel
+      });
+    }
+
+    // Handle Model Change
+    function handleModelChange() {
+      const selectedModel = modelSelect.value;
+      console.log('Model changed to:', selectedModel);
+
+      // If API key is saved, update the model immediately
+      if (apiKeySaved) {
+        sendMessageToPlugin('update-model', { model: selectedModel });
+        updateStatus(`Model updated to ${selectedModel.includes('sonnet-4') ? 'Claude Sonnet 4' :
+                      selectedModel.includes('opus-4') ? 'Claude Opus 4' :
+                      selectedModel.includes('3-7-sonnet') ? 'Claude Sonnet 3.7' :
+                      selectedModel.includes('3-5-sonnet') ? 'Claude Sonnet 3.5' :
+                      selectedModel.includes('3-5-haiku') ? 'Claude Haiku 3.5' :
+                      selectedModel.includes('3-opus') ? 'Claude Opus 3' : 'Claude Haiku 3'}`, 'success');
+      }
+    }
+
+    // Handle Analyze Component
+    function handleAnalyzeComponent() {
+      if (!apiKeySaved) {
+        updateStatus('Please save API key first', 'error');
+        return;
+      }
+
+      analyzeButton.disabled = true;
+      updateStatus('Analyzing selected component...', 'info');
+
+      // Show analysis results with loading state
+      analysisResults.classList.remove('hidden');
+      showLoadingState();
+
+      sendMessageToPlugin('analyze-enhanced', {
+        batchMode: batchMode,
+        includeAudit: true,
+        includeTokens: true,
+        includeValidation: true
+      });
+    }
+
+    // Handle Clear API Key
+    function handleClearApiKey(e) {
+      e.preventDefault();
+      if (confirm('Are you sure you want to clear the saved API key?')) {
+        sendMessageToPlugin('clear-api-key', {});
+        apiKeyInput.value = '';
+        apiKeyInput.placeholder = 'sk-ant-...';
+        clearApiKeyLink.classList.add('hidden');
+        apiKeySaved = false;
+        updateAnalyzeButtonState(false);
+        updateStatus('API key cleared', 'info');
+
+        // Show config and hide quick actions
+        apiKeyCard.style.display = 'block';
+        quickActions.style.display = 'none';
+      }
+    }
+
+    // Handle Batch Mode Toggle
+    function handleBatchModeToggle() {
+      batchMode = batchModeSwitch.checked;
+      updateStatus(batchMode ? 'Batch mode enabled' : 'Batch mode disabled', 'info');
+    }
+
+    // Handle Generate Playground
+    function handleGeneratePlayground() {
+      if (!currentMetadata) {
+        updateStatus('No analysis results available', 'error');
+        return;
+      }
+
+      generatePlaygroundButton.disabled = true;
+      updateStatus('Generating playground instances...', 'info');
+      sendMessageToPlugin('generate-playground', { metadata: currentMetadata });
+    }
+
+    // Handle Export Documentation
+    function handleExportDocs() {
+      if (!currentMetadata) {
+        updateStatus('No analysis results available', 'error');
+        return;
+      }
+
+      const format = exportFormat.value;
+      if (format === 'markdown') {
+        exportAsMarkdown();
+      } else if (format === 'json') {
+        exportAsJSON();
+      }
+    }
+
+    // Handle Generate Docs Frame
+    function handleGenerateDocsFrame() {
+      if (!currentMetadata) {
+        updateStatus('No analysis results available', 'error');
+        return;
+      }
+
+      generateDocsFrameButton.disabled = true;
+      updateStatus('Generating documentation frame...', 'info');
+      sendMessageToPlugin('generate-docs-frame', {
+        metadata: currentMetadata,
+        notes: collabNotes.value
+      });
+    }
+
+    // Handle Save Notes
+    function handleSaveNotes() {
+      const notes = collabNotes.value.trim();
+      if (!notes) {
+        updateStatus('Please enter some notes', 'warning');
+        return;
+      }
+
+      sendMessageToPlugin('save-collab-notes', { notes });
+      updateStatus('Notes saved', 'success');
+    }
+
+    // Handle Plugin Messages
+    function handlePluginMessage(event) {
+      const { type, data } = event.data.pluginMessage || {};
+
+      switch (type) {
+        case 'api-key-saved':
+          handleApiKeySaved(data.success);
+          break;
+        case 'api-key-status':
+          handleApiKeyStatus(data.hasKey);
+          break;
+        case 'enhanced-analysis-result':
+          handleEnhancedAnalysisResult(data);
+          break;
+        case 'metadata-result':
+          // Handle old message format for backward compatibility
+          handleEnhancedAnalysisResult({
+            metadata: data.metadata,
+            audit: null,
+            properties: [],
+            tokens: {}
+          });
+          break;
+        case 'analysis-complete':
+          // Handle old message format - do nothing as the data is already displayed
+          if (data.success) {
+            console.log('Analysis completed:', data.message);
+          }
+          break;
+        case 'playground-generated':
+          handlePlaygroundGenerated(data);
+          break;
+        case 'docs-frame-generated':
+          handleDocsFrameGenerated(data);
+          break;
+        case 'batch-selection-update':
+          handleBatchSelectionUpdate(data);
+          break;
+        case 'analysis-error':
+          handleAnalysisError(data.error);
+          break;
+        case 'variants-generated':
+          handlePlaygroundGenerated(data);
+          break;
+        case 'docs-generated':
+          handleDocsFrameGenerated(data);
+          break;
+        case 'notes-saved':
+          if (data.success) {
+            updateStatus('Notes saved with visual indicator!', 'success');
+          } else {
+            updateStatus(`Failed to save notes: ${data.error}`, 'error');
+          }
+          break;
+        case 'fix-naming':
+          if (data.success) {
+            updateStatus(data.message || 'Layer renamed successfully!', 'success');
+            // Trigger a re-analysis to update the UI
+            if (currentMetadata) {
+              handleAnalyzeClick();
+            }
+          } else {
+            updateStatus(`Failed to rename: ${data.error}`, 'error');
+          }
+          break;
+        case 'state-added':
+          if (data.success) {
+            updateStatus(`${data.state} state added successfully!`, 'success');
+            // Trigger a re-analysis to update the UI
+            if (currentMetadata) {
+              handleAnalyzeClick();
+            }
+          } else {
+            updateStatus(`Failed to add state: ${data.error}`, 'error');
+          }
+          break;
+        case 'accessibility-fixed':
+          if (data.success) {
+            updateStatus(`Accessibility issue fixed!`, 'success');
+          } else {
+            updateStatus(`Failed to fix accessibility: ${data.error}`, 'error');
+          }
+          break;
+        case 'naming-fixed':
+          if (data.success) {
+            updateStatus(`Layer renamed successfully!`, 'success');
+          } else {
+            updateStatus(`Failed to rename layer: ${data.error}`, 'error');
+          }
+          break;
+        default:
+          console.log('Unknown message type:', type);
+      }
+    }
+
+    // Handle API Key Saved
+    function handleApiKeySaved(success) {
+      saveKeyButton.disabled = false;
+      if (success) {
+        apiKeySaved = true;
+        updateStatus('API key saved successfully!', 'success');
+        updateAnalyzeButtonState(true);
+        clearApiKeyLink.classList.remove('hidden');
+        apiKeyInput.value = '';
+        apiKeyInput.placeholder = 'API key saved ✓';
+
+        // Show quick actions and hide config
+        apiKeyCard.style.display = 'none';
+        quickActions.style.display = 'flex';
+        hideConfigButton.style.display = 'inline-flex';
+      } else {
+        updateStatus('Failed to save API key', 'error');
+      }
+    }
+
+    // Handle API Key Status
+    function handleApiKeyStatus(hasKey) {
+      apiKeySaved = hasKey;
+      if (hasKey) {
+        updateStatus('API key is configured', 'success');
+        updateAnalyzeButtonState(true);
+        clearApiKeyLink.classList.remove('hidden');
+        apiKeyInput.placeholder = 'API key saved ✓';
+
+        // Show quick actions and hide config
+        apiKeyCard.style.display = 'none';
+        quickActions.style.display = 'flex';
+        hideConfigButton.style.display = 'inline-flex';
+      } else {
+        updateStatus('Enter API key to get started', 'info');
+        updateAnalyzeButtonState(false);
+        clearApiKeyLink.classList.add('hidden');
+
+        // Show config and hide quick actions
+        apiKeyCard.style.display = 'block';
+        quickActions.style.display = 'none';
+      }
+    }
+
+    // Handle Enhanced Analysis Result
+    function handleEnhancedAnalysisResult(data) {
+      // Debug logging
+      console.log('UI received enhanced analysis result:', data);
+      console.log('Audit data received in UI:', data.audit);
+      console.log('Token summary received in UI:', data.tokenSummary);
+
+      analyzeButton.disabled = false;
+      quickAnalyzeButton.disabled = false;
+      currentMetadata = data.metadata;
+      currentAuditResults = data.audit;
+      currentTokenSummary = data.tokenSummary;
+
+      // Update Audit View
+      if (data.audit) {
+        updateAuditView(data.audit);
+      } else {
+        // Show realistic audit with actual issues instead of fake passing scores
+        const basicAudit = {
+          states: [
+            { name: 'default', found: true },
+            { name: 'hover', found: false },
+            { name: 'focus', found: false },
+            { name: 'disabled', found: false },
+            { name: 'pressed', found: false },
+            { name: 'active', found: false }
+          ],
+          accessibility: [
+            { check: 'Focus indicator', status: 'fail', suggestion: 'Add focus indicator for keyboard navigation' },
+            { check: 'ARIA labels', status: 'warning', suggestion: 'Consider adding ARIA labels for screen readers' }
+          ],
+          naming: []
+        };
+        console.log('Using fallback basic audit with real issues:', basicAudit);
+        updateAuditView(basicAudit);
+      }
+
+      // Update Property Cheat Sheet
+      if (data.properties && data.properties.length > 0) {
+        console.log('UI: Using data.properties:', data.properties);
+        updatePropertyCheatSheet(data.properties);
+      } else if (data.metadata && data.metadata.props) {
+        console.log('UI: Falling back to data.metadata.props:', data.metadata.props);
+        // Create basic properties from metadata
+        const basicProperties = data.metadata.props.map(prop => ({
+          name: prop.name || prop,
+          values: prop.values || ['true', 'false'],
+          default: prop.default || 'false'
+        }));
+        updatePropertyCheatSheet(basicProperties);
+      } else {
+        console.log('UI: No properties found, showing empty state');
+        propertyCheatsheet.innerHTML = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">No properties detected for this component</p>';
+      }
+
+      // Update Token Suggestions
+      if (data.tokens && Object.keys(data.tokens).length > 0) {
+        updateTokenSuggestions(data.tokens);
+      } else {
+        // Show empty state for tokens
+        tokenSuggestions.innerHTML = '<p style="color: var(--text-tertiary); text-align: center;">No design tokens detected</p>';
+      }
+
+      // Update Original Metadata
+      if (data.metadata) {
+        updateMetadataDisplay(data.metadata);
+      }
+
+      // Enable relevant buttons
+      updateUIButtonStates();
+
+      updateStatus('Analysis complete!', 'success');
+    }
+
+    // Update Audit View
+    function updateAuditView(audit) {
+      let html = '';
+      let passCount = 0;
+      let totalCount = 0;
+
+      // States Audit - Always show this section
+      html += '<div class="audit-section">';
+      html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Interactive States</h4>';
+      
+      if (audit.states && audit.states.length > 0) {
+        audit.states.forEach(state => {
+          totalCount++;
+          const status = state.found ? 'pass' : 'fail';
+          if (state.found) passCount++;
+
+          html += `
+            <div class="audit-item">
+              ${state.found
+                ? '<span class="audit-status pass">✓</span>'
+                : '<span class="audit-status fail">✗</span>'}
+              <span class="audit-label">${state.name}</span>
+              ${!state.found ? `<button class="audit-action-button" onclick="handleAddState('${state.name.replace(/'/g, "\\'")}')" title="Click to add ${state.name} state">Add state</button>` : ''}
+            </div>
+          `;
+        });
+      } else {
+        // No states needed for this component
+        html += `
+          <div class="audit-item">
+            <span class="audit-status pass">✅</span>
+            <span class="audit-label">No interactive states needed for this component type</span>
+          </div>
+        `;
+        totalCount++;
+        passCount++;
+      }
+      html += '</div>';
+
+      // Accessibility Audit
+      if (audit.accessibility && audit.accessibility.length > 0) {
+        html += '<div class="audit-section">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Accessibility</h4>';
+
+        audit.accessibility.forEach(item => {
+          totalCount++;
+          const status = item.status;
+          if (status === 'pass') passCount++;
+
+          html += `
+            <div class="audit-item">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? '✅' : status === 'warning' ? '⚠️' : '❌'
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion && status === 'fail' ? `<button class="audit-action-button" onclick="handleFixAccessibility('${item.check.replace(/'/g, "\\'")}')" title="Click to fix ${item.check}">Fix</button>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Naming Conventions
+      if (audit.naming && audit.naming.length > 0) {
+        html += '<div class="audit-section">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Naming Conventions</h4>';
+
+        audit.naming.forEach(item => {
+          totalCount++;
+          // All naming issues are warnings, not failures
+          const status = 'warning';
+
+          html += `
+            <div class="audit-item">
+              <span class="audit-status ${status}">⚠️</span>
+              <span class="audit-label">${item.layer}: ${item.issue}</span>
+              ${item.suggestion && item.suggestion !== 'Follow naming conventions' ? `<button class="audit-action-button" onclick="handleFixNaming('${item.layer.replace(/'/g, "\\'")}', '${item.suggestion.replace(/'/g, "\\'")}')" title="Click to rename to ${item.suggestion}">→ ${item.suggestion}</button>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      } else {
+        // Show fallback for naming when no issues found
+        html += '<div class="audit-section">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Naming Conventions</h4>';
+        html += `
+          <div class="audit-item">
+            <span class="audit-status pass">✅</span>
+            <span class="audit-label">Layer names follow good conventions</span>
+          </div>
+        `;
+        html += '</div>';
+        totalCount++;
+        passCount++;
+      }
+
+      // Consistency Audit (if available)
+      if (audit.consistency && audit.consistency.length > 0) {
+        html += '<div class="audit-section">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Design Consistency</h4>';
+
+        audit.consistency.forEach(item => {
+          totalCount++;
+          const status = item.status === 'pass' ? 'pass' : 'warning';
+          if (status === 'pass') passCount++;
+
+          html += `
+            <div class="audit-item">
+              <span class="audit-status ${status}">${status === 'pass' ? '✅' : '⚠️'}</span>
+              <span class="audit-label">${item.check}</span>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      auditContent.innerHTML = html;
+
+      // Update audit score - fix divide by zero issue
+      const score = totalCount > 0 ? Math.round((passCount / totalCount) * 100) : 0;
+      console.log(`Audit scoring: ${passCount} passed out of ${totalCount} total = ${score}%`);
+
+      auditScore.innerHTML = `<span>Score: ${score}%</span>`;
+      auditScore.className = `status-banner ${
+        score >= 80 ? 'status-success' : score >= 60 ? 'status-warning' : 'status-error'
+      }`;
+      auditScore.style.cssText = 'padding: 2px 8px; font-size: 11px;';
+    }
+
+    // Update Property Cheat Sheet
+    function updatePropertyCheatSheet(properties) {
+      console.log('Property Cheat Sheet received data:', properties);
+      console.log('Type of properties:', typeof properties);
+      if (properties && Array.isArray(properties)) {
+        console.log('Properties array length:', properties.length);
+        console.log('First property sample:', properties[0]);
+      }
+
+      if (properties && properties.length > 0) {
+        let html = '<table class="property-table">';
+        html += '<thead><tr><th>Property</th><th>Values</th><th>Default</th></tr></thead>';
+        html += '<tbody>';
+
+        properties.forEach(prop => {
+          html += '<tr>';
+
+          // Handle different property name formats
+          let propName = '';
+          if (typeof prop === 'string') {
+            propName = prop;
+          } else if (typeof prop === 'object' && prop !== null) {
+            propName = prop.name || prop.property || prop.key || 'Unknown Property';
+          } else {
+            propName = String(prop);
+          }
+
+          html += `<td>${propName}</td>`;
+          html += '<td>';
+
+          // Handle different values formats
+          if (typeof prop === 'object' && prop !== null && prop.values) {
+            if (Array.isArray(prop.values)) {
+              prop.values.forEach(value => {
+                const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                html += `<span class="property-value">${displayValue}</span>`;
+              });
+            } else {
+              const displayValue = typeof prop.values === 'object' ? JSON.stringify(prop.values) : String(prop.values);
+              html += `<span class="property-value">${displayValue}</span>`;
+            }
+          } else if (typeof prop === 'object' && prop !== null && prop.options) {
+            // Handle options format
+            if (Array.isArray(prop.options)) {
+              prop.options.forEach(option => {
+                const displayValue = typeof option === 'object' ? JSON.stringify(option) : String(option);
+                html += `<span class="property-value">${displayValue}</span>`;
+              });
+            } else {
+              html += `<span class="property-value">${String(prop.options)}</span>`;
+            }
+          } else if (typeof prop === 'object' && prop !== null && prop.type) {
+            // Handle type-based properties
+            html += `<span class="property-value">${prop.type}</span>`;
+          } else {
+            // Fallback for simple string properties
+            html += `<span class="property-value">true</span><span class="property-value">false</span>`;
+          }
+
+          html += '</td>';
+
+          // Handle default values
+          let defaultValue = '-';
+          if (typeof prop === 'object' && prop !== null) {
+            defaultValue = prop.default || prop.defaultValue || prop.initial || 'false';
+          }
+          html += `<td>${defaultValue}</td>`;
+          html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        propertyCheatsheet.innerHTML = html;
+      } else {
+        // Show fallback content when no properties are available
+        propertyCheatsheet.innerHTML = `
+          <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
+            <div style="font-size: 24px; margin-bottom: var(--space-sm);">📋</div>
+            <p>This component has no configurable properties</p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">Simple components may not have customizable props</p>
+          </div>
+        `;
+      }
+    }
+
+    // Enhanced Token Suggestions Display
+    function updateTokenSuggestions(tokens) {
+      console.log('UI updateTokenSuggestions called with:', tokens);
+
+      let html = '';
+
+      // Display token summary if available
+      if (currentTokenSummary) {
+        html += '<div class="token-summary" style="background: var(--surface-secondary); padding: 12px; border-radius: 8px; margin-bottom: 16px;">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📊 Token Analysis Summary</h4>';
+        html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px;">';
+        html += `<div><strong>Total Items:</strong> ${currentTokenSummary.totalTokens}</div>`;
+        html += `<div><strong>Design Tokens:</strong> <span style="color: var(--success)">${currentTokenSummary.actualTokens}</span></div>`;
+        html += `<div><strong>Hard-coded:</strong> <span style="color: var(--warning)">${currentTokenSummary.hardCodedValues}</span></div>`;
+        html += `<div><strong>AI Suggestions:</strong> <span style="color: var(--primary)">${currentTokenSummary.aiSuggestions}</span></div>`;
+        html += '</div>';
+
+        // Show breakdown by category
+        if (currentTokenSummary.byCategory) {
+          html += '<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">';
+          html += '<div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 4px;">By Category:</div>';
+          html += '<div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 10px;">';
+          Object.entries(currentTokenSummary.byCategory).forEach(([category, stats]) => {
+            if (stats.total > 0) {
+              html += `<div><strong>${category}:</strong> ${stats.tokens}/${stats.total}</div>`;
+            }
+          });
+          html += '</div>';
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Colors - Enhanced with comprehensive analysis
+      if (tokens.colors && tokens.colors.length > 0) {
+        console.log('Processing color tokens:', tokens.colors);
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🎨 Color Tokens</h4>';
+
+        // Separate actual tokens from hard-coded values
+        console.log('Color tokens before filtering:', tokens.colors);
+        const actualTokens = tokens.colors.filter(token => token.isActualToken);
+        const hardCodedTokens = tokens.colors.filter(token => !token.isActualToken && token.source === 'hard-coded');
+        const aiSuggestions = tokens.colors.filter(token => token.source === 'ai-suggestion');
+
+        console.log('Filtered results:', {
+          actualTokens: actualTokens.length,
+          hardCodedTokens: hardCodedTokens.length,
+          aiSuggestions: aiSuggestions.length,
+          hardCodedDetails: hardCodedTokens
+        });
+
+        // Show actual design tokens first
+        if (actualTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Design Tokens in Use</h5>';
+          html += '<div class="token-list">';
+          actualTokens.forEach(token => {
+            const usageIcon = token.usage === 'background' ? '🎨' : '🔲';
+            html += `
+              <div class="token-item-single">
+                <div class="token-preview-icon">
+                  <div class="token-swatch" style="background: ${token.value}; width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--border);" title="${token.value}"></div>
+                </div>
+                <div class="token-info">
+                  <div class="token-name">${usageIcon} ${token.name}</div>
+                  <div class="token-description">${token.recommendation || 'Using ' + token.name + ' token'}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div></div>';
+        }
+
+        // Show hard-coded colors with enhanced context
+        if (hardCodedTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Colors</h5>';
+          html += '<div class="token-list">';
+          hardCodedTokens.forEach(token => {
+            const usageIcon = token.type === 'fill' ? '🎨' : '🔲';
+            const contextInfo = token.context ?
+              `${token.context.nodeType} in "${token.context.nodeName}"` :
+              'Unknown context';
+
+            html += `
+              <div class="token-item-single warning">
+                <div class="token-preview-icon">
+                  <div class="token-swatch" style="background: ${token.value}; width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--border);" title="${token.value}"></div>
+                </div>
+                <div class="token-info">
+                  <div class="token-name">${usageIcon} ${token.value}</div>
+                  <div class="token-description">${contextInfo} - ${token.suggestion || 'Consider using a design token'}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div></div>';
+        }
+
+        // Show AI suggested tokens
+        if (aiSuggestions.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--primary); margin-bottom: 6px;">💡 AI Suggested Tokens</h5>';
+          aiSuggestions.forEach(token => {
+            html += `
+              <div class="token-item-compact suggestion">
+                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">💡 ${token.name}</div>
+                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Effects - New comprehensive section
+      if (tokens.effects && tokens.effects.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">✨ Effect Tokens</h4>';
+
+        const actualEffectTokens = tokens.effects.filter(token => token.isActualToken);
+        const hardCodedEffects = tokens.effects.filter(token => !token.isActualToken);
+
+        if (actualEffectTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Effect Tokens in Use</h5>';
+          actualEffectTokens.forEach(token => {
+            html += `
+              <div class="token-item-compact">
+                <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">✨ ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedEffects.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Effects</h5>';
+          hardCodedEffects.forEach(token => {
+            const contextInfo = token.context ? `${token.context.nodeType} in "${token.context.nodeName}"` : 'Unknown context';
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">✨ ${token.type}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Borders - Single column layout
+      if (tokens.borders && tokens.borders.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🔲 Border Tokens</h4>';
+
+        const actualBorderTokens = tokens.borders.filter(token => token.isActualToken);
+        const hardCodedBorders = tokens.borders.filter(token => !token.isActualToken);
+
+        if (actualBorderTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Border Tokens in Use</h5>';
+          html += '<div class="token-list">';
+          actualBorderTokens.forEach(token => {
+            html += `
+              <div class="token-item-single">
+                <div class="token-preview-icon">
+                  <div style="width: 24px; height: 24px; background: var(--surface); border: 2px solid var(--text-primary); border-radius: ${token.value};" title="${token.value}"></div>
+                </div>
+                <div class="token-info">
+                  <div class="token-name">🔲 ${token.name}</div>
+                  <div class="token-description">${token.recommendation || 'Using ' + token.name + ' token'}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div></div>';
+        }
+
+        if (hardCodedBorders.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Border Values</h5>';
+          html += '<div class="token-list">';
+          hardCodedBorders.forEach(token => {
+            const contextInfo = token.context ? `${token.context.nodeType} in "${token.context.nodeName}"` : '';
+            const isStrokeWeight = token.type === 'stroke-weight';
+            const strokeColor = token.strokeColor || 'var(--text-primary)';
+            
+            let previewStyle;
+            if (isStrokeWeight) {
+              // For stroke weight, show the actual stroke thickness
+              previewStyle = `width: 24px; height: 24px; background: var(--surface); border: ${token.value} solid ${strokeColor}; border-radius: 4px;`;
+            } else {
+              // For border radius
+              previewStyle = `width: 24px; height: 24px; background: var(--surface); border: 2px solid var(--text-primary); border-radius: ${token.value};`;
+            }
+            
+            const suggestion = token.suggestion || (isStrokeWeight ? 'Use appropriate stroke token (e.g., stroke-sm, stroke-md)' : 'Use appropriate radius token (e.g., radius-sm, radius-md)');
+            
+            html += `
+              <div class="token-item-single warning">
+                <div class="token-preview-icon">
+                  <div style="${previewStyle}" title="${token.value}"></div>
+                </div>
+                <div class="token-info">
+                  <div class="token-name">🔲 ${token.value}${isStrokeWeight ? ' stroke' : ''}</div>
+                  <div class="token-description">${contextInfo}${contextInfo ? ' - ' : ''}${suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div></div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Spacing - Enhanced with better context
+      if (tokens.spacing && tokens.spacing.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📏 Spacing Tokens</h4>';
+
+        const actualSpacingTokens = tokens.spacing.filter(token => token.isActualToken);
+        const hardCodedSpacing = tokens.spacing.filter(token => !token.isActualToken);
+
+        if (actualSpacingTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Spacing Tokens in Use</h5>';
+          actualSpacingTokens.forEach(token => {
+            const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
+            html += `
+              <div class="token-item-compact">
+                <div class="token-swatch-spacing" style="width: ${Math.min(parseInt(token.value), 40)}px; height: 12px; background: var(--success);" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">${spaceIcon} ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedSpacing.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Spacing</h5>';
+          hardCodedSpacing.forEach(token => {
+            const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
+            const contextInfo = token.context ?
+              `${token.context.nodeType} (${token.context.layoutMode}) in "${token.context.nodeName}"` :
+              'Unknown context';
+
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-swatch-spacing" style="width: ${Math.min(parseInt(token.value), 40)}px; height: 12px; background: var(--warning);" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">${spaceIcon} ${token.value} (${token.property})</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Typography - Enhanced with better context
+      if (tokens.typography && tokens.typography.length > 0) {
+        html += '<div>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Typography Tokens</h4>';
+
+        const actualTypographyTokens = tokens.typography.filter(token => token.isActualToken);
+        const hardCodedTypography = tokens.typography.filter(token => !token.isActualToken);
+
+        if (actualTypographyTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Typography Tokens in Use</h5>';
+          actualTypographyTokens.forEach(token => {
+            const typeIcon = token.type === 'font-size' ? '📝' :
+                           token.type === 'line-height' ? '📏' : '📝';
+            html += `
+              <div class="token-item-compact">
+                <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
+                <div class="token-details">
+                  <div class="token-name">${typeIcon} ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedTypography.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Typography</h5>';
+          hardCodedTypography.forEach(token => {
+            const typeIcon = token.type === 'font-size' ? '📝' :
+                           token.type === 'line-height' ? '📏' : '📝';
+            const contextInfo = token.context ?
+              `${token.context.fontFamily} in "${token.context.textContent || 'text element'}"` :
+              'Unknown context';
+
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
+                <div class="token-details">
+                  <div class="token-name">${typeIcon} ${token.value}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Show comprehensive summary if no tokens found
+      if (html === '') {
+        html = `
+          <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
+            <div style="font-size: 24px; margin-bottom: var(--space-sm);">🎨</div>
+            <p><strong>No design tokens detected</strong></p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">This component uses simple styling without extractable design tokens.</p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">Consider using Figma variables for colors, spacing, and typography to improve consistency.</p>
+          </div>
+        `;
+      } else {
+        // Add summary statistics
+        const totalTokens = (tokens.colors && tokens.colors.length ? tokens.colors.length : 0) +
+                          (tokens.spacing && tokens.spacing.length ? tokens.spacing.length : 0) +
+                          (tokens.typography && tokens.typography.length ? tokens.typography.length : 0) +
+                          (tokens.effects && tokens.effects.length ? tokens.effects.length : 0) +
+                          (tokens.borders && tokens.borders.length ? tokens.borders.length : 0);
+        const actualTokensCount = [
+          ...(tokens.colors || []),
+          ...(tokens.spacing || []),
+          ...(tokens.typography || []),
+          ...(tokens.effects || []),
+          ...(tokens.borders || [])
+        ].filter(token => token.isActualToken).length;
+        const hardCodedCount = totalTokens - actualTokensCount;
+
+        html = `
+          <div style="background: var(--surface); padding: var(--space-sm); border-radius: var(--radius-sm); margin-bottom: var(--space-md); border: 1px solid var(--border);">
+            <div style="font-size: 11px; font-weight: 600; margin-bottom: 4px;">📊 Token Analysis Summary</div>
+            <div style="font-size: 10px; color: var(--text-secondary);">
+              <span style="color: var(--success);">✅ ${actualTokensCount} using design tokens</span> •
+              <span style="color: var(--warning);">⚠️ ${hardCodedCount} hard-coded values</span> •
+              <span style="color: var(--text-tertiary);">📊 ${totalTokens} total properties analyzed</span>
+            </div>
+          </div>
+        ` + html;
+      }
+
+      tokenSuggestions.innerHTML = html;
+    }
+
+    // Update Metadata Display
+    function updateMetadataDisplay(metadata) {
+      let html = '';
+
+      // Component Info
+      html += `<div class="mb-md">`;
+      html += `<h3 style="font-size: 13px; font-weight: 600;">${metadata.component}</h3>`;
+      html += `<p style="color: var(--text-secondary);">${metadata.description}</p>`;
+      html += `</div>`;
+
+      // Properties
+      if (metadata.props && metadata.props.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Properties</h4>';
+        html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+        metadata.props.forEach(prop => {
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          html += `<span class="property-value">${propName}</span>`;
+        });
+        html += '</div></div>';
+      }
+
+      // States
+      if (metadata.states && metadata.states.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">States</h4>';
+        html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+        metadata.states.forEach(state => {
+          html += `<span class="property-value" style="background: #E7F9F0; color: var(--success);">${state}</span>`;
+        });
+        html += '</div></div>';
+      }
+
+      // Slots
+      if (metadata.slots && metadata.slots.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Slots</h4>';
+        html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+        metadata.slots.forEach(slot => {
+          html += `<span class="property-value" style="background: #FFF4E0; color: var(--warning);">${slot}</span>`;
+        });
+        html += '</div></div>';
+      }
+
+      metadataContent.innerHTML = html;
+    }
+
+    // Update Playground Tab
+    function updatePlaygroundTab() {
+      if (!currentMetadata) return;
+
+      playgroundEmpty.classList.add('hidden');
+      playgroundContent.classList.remove('hidden');
+
+      // Update playground preview
+      let html = '';
+      const hasContent = (currentMetadata.states && currentMetadata.states.length > 0) ||
+                        (currentMetadata.variants && Object.keys(currentMetadata.variants).length > 0);
+
+      if (hasContent) {
+        html = '<p style="text-align: center; color: var(--text-secondary); margin-bottom: 16px;">Click "Generate Instances" to create a visual playground of all component variations</p>';
+      } else {
+        html = '<p style="text-align: center; color: var(--text-tertiary);">No variants or states detected for this component</p>';
+      }
+
+      playgroundGrid.innerHTML = html;
+    }
+
+    // Update Documentation Tab
+    function updateDocumentationTab() {
+      if (!currentMetadata) return;
+
+      docsEmpty.classList.add('hidden');
+      docsPreview.classList.remove('hidden');
+
+      // Generate documentation preview
+      const docsHtml = generateDocumentationHTML(currentMetadata);
+      docsPreview.innerHTML = docsHtml;
+
+      // Enable buttons
+      exportDocsButton.disabled = false;
+      generateDocsFrameButton.disabled = false;
+      saveNotesButton.disabled = false;
+    }
+
+    // Generate Documentation HTML
+    function generateDocumentationHTML(metadata) {
+      let html = '';
+
+      html += '<div class="doc-section">';
+      html += `<h2 class="doc-heading">${metadata.component}</h2>`;
+      html += `<p class="doc-content">${metadata.description}</p>`;
+      html += '</div>';
+
+      if (metadata.props && metadata.props.length > 0) {
+        html += '<div class="doc-section">';
+        html += '<h3 class="doc-heading">Properties</h3>';
+        html += '<ul class="doc-content">';
+        metadata.props.forEach(prop => {
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          html += `<li>${propName}</li>`;
+        });
+        html += '</ul>';
+        html += '</div>';
+      }
+
+      if (metadata.states && metadata.states.length > 0) {
+        html += '<div class="doc-section">';
+        html += '<h3 class="doc-heading">States</h3>';
+        html += '<ul class="doc-content">';
+        metadata.states.forEach(state => {
+          html += `<li>${state}</li>`;
+        });
+        html += '</ul>';
+        html += '</div>';
+      }
+
+      if (metadata.usage) {
+        html += '<div class="doc-section">';
+        html += '<h3 class="doc-heading">Usage Guidelines</h3>';
+        html += `<p class="doc-content">${metadata.usage}</p>`;
+        html += '</div>';
+      }
+
+      if (metadata.accessibility) {
+        html += '<div class="doc-section">';
+        html += '<h3 class="doc-heading">Accessibility</h3>';
+        html += `<p class="doc-content">${metadata.accessibility}</p>`;
+        html += '</div>';
+      }
+
+      return html;
+    }
+
+    // Export as Markdown
+    function exportAsMarkdown() {
+      if (!currentMetadata) return;
+
+      let markdown = `# ${currentMetadata.component}\n\n`;
+      markdown += `${currentMetadata.description}\n\n`;
+
+      if (currentMetadata.props && currentMetadata.props.length > 0) {
+        markdown += `## Properties\n\n`;
+        currentMetadata.props.forEach(prop => {
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          markdown += `- ${propName}\n`;
+        });
+        markdown += '\n';
+      }
+
+      if (currentMetadata.states && currentMetadata.states.length > 0) {
+        markdown += `## States\n\n`;
+        currentMetadata.states.forEach(state => {
+          markdown += `- ${state}\n`;
+        });
+        markdown += '\n';
+      }
+
+      if (currentMetadata.slots && currentMetadata.slots.length > 0) {
+        markdown += `## Slots\n\n`;
+        currentMetadata.slots.forEach(slot => {
+          markdown += `- ${slot}\n`;
+        });
+        markdown += '\n';
+      }
+
+      if (currentMetadata.usage) {
+        markdown += `## Usage Guidelines\n\n${currentMetadata.usage}\n\n`;
+      }
+
+      if (currentMetadata.accessibility) {
+        markdown += `## Accessibility\n\n${currentMetadata.accessibility}\n\n`;
+      }
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(markdown).then(() => {
+        updateStatus('Markdown copied to clipboard!', 'success');
+      });
+    }
+
+    // Export as JSON
+    function exportAsJSON() {
+      if (!currentMetadata) return;
+
+      const jsonStr = JSON.stringify(currentMetadata, null, 2);
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(jsonStr).then(() => {
+        updateStatus('JSON copied to clipboard!', 'success');
+      });
+    }
+
+    // Show Loading State
+    function showLoadingState() {
+      auditContent.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="width: 80%;"></div><div class="skeleton" style="width: 60%;"></div>';
+      propertyCheatsheet.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="width: 70%;"></div>';
+      tokenSuggestions.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="width: 90%;"></div>';
+      metadataContent.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="width: 85%;"></div>';
+    }
+
+    // Update UI Button States
+    function updateUIButtonStates() {
+      const hasMetadata = currentMetadata !== null;
+
+      generatePlaygroundButton.disabled = !hasMetadata;
+      exportDocsButton.disabled = !hasMetadata;
+      generateDocsFrameButton.disabled = !hasMetadata;
+      saveNotesButton.disabled = !hasMetadata;
+    }
+
+    // Handle Playground Generated
+    function handlePlaygroundGenerated(data) {
+      generatePlaygroundButton.disabled = false;
+      if (data.success) {
+        updateStatus(data.message || 'Playground generated successfully!', 'success');
+        // Switch to playground tab
+        switchTab('playground');
+      } else {
+        updateStatus(`Failed to generate playground: ${data.error}`, 'error');
+      }
+    }
+
+    // Handle Docs Frame Generated
+    function handleDocsFrameGenerated(data) {
+      generateDocsFrameButton.disabled = false;
+      if (data.success) {
+        updateStatus('Documentation frame generated in Figma!', 'success');
+      } else {
+        updateStatus(`Failed to generate docs: ${data.error}`, 'error');
+      }
+    }
+
+    // Handle Batch Selection Update
+    function handleBatchSelectionUpdate(data) {
+      selectedComponents = data.components || [];
+      if (selectedComponents.length > 1) {
+        batchModeToggle.classList.remove('hidden');
+      } else {
+        batchModeToggle.classList.add('hidden');
+        batchMode = false;
+        batchModeSwitch.checked = false;
+      }
+    }
+
+    // Handle Analysis Error
+    function handleAnalysisError(error) {
+      analyzeButton.disabled = false;
+      quickAnalyzeButton.disabled = false;
+      updateStatus(`Error: ${error}`, 'error');
+      analysisResults.classList.add('hidden');
+    }
+
+    // Handle Add State Button Click
+    window.handleAddState = function(stateName) {
+      sendMessageToPlugin('add-state', {
+        state: stateName,
+        metadata: currentMetadata
+      });
+      updateStatus(`Adding ${stateName} state...`, 'info');
+    }
+
+    // Handle Fix Accessibility Button Click
+    window.handleFixAccessibility = function(issue) {
+      sendMessageToPlugin('fix-accessibility', {
+        issue: issue,
+        metadata: currentMetadata
+      });
+      updateStatus(`Fixing ${issue}...`, 'info');
+    }
+
+        // Helper function to extract clean suggestion name for display
+    function getCleanSuggestionName(suggestion) {
+      let actualName = suggestion;
+
+      // Handle "renamed to X" format
+      if (suggestion.includes('renamed to ')) {
+        actualName = suggestion.split('renamed to ')[1].trim();
+      }
+      // Handle "should be X" format
+      else if (suggestion.includes('should be ')) {
+        actualName = suggestion.split('should be ')[1].trim();
+      }
+      // Handle "→ X" format
+      else if (suggestion.startsWith('→ ')) {
+        actualName = suggestion.substring(2).trim();
+      }
+
+      // Remove any quotes that might be around the name
+      return actualName.replace(/['"]/g, '').trim();
+    }
+
+    // Handle Fix Naming Button Click
+    window.handleFixNaming = function(layerName, suggestion) {
+      // Parse the actual suggested name from various formats
+      const actualName = getCleanSuggestionName(suggestion);
+
+      sendMessageToPlugin('fix-naming', {
+        layer: layerName,
+        newName: actualName,
+        metadata: currentMetadata
+      });
+      updateStatus(`Renaming ${layerName} to ${actualName}...`, 'info');
+    }
+
+    // Update Analyze Button State
+    function updateAnalyzeButtonState(enabled) {
+      analyzeButton.disabled = !enabled;
+      quickAnalyzeButton.disabled = !enabled;
+    }
+
+    // Update Status Message
+    function updateStatus(message, type = 'info') {
+      statusContainer.classList.remove('hidden');
+      statusText.textContent = message;
+      statusIcon.textContent = statusIcons[type] || statusIcons.info;
+
+      statusDiv.classList.remove('status-info', 'status-success', 'status-error', 'status-warning');
+      statusDiv.classList.add(`status-${type}`);
+
+      if (type === 'success') {
+        setTimeout(() => {
+          statusContainer.classList.add('hidden');
+        }, 5000);
+      }
+    }
+
+    // Send Message to Plugin
+    function sendMessageToPlugin(type, data) {
+      console.log('Sending message to plugin:', type, data);
+      try {
+        parent.postMessage({
+          pluginMessage: { type, data }
+        }, '*');
+      } catch (error) {
+        console.error('Failed to send message to plugin:', error);
+      }
+    }
+
+    // Initialize when DOM is loaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeUI);
+    } else {
+      initializeUI();
+    }
+  </script>
+</body>
+</html>

@@ -2,14 +2,48 @@
 
 An enhanced Figma plugin that provides AI-powered component analysis, documentation, and validation for design systems designers.
 
+## 🏗️ **PRODUCTION-READY REFACTORED ARCHITECTURE**
+
+This plugin has been completely refactored with a modular TypeScript architecture for production use:
+
+### **📁 Modular Structure**
+```
+src/
+├── types.ts                 # Comprehensive type definitions
+├── api/claude.ts            # Claude API integration
+├── core/
+│   ├── token-analyzer.ts    # Enhanced token detection & analysis
+│   └── component-analyzer.ts # Component context extraction
+├── utils/figma-helpers.ts   # Figma API utilities
+├── ui/message-handler.ts    # UI communication layer
+├── code.ts                  # Main plugin entry point
+├── ui.html                  # Plugin interface
+└── manifest.json           # Plugin configuration
+```
+
+### **🔧 Build Process**
+```bash
+npm run build    # Build production version
+npm run dev      # Watch mode for development
+npm run clean    # Clean build artifacts
+```
+
+### **🚀 Key Improvements**
+- **Modular Architecture**: Clean separation of concerns
+- **TypeScript**: Full type safety and better development experience
+- **Token Detection**: Enhanced Figma Variables API and Named Styles support
+- **Proper Error Handling**: Robust error management throughout
+- **Production Ready**: Optimized build process and asset management
+
 ## Features
 
 ### 🎯 Three Main Tabs
 
 #### 1. Analyze Tab
 - **Component Audit View**: Automatically checks for missing states, accessibility issues, and naming conventions
+- **Enhanced Token Analysis**: Detects both Figma Variables and Named Styles as design tokens
 - **Property Cheat Sheet**: Lists recommended Figma properties with accepted values and defaults
-- **Token Suggestions**: Suggests design tokens for colors, spacing, and typography
+- **Token Categorization**: Splits tokens into Valid tokens, Hard-coded styles, and Recommended tokens
 - **Validation Logic**: Checks for missing interactive states, inconsistent naming, and poor color contrast
 
 #### 2. Playground Tab
@@ -34,10 +68,17 @@ An enhanced Figma plugin that provides AI-powered component analysis, documentat
 
 ## Installation
 
-1. Open Figma
-2. Go to Plugins → Development → Import plugin from manifest
-3. Select the `manifest.json` file from this directory
-4. The plugin will appear in your Figma plugins menu
+### **Development Setup**
+1. Clone this repository
+2. Install dependencies: `npm install`
+3. Build the plugin: `npm run build`
+4. In Figma: Plugins → Development → Import plugin from manifest
+5. Select `dist/manifest.json`
+
+### **Production Use**
+1. Download the latest release
+2. In Figma: Plugins → Development → Import plugin from manifest
+3. Select the `manifest.json` file
 
 ## Usage
 
@@ -51,9 +92,16 @@ An enhanced Figma plugin that provides AI-powered component analysis, documentat
 2. Click "Analyze Component"
 3. Review the comprehensive analysis results:
    - Audit score and issues
+   - Token categorization and recommendations
    - Suggested properties
-   - Token recommendations
    - Component metadata
+
+### Token Analysis
+The plugin provides detailed token analysis with three categories:
+
+- **✅ Valid Tokens**: Figma Variables and Named Styles (properly system-aligned)
+- **⚠️ Hard-coded Styles**: Direct values without tokens
+- **💡 Recommended Tokens**: AI suggestions for token implementation
 
 ### Generating Playground
 1. After analysis, switch to the Playground tab
@@ -86,21 +134,36 @@ The plugin works best with:
 
 ## Version History
 
-### v2.0.0
-- Added tabbed interface (Analyze, Playground, Documentation)
-- Implemented comprehensive audit view with scoring
-- Added property cheat sheet generation
-- Integrated token suggestions with visual previews
-- Added playground generation for variants and states
-- Implemented documentation export (Markdown/JSON)
-- Added batch mode for multiple components
-- Enhanced UI with collapsible sections
-- Added collaboration notes feature
+### v2.0.0 - Production-Ready Refactor
+- 🏗️ **Complete architectural overhaul with modular TypeScript structure**
+- 🔧 **Enhanced build process with proper asset management**
+- 🎯 **Improved token detection with better Figma API integration**
+- 🚀 **Production-ready with comprehensive error handling**
+- 📝 **Better code organization and maintainability**
+- ✅ **Full TypeScript support with proper type definitions**
 
 ### v1.0.0
 - Initial release with basic component analysis
 - Claude AI integration
 - Simple variant generation
+
+## Development
+
+### **Architecture Overview**
+The plugin uses a modular architecture:
+
+1. **Types** (`types.ts`): Comprehensive type definitions
+2. **API Layer** (`api/claude.ts`): Claude integration
+3. **Core Logic** (`core/`): Token analysis and component processing
+4. **Utils** (`utils/`): Figma API helpers
+5. **UI Communication** (`ui/message-handler.ts`): Message routing
+6. **Main Entry** (`code.ts`): Plugin initialization
+
+### **Key Features**
+- **Enhanced Token Detection**: Supports both Figma Variables API and Named Styles
+- **Proper Async Handling**: Uses `figma.getStyleByIdAsync()` for style detection
+- **Smart Categorization**: Avoids double-counting by checking style IDs first
+- **Type Safety**: Full TypeScript support with proper error handling
 
 ## Privacy & Security
 
@@ -111,3 +174,7 @@ The plugin works best with:
 ## Support
 
 For issues or feature requests, please contact the development team or submit feedback through the plugin interface.
+
+---
+
+**🎉 Ready for Production Use!**

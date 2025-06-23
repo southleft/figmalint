@@ -1,29 +1,32 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["ES2017", "DOM"],
-    "module": "commonjs",
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "node",
+    "lib": ["ES2020", "DOM"],
+    "outDir": "./dist",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
-    "noEmit": false,
-    "outDir": "./",
-    "rootDir": "./",
+    "noEmitOnError": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "removeComments": false,
-    "noImplicitAny": false,
-    "strictNullChecks": false,
-    "typeRoots": []
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
   "include": [
-    "figma.d.ts",
-    "code.ts",
-    "ui.ts",
-    "claude.ts"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
-    "**/*.js"
+    "dist",
+    "*.js"
   ]
 }

@@ -2,11 +2,16 @@
   "name": "ai-design-co-pilot",
   "version": "2.0.0",
   "description": "Enhanced Figma plugin with AI-powered component analysis, audit views, playground generation, documentation export, and design system validation using Claude AI.",
-  "main": "code.js",
+  "main": "dist/code.js",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npm run bundle && npm run copy-assets",
+    "bundle": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --global-name='' --loader:.ts=ts",
+    "dev": "npm run bundle -- --watch",
+    "copy-assets": "cp src/ui.html dist/ && cp src/manifest.json dist/",
+    "clean": "rm -rf dist",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "tsc --noEmit",
+    "prebuild": "npm run clean"
   },
   "keywords": [
     "figma",
@@ -14,12 +19,18 @@
     "ai",
     "claude",
     "design",
-    "analysis"
+    "analysis",
+    "design-system",
+    "tokens"
   ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "typescript": "^5.6.3",
-    "webpack-cli": "^6.0.1"
-  }
+    "@figma/plugin-typings": "^1.114.0",
+    "esbuild": "^0.25.5",
+    "typescript": "^5.6.3"
+  },
+  "files": [
+    "dist/**/*"
+  ]
 }
