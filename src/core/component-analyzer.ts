@@ -322,7 +322,7 @@ export async function processEnhancedAnalysis(
     consistency: [] as Array<{ property: string; issue: string; suggestion: string }>
   };
 
-  // Get actual component variants from the node itself, not from Claude's analysis
+  // Get actual component variants from the node itself
   const actualStates: string[] = [];
   
   // If it's a component set, get the actual variant properties
@@ -349,7 +349,10 @@ export async function processEnhancedAnalysis(
     });
   }
   
-  // Only audit states if we found actual interactive states in the component
+  // Get recommended states from Claude's analysis
+  const recommendedStates = claudeData.states || [];
+  
+  // For component sets with existing states, audit them
   if (actualStates.length > 0) {
     // Check common interactive states
     const expectedStates = ['default', 'hover', 'focus', 'disabled'];
@@ -368,6 +371,14 @@ export async function processEnhancedAnalysis(
           found: true
         });
       }
+    });
+  } else if (recommendedStates.length > 0) {
+    // For single components, show recommended states as missing
+    recommendedStates.forEach((state: string) => {
+      audit.states.push({
+        name: state,
+        found: false
+      });
     });
   }
 

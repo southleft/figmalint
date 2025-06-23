@@ -490,8 +490,15 @@ async function generateSingleComponentPlayground(
     const instance = component.createInstance();
     section.appendChild(instance);
   } else {
-    // Create a section for states
-    const section = createVariantSection('Recommended States', playgroundFrame);
+    // Create a section for states - label it clearly as recommended/missing
+    const sectionTitle = 'Recommended States (Not Yet Implemented)';
+    const section = createVariantSection(sectionTitle, playgroundFrame);
+    
+    // Add a note about these being recommendations
+    const note = await createLabel('These states are recommended based on the component type');
+    note.fontSize = 10;
+    note.fills = [{ type: 'SOLID', color: { r: 0.6, g: 0.6, b: 0.6 } }];
+    section.appendChild(note);
     
     // Create an instance for each recommended state
     states.forEach((state: string) => {
@@ -508,7 +515,7 @@ async function generateSingleComponentPlayground(
         container.appendChild(label);
       });
       
-      // Instance
+      // Instance - note that these are just copies of the default
       const instance = component.createInstance();
       container.appendChild(instance);
     });

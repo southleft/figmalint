@@ -663,6 +663,7 @@
         });
       });
     }
+    const recommendedStates = claudeData.states || [];
     if (actualStates.length > 0) {
       const expectedStates = ["default", "hover", "focus", "disabled"];
       expectedStates.forEach((state) => {
@@ -678,6 +679,13 @@
             found: true
           });
         }
+      });
+    } else if (recommendedStates.length > 0) {
+      recommendedStates.forEach((state) => {
+        audit.states.push({
+          name: state,
+          found: false
+        });
       });
     }
     if ((_a = claudeData.audit) == null ? void 0 : _a.accessibilityIssues) {
@@ -1286,7 +1294,12 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
       const instance = component.createInstance();
       section.appendChild(instance);
     } else {
-      const section = createVariantSection("Recommended States", playgroundFrame);
+      const sectionTitle = "Recommended States (Not Yet Implemented)";
+      const section = createVariantSection(sectionTitle, playgroundFrame);
+      const note = await createLabel("These states are recommended based on the component type");
+      note.fontSize = 10;
+      note.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
+      section.appendChild(note);
       states.forEach((state) => {
         const container = figma.createFrame();
         container.layoutMode = "VERTICAL";
