@@ -335,6 +335,9 @@ async function handleUIMessage(msg) {
             case 'save-collab-notes':
                 await handleSaveCollabNotes(data.notes);
                 break;
+            case 'fix-naming':
+                await handleFixNaming(data);
+                break;
             default:
                 console.warn('Unknown message type:', type);
         }
@@ -1743,31 +1746,6 @@ async function extractDesignTokensFromNode(node) {
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
     }
     // Helper function to safely get style names by ID
-    async function getStyleName(styleId) {
-        try {
-            console.log('🔍 Attempting to fetch style with ID:', styleId);
-            const style = await figma.getStyleByIdAsync(styleId);
-            if (style) {
-                console.log('✅ Style fetched successfully:', {
-                    id: style.id,
-                    name: style.name,
-                    type: style.type,
-                    key: style.key
-                });
-                return style.name;
-            } else {
-                console.warn('⚠️ Style object is null for ID:', styleId);
-                return null;
-            }
-        }
-        catch (error) {
-            console.error('❌ Error accessing style:', styleId, {
-                error: error.message,
-                stack: error.stack
-            });
-            return null;
-        }
-    }
     // Helper function to safely get variable names by ID
     function getVariableName(variableId) {
         try {
@@ -1783,8 +1761,6 @@ async function extractDesignTokensFromNode(node) {
         console.log('🔍 Checking node for design tokens:', currentNode.name, 'Type:', currentNode.type);
         // **COMPREHENSIVE DEBUGGING - Check what properties exist**
         console.log('🔧 Debug - Node properties:', {
-            type: currentNode.type,
-            name: currentNode.name,
             hasfills: 'fills' in currentNode,
             hasStrokes: 'strokes' in currentNode,
             hasFillStyleId: 'fillStyleId' in currentNode,
@@ -1793,100 +1769,131 @@ async function extractDesignTokensFromNode(node) {
             hasEffectStyleId: 'effectStyleId' in currentNode,
             hasBoundVariables: 'boundVariables' in currentNode,
             fillStyleIdValue: currentNode.fillStyleId || 'none',
-            fillStyleIdType: typeof currentNode.fillStyleId,
             strokeStyleIdValue: currentNode.strokeStyleId || 'none',
-            strokeStyleIdType: typeof currentNode.strokeStyleId,
-            textStyleIdValue: currentNode.textStyleId || 'none',
-            effectStyleIdValue: currentNode.effectStyleId || 'none',
             boundVariablesKeys: 'boundVariables' in currentNode ? Object.keys(currentNode.boundVariables || {}) : []
         });
-        // **PRIORITY 1: Check for Figma Styles (Design Tokens)**
-        // These are semantic tokens - named design decisions
+        // **PRIORITY 1: Check for Figma Styles (Design Tokens) using async methods**
+        // Store promises for all async style lookups
+        const stylePromises = [];
         // Check for fill styles (color tokens)
         if ('fillStyleId' in currentNode && currentNode.fillStyleId) {
             const styleId = currentNode.fillStyleId;
             console.log('🎨 Attempting to get fill style for ID:', styleId);
-            const styleName = await getStyleName(styleId);
-            if (styleName && !colorSet.has(styleName)) {
-                colorSet.add(styleName);
-                colors.push({
-                    name: styleName,
-                    value: styleName, // The style name IS the token value
-                    type: 'fill-style',
-                    isToken: true,
-                    isActualToken: true,
-                    source: 'figma-style'
-                });
-                console.log('🎨 ✅ Found fill style token:', styleName);
-            }
-            else if (!styleName) {
-                console.log('🎨 ❌ Could not resolve fill style name for ID:', styleId);
-            }
+            stylePromises.push(figma.getStyleByIdAsync(styleId)
+                .then((style) => {
+                if (style && style.name) {
+                    console.log('🎨 ✅ Found fill style token:', style.name);
+                    if (!colorSet.has(style.name)) {
+                        colorSet.add(style.name);
+                        // Get the actual color value from the node's fills for display
+                        let colorValue = style.name; // fallback to style name
+                        if ('fills' in currentNode && currentNode.fills && Array.isArray(currentNode.fills)) {
+                            const fill = currentNode.fills[0];
+                            if (fill && fill.type === 'SOLID' && fill.color) {
+                                colorValue = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
+                            }
+                        }
+                        colors.push({
+                            name: style.name,
+                            value: colorValue, // Use actual color for display
+                            type: 'fill-style',
+                            isToken: true,
+                            isActualToken: true,
+                            source: 'figma-style'
+                        });
+                    }
+                }
+            })
+                .catch((error) => {
+                console.log('🎨 ❌ Could not resolve fill style:', error);
+            }));
         }
         // Check for stroke styles (border color tokens)
         if ('strokeStyleId' in currentNode && currentNode.strokeStyleId) {
             const styleId = currentNode.strokeStyleId;
             console.log('🖊️ Attempting to get stroke style for ID:', styleId);
-            const styleName = await getStyleName(styleId);
-            if (styleName && !colorSet.has(styleName)) {
-                colorSet.add(styleName);
-                colors.push({
-                    name: styleName,
-                    value: styleName,
-                    type: 'stroke-style',
-                    isToken: true,
-                    isActualToken: true,
-                    source: 'figma-style'
-                });
-                console.log('🖊️ ✅ Found stroke style token:', styleName);
-            }
-            else if (!styleName) {
-                console.log('🖊️ ❌ Could not resolve stroke style name for ID:', styleId);
-            }
+            stylePromises.push(figma.getStyleByIdAsync(styleId)
+                .then((style) => {
+                if (style && style.name) {
+                    console.log('🖊️ ✅ Found stroke style token:', style.name);
+                    if (!colorSet.has(style.name)) {
+                        colorSet.add(style.name);
+                        // Get the actual color value from the node's strokes for display
+                        let colorValue = style.name; // fallback to style name
+                        if ('strokes' in currentNode && currentNode.strokes && Array.isArray(currentNode.strokes)) {
+                            const stroke = currentNode.strokes[0];
+                            if (stroke && stroke.type === 'SOLID' && stroke.color) {
+                                colorValue = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
+                            }
+                        }
+                        colors.push({
+                            name: style.name,
+                            value: colorValue, // Use actual color for display
+                            type: 'stroke-style',
+                            isToken: true,
+                            isActualToken: true,
+                            source: 'figma-style'
+                        });
+                    }
+                }
+            })
+                .catch((error) => {
+                console.log('🖊️ ❌ Could not resolve stroke style:', error);
+            }));
         }
         // Check for text styles (typography tokens)
         if (currentNode.type === 'TEXT' && 'textStyleId' in currentNode && currentNode.textStyleId) {
             const styleId = currentNode.textStyleId;
             console.log('📝 Attempting to get text style for ID:', styleId);
-            const styleName = await getStyleName(styleId);
-            if (styleName && !typographySet.has(styleName)) {
-                typographySet.add(styleName);
-                typography.push({
-                    name: styleName,
-                    value: styleName,
-                    type: 'text-style',
-                    isToken: true,
-                    isActualToken: true,
-                    source: 'figma-style'
-                });
-                console.log('📝 ✅ Found text style token:', styleName);
-            }
-            else if (!styleName) {
-                console.log('📝 ❌ Could not resolve text style name for ID:', styleId);
-            }
+            stylePromises.push(figma.getStyleByIdAsync(styleId)
+                .then((style) => {
+                if (style && style.name) {
+                    console.log('📝 ✅ Found text style token:', style.name);
+                    if (!typographySet.has(style.name)) {
+                        typographySet.add(style.name);
+                        typography.push({
+                            name: style.name,
+                            value: style.name,
+                            type: 'text-style',
+                            isToken: true,
+                            isActualToken: true,
+                            source: 'figma-style'
+                        });
+                    }
+                }
+            })
+                .catch((error) => {
+                console.log('📝 ❌ Could not resolve text style:', error);
+            }));
         }
         // Check for effect styles (shadow/blur tokens)
         if ('effectStyleId' in currentNode && currentNode.effectStyleId) {
             const styleId = currentNode.effectStyleId;
             console.log('✨ Attempting to get effect style for ID:', styleId);
-            const styleName = await getStyleName(styleId);
-            if (styleName) {
-                // Add to appropriate category based on style name
-                if (styleName.toLowerCase().includes('shadow') || styleName.toLowerCase().includes('elevation')) {
-                    effects.push({
-                        name: styleName,
-                        value: styleName,
-                        type: 'effect-style',
-                        isToken: true,
-                        isActualToken: true,
-                        source: 'figma-style'
-                    });
-                    console.log('✨ ✅ Found effect style token:', styleName);
+            stylePromises.push(figma.getStyleByIdAsync(styleId)
+                .then((style) => {
+                if (style && style.name) {
+                    console.log('✨ ✅ Found effect style token:', style.name);
+                    // Add to appropriate category based on style name
+                    if (style.name.toLowerCase().includes('shadow') || style.name.toLowerCase().includes('elevation')) {
+                        effects.push({
+                            name: style.name,
+                            value: style.name,
+                            type: 'effect-style',
+                            isToken: true,
+                            isActualToken: true,
+                            source: 'figma-style'
+                        });
+                    }
                 }
-            }
-            else {
-                console.log('✨ ❌ Could not resolve effect style name for ID:', styleId);
-            }
+            })
+                .catch((error) => {
+                console.log('✨ ❌ Could not resolve effect style:', error);
+            }));
+        }
+        // Wait for all style lookups to complete before continuing
+        if (stylePromises.length > 0) {
+            await Promise.all(stylePromises);
         }
         // **PRIORITY 2: Check for Figma Variables (newer token system)**
         if ('boundVariables' in currentNode && currentNode.boundVariables) {
@@ -1953,14 +1960,13 @@ async function extractDesignTokensFromNode(node) {
         else {
             console.log('🎯 ❌ No boundVariables found on node:', currentNode.name);
         }
-        // **EXTRACT HARD-CODED VALUES** (Always extract, we'll filter later)
-        // Extract colors from fills (but mark them appropriately)
-        if ('fills' in currentNode && currentNode.fills && Array.isArray(currentNode.fills)) {
+        // **EXTRACT HARD-CODED VALUES** (Only if no style is applied)
+        // Extract colors from fills ONLY if no fillStyleId exists
+        if ('fills' in currentNode && currentNode.fills && Array.isArray(currentNode.fills) && !currentNode.fillStyleId) {
             currentNode.fills.forEach((fill, index) => {
                 if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
                     const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
-                    console.log(`🎨 Found fill[${index}] with color:`, hex);
-                    // Only add as hard-coded if we haven't found a token for this fill
+                    console.log(`🎨 Found hard-coded fill[${index}] with color:`, hex);
                     if (!colorSet.has(hex)) {
                         colorSet.add(hex);
                         colors.push({
@@ -1975,12 +1981,15 @@ async function extractDesignTokensFromNode(node) {
                 }
             });
         }
-        // Extract colors from strokes
-        if ('strokes' in currentNode && currentNode.strokes && Array.isArray(currentNode.strokes)) {
+        else if (currentNode.fillStyleId) {
+            console.log(`🎨 ✅ Skipping fill extraction - using fillStyleId:`, currentNode.fillStyleId);
+        }
+        // Extract colors from strokes ONLY if no strokeStyleId exists
+        if ('strokes' in currentNode && currentNode.strokes && Array.isArray(currentNode.strokes) && !currentNode.strokeStyleId) {
             currentNode.strokes.forEach((stroke, index) => {
                 if (stroke.type === 'SOLID' && stroke.visible !== false && stroke.color) {
                     const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
-                    console.log(`🖊️ Found stroke[${index}] with color:`, hex);
+                    console.log(`🖊️ Found hard-coded stroke[${index}] with color:`, hex);
                     if (!colorSet.has(hex)) {
                         colorSet.add(hex);
                         colors.push({
@@ -1994,6 +2003,9 @@ async function extractDesignTokensFromNode(node) {
                     }
                 }
             });
+        }
+        else if (currentNode.strokeStyleId) {
+            console.log(`🖊️ ✅ Skipping stroke extraction - using strokeStyleId:`, currentNode.strokeStyleId);
         }
         // Extract spacing from layout properties
         if ('paddingLeft' in currentNode) {
@@ -2101,8 +2113,29 @@ async function extractDesignTokensFromNode(node) {
                 console.log(`🔲 ⚠️ Added hard-coded border radius:`, radius);
             }
         }
+        // Extract stroke weight (border width) as spacing token
+        if ('strokeWeight' in currentNode && currentNode.strokeWeight > 0) {
+            const strokeWeight = currentNode.strokeWeight;
+            const spacingKey = `strokeWeight-${strokeWeight}`;
+            if (!spacingSet.has(spacingKey)) {
+                spacingSet.add(spacingKey);
+                spacing.push({
+                    name: `hard-coded-border-width-${strokeWeight}`,
+                    value: `${strokeWeight}px`,
+                    type: 'border-width',
+                    isToken: false,
+                    source: 'hard-coded',
+                    context: {
+                        nodeType: currentNode.type,
+                        nodeName: currentNode.name
+                    }
+                });
+                console.log(`📏 ⚠️ Added hard-coded stroke weight:`, strokeWeight);
+            }
+        }
         // Traverse children
         if ('children' in currentNode) {
+            // Use for...of to handle async properly
             for (const child of currentNode.children) {
                 await traverseNode(child);
             }
@@ -2219,5 +2252,47 @@ function getDefaultSuggestion(token, category) {
             return 'Use radius.large token';
         default:
             return 'Create or use existing design token';
+    }
+}
+// Handle Fix Naming
+async function handleFixNaming(data) {
+    try {
+        const { layer, newName } = data;
+        const lastNode = globalThis.lastAnalyzedNode;
+        if (!lastNode) {
+            throw new Error('No component selected');
+        }
+        // Find the layer by name
+        function findAndRename(node, targetName, replacement) {
+            if (node.name === targetName) {
+                node.name = replacement;
+                return true;
+            }
+            if ('children' in node) {
+                for (const child of node.children) {
+                    if (findAndRename(child, targetName, replacement)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        const renamed = findAndRename(lastNode, layer, newName);
+        if (renamed) {
+            // Reselect the node to refresh the layers panel
+            const currentSelection = figma.currentPage.selection;
+            figma.currentPage.selection = [];
+            figma.currentPage.selection = currentSelection;
+            figma.notify(`Renamed "${layer}" to "${newName}"`, { timeout: 3000 });
+            sendMessageToUI('naming-fixed', { success: true, layer, newName });
+        }
+        else {
+            throw new Error(`Layer "${layer}" not found in component`);
+        }
+    }
+    catch (error) {
+        console.error('Error fixing naming:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        sendMessageToUI('naming-fixed', { success: false, error: errorMessage });
     }
 }
