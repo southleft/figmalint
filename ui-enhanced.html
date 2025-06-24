@@ -510,7 +510,7 @@
       margin-right: var(--space-xs);
     }
 
-    /* Token Suggestions */
+    /* Token Analysis */
     .token-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -1230,17 +1230,17 @@
             </div>
           </div>
 
-          <!-- Token Suggestions -->
+          <!-- Token Analysis -->
           <div class="collapsible">
             <div class="collapsible-header" onclick="toggleCollapsible(this)">
               <div class="collapsible-title">
                 <span class="collapsible-icon">▶</span>
-                <span>Token Suggestions</span>
+                <span>Token Analysis</span>
                 <div class="tooltip">
                   <div class="info-icon">i</div>
                   <span class="tooltiptext">
-                    <strong>Token Suggestions</strong><br>
-                    Identifies colors, spacing, typography, and effects that could use design tokens instead of hard-coded values. Design tokens make your components more consistent, maintainable, and easier to theme or rebrand.
+                    <strong>Token Analysis</strong><br>
+                    Analyzes colors, spacing, typography, and effects to show which use design tokens versus hard-coded values. Design tokens make your components more consistent, maintainable, and easier to theme or rebrand.
                   </span>
                 </div>
               </div>
@@ -1637,6 +1637,11 @@
       analyzeButton.disabled = true;
       updateStatus('Analyzing selected component...', 'info');
 
+      // Reset scores immediately to avoid showing stale data
+      auditScore.innerHTML = '<span>Score: --</span>';
+      auditScore.className = 'status-banner status-info';
+      mcpScore.innerHTML = '<span>Score: --</span>';
+
       // Show analysis results with loading state
       analysisResults.classList.remove('hidden');
       showLoadingState();
@@ -1930,7 +1935,7 @@
         updatePropertyCheatSheet([], data.recommendations);
       }
 
-      // Update Token Suggestions
+      // Update Token Analysis
       if (data.tokens && Object.keys(data.tokens).length > 0) {
         updateTokenSuggestions(data.tokens);
       } else {
@@ -2301,7 +2306,7 @@
       propertyCheatsheet.innerHTML = html;
     }
 
-    // Enhanced Token Suggestions Display
+    // Enhanced Token Analysis Display
     function updateTokenSuggestions(tokens) {
       console.log('UI updateTokenSuggestions called with:', tokens);
 
