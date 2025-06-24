@@ -179,14 +179,14 @@ function detectVariantPatterns(node: SceneNode): { isComponentSet: boolean; pote
     try {
       const componentSet = node as ComponentSetNode;
       // Safely access variantGroupProperties with error handling
-      let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
+      let variantProps: Record<string, {values: string[]}> | undefined;
       try {
         variantProps = componentSet.variantGroupProperties;
       } catch (variantError) {
         console.warn('Component set has errors, cannot access variantGroupProperties:', variantError);
         variantProps = undefined;
       }
-      
+
       if (variantProps) {
         potentialVariants.push(...Object.keys(variantProps));
       }
@@ -313,262 +313,555 @@ export function isValidMetadata(metadata: any): metadata is ComponentMetadata {
 }
 
 /**
- * Extract actual properties from a Figma component or component set
+ * Extract properties from variant names when variantGroupProperties is not accessible
  */
-function extractActualComponentProperties(node: SceneNode): Array<{ name: string; values: string[]; default: string }> {
+function extractPropertiesFromVariantNames(componentSet: ComponentSetNode): Array<{ name: string; values: string[]; default: string }> {
+  const properties: Map<string, Set<string>> = new Map();
+
+  // Parse variant names to extract properties
+  componentSet.children.forEach(variant => {
+    if (variant.type === 'COMPONENT') {
+      const variantName = variant.name;
+      // Common pattern: "Property1=Value1, Property2=Value2"
+      const pairs = variantName.split(',').map(s => s.trim());
+
+      pairs.forEach(pair => {
+        const [key, value] = pair.split('=').map(s => s.trim());
+        if (key && value) {
+          if (!properties.has(key)) {
+            properties.set(key, new Set());
+          }
+          properties.get(key)!.add(value);
+        }
+      });
+    }
+  });
+
+  // Convert to array format
+  const result: Array<{ name: string; values: string[]; default: string }> = [];
+  properties.forEach((values, name) => {
+    const valueArray = Array.from(values);
+    result.push({
+      name,
+      values: valueArray,
+      default: valueArray[0] || 'default'
+    });
+  });
+
+  return result;
+}
+
+/**
+ * Extract actual properties from a Figma component or component set
+ * @param node The node to extract properties from (component set, component, or instance)
+ * @param selectedNode The originally selected node (for accessing instance properties)
+ */
+function extractActualComponentProperties(node: SceneNode, selectedNode?: SceneNode): Array<{ name: string; values: string[]; default: string }> {
   const actualProperties: Array<{ name: string; values: string[]; default: string }> = [];
 
-  if (node.type === 'COMPONENT_SET') {
-    const componentSet = node as ComponentSetNode;
-    
-    // Safely access variantGroupProperties with error handling
-    let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
+  console.log('🔍 [DEBUG] Starting property extraction for node:', node.name, 'type:', node.type);
+  console.log('🔍 [DEBUG] Originally selected node:', selectedNode?.name, 'type:', selectedNode?.type);
+
+  // PRIORITY 1: If we have a selected instance, extract from its componentProperties first
+  if (selectedNode && selectedNode.type === 'INSTANCE') {
+    const instance = selectedNode as InstanceNode;
+    console.log('🔍 [DEBUG] Extracting from selected instance componentProperties...');
+
     try {
-      variantProps = componentSet.variantGroupProperties;
-    } catch (error) {
-      console.warn('Component set has errors, cannot access variantGroupProperties:', error);
-      variantProps = undefined;
-    }
+      if ('componentProperties' in instance && instance.componentProperties) {
+        const instanceProps = instance.componentProperties;
+        console.log('🔍 [DEBUG] Found componentProperties on selected instance:', Object.keys(instanceProps));
 
-    // Extract real variant properties from the component set
-    if (variantProps) {
-      for (const propName in variantProps) {
-        const prop = variantProps[propName];
-        actualProperties.push({
-          name: propName,
-          values: prop.values,
-          default: prop.values[0] || 'default'
-        });
-      }
-    }
+        // Get the component set for property definitions
+        const mainComponent = instance.mainComponent;
+        if (mainComponent && mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
+          const componentSet = mainComponent.parent as ComponentSetNode;
 
-    // Also extract component properties from the first child component
-    if (componentSet.children.length > 0) {
-      const firstComponent = componentSet.children[0] as ComponentNode;
-      const componentProps = extractComponentProperties(firstComponent);
-      actualProperties.push(...componentProps);
-    }
-  } else if (node.type === 'COMPONENT') {
-    // For individual components, check if they're part of a component set
-    const component = node as ComponentNode;
-    if (component.parent && component.parent.type === 'COMPONENT_SET') {
-      const componentSet = component.parent as ComponentSetNode;
-      
-      // Safely access variantGroupProperties with error handling
-      let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
-      try {
-        variantProps = componentSet.variantGroupProperties;
-      } catch (error) {
-        console.warn('Component set has errors, cannot access variantGroupProperties:', error);
-        variantProps = undefined;
-      }
-
-      if (variantProps) {
-        for (const propName in variantProps) {
-          const prop = variantProps[propName];
-          actualProperties.push({
-            name: propName,
-            values: prop.values,
-            default: prop.values[0] || 'default'
-          });
-        }
-      }
-    }
-
-    // Extract component properties from this component
-    const componentProps = extractComponentProperties(component);
-    actualProperties.push(...componentProps);
-  } else if (node.type === 'INSTANCE') {
-    // For instances, get properties from the main component
-    const instance = node as InstanceNode;
-    const mainComponent = instance.mainComponent;
-
-    if (mainComponent && mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
-      const componentSet = mainComponent.parent as ComponentSetNode;
-      
-      // Safely access variantGroupProperties with error handling
-      let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
-      try {
-        variantProps = componentSet.variantGroupProperties;
-      } catch (error) {
-        console.warn('Component set has errors, cannot access variantGroupProperties:', error);
-        variantProps = undefined;
-      }
-
-      if (variantProps) {
-        for (const propName in variantProps) {
-          const prop = variantProps[propName];
-
-          // Get the current value for this instance
-          let currentValue = prop.values[0];
+          // Try to get property definitions from component set (even if errored)
+          let propertyDefinitions: any = null;
           try {
-            // Try to get the current variant property value
-            const variantProperties = (instance as any).variantProperties;
-            if (variantProperties && variantProperties[propName]) {
-              currentValue = variantProperties[propName];
+            if ('componentPropertyDefinitions' in componentSet) {
+              propertyDefinitions = componentSet.componentPropertyDefinitions;
+              console.log('🔍 [DEBUG] Got componentPropertyDefinitions from component set');
             }
-          } catch (e) {
-            // Fallback to default
+          } catch (error) {
+            console.log('🔍 [DEBUG] Could not access componentPropertyDefinitions, using instance properties only');
           }
 
-          actualProperties.push({
-            name: propName,
-            values: prop.values,
-            default: currentValue || prop.values[0] || 'default'
-          });
+          // Extract properties from instance
+          for (const propName in instanceProps) {
+            const instanceProp = instanceProps[propName];
+            console.log(`🔍 [DEBUG] Processing instance property "${propName}":`, instanceProp);
+
+            let displayName = propName;
+            let values: string[] = [];
+            let currentValue = '';
+
+            // Clean up property name (remove unique identifier for display)
+            if (propName.includes('#')) {
+              displayName = propName.split('#')[0];
+            }
+
+            // Get current value from instance
+            if (instanceProp && typeof instanceProp === 'object' && 'value' in instanceProp) {
+              currentValue = String(instanceProp.value);
+            } else {
+              currentValue = String(instanceProp);
+            }
+
+            // Try to get property definition for values
+            if (propertyDefinitions && propertyDefinitions[propName]) {
+              const propDef = propertyDefinitions[propName];
+              console.log(`🔍 [DEBUG] Found property definition for "${propName}":`, propDef);
+
+              switch (propDef.type) {
+                case 'VARIANT':
+                  values = propDef.variantOptions || [];
+                  break;
+                case 'BOOLEAN':
+                  values = ['true', 'false'];
+                  break;
+                case 'TEXT':
+                  values = [currentValue || 'Text content'];
+                  break;
+                case 'INSTANCE_SWAP':
+                  if (propDef.preferredValues && Array.isArray(propDef.preferredValues)) {
+                    values = propDef.preferredValues.map((v: any) => v.key || v.name || 'Component instance');
+                  } else {
+                    values = ['Component instance'];
+                  }
+                  break;
+                default:
+                  values = [currentValue || 'Property value'];
+              }
+            } else {
+              // No property definition available, infer from current value
+              console.log(`🔍 [DEBUG] No property definition for "${propName}", inferring from value`);
+
+              if (currentValue === 'true' || currentValue === 'false') {
+                values = ['true', 'false'];
+              } else {
+                values = [currentValue || 'Property value'];
+              }
+            }
+
+            actualProperties.push({
+              name: displayName,
+              values,
+              default: currentValue || values[0] || 'default'
+            });
+
+            console.log(`🔍 [DEBUG] Added instance property:`, { name: displayName, values, default: currentValue });
+          }
+
+          // If we successfully extracted from instance, return early
+          if (actualProperties.length > 0) {
+            console.log(`🔍 [DEBUG] Successfully extracted ${actualProperties.length} properties from selected instance`);
+            return actualProperties;
+          }
         }
       }
-    }
-
-    // Extract component properties from the main component
-    if (mainComponent) {
-      const componentProps = extractComponentProperties(mainComponent);
-      actualProperties.push(...componentProps);
+    } catch (error) {
+      console.log('🔍 [DEBUG] Could not extract from instance componentProperties:', error);
     }
   }
 
-  return actualProperties;
-}
+  // PRIORITY 2: Continue with original extraction methods if instance extraction failed
+  if (node.type === 'COMPONENT_SET') {
+    const componentSet = node as ComponentSetNode;
 
-/**
- * Extract component properties (text, boolean, instance swap) from a component
- */
-function extractComponentProperties(component: ComponentNode): Array<{ name: string; values: string[]; default: string }> {
-  const properties: Array<{ name: string; values: string[]; default: string }> = [];
+    // Method 1: Try componentPropertyDefinitions (most comprehensive)
+    console.log('🔍 [DEBUG] Attempting to access componentPropertyDefinitions...');
+    try {
+      // Test if the property exists first
+      if ('componentPropertyDefinitions' in componentSet) {
+        console.log('🔍 [DEBUG] componentPropertyDefinitions property exists on componentSet');
 
-  try {
-    console.log('🔍 Extracting properties from component:', component.name);
-    
-    // Method 1: Try componentPropertyDefinitions (for component sets)
-    if ('componentPropertyDefinitions' in component && component.componentPropertyDefinitions) {
-      console.log('Found componentPropertyDefinitions:', Object.keys(component.componentPropertyDefinitions));
-      
-      for (const propName in component.componentPropertyDefinitions) {
-        const prop = component.componentPropertyDefinitions[propName];
-        console.log(`Processing property: ${propName}, type: ${prop.type}`);
-        
-        let values: string[] = [];
-        let defaultValue = '';
-        
-        switch (prop.type) {
-          case 'BOOLEAN':
-            values = ['true', 'false'];
-            defaultValue = prop.defaultValue ? 'true' : 'false';
-            break;
-          case 'TEXT':
-            values = [prop.defaultValue || 'Text content'];
-            defaultValue = prop.defaultValue || 'Text content';
-            break;
-          case 'INSTANCE_SWAP':
-            values = prop.preferredValues?.map(v => v.name) || ['Component instance'];
-            defaultValue = prop.preferredValues?.[0]?.name || 'Component instance';
-            break;
-          case 'VARIANT':
-            values = prop.variantOptions || ['Variant option'];
-            defaultValue = prop.defaultValue || values[0] || 'Default';
-            break;
-          default:
-            values = ['Property value'];
-            defaultValue = 'Default';
+        const propertyDefinitions = componentSet.componentPropertyDefinitions;
+        console.log('🔍 [DEBUG] Raw componentPropertyDefinitions:', propertyDefinitions);
+        console.log('🔍 [DEBUG] Type of componentPropertyDefinitions:', typeof propertyDefinitions);
+
+        if (propertyDefinitions && typeof propertyDefinitions === 'object') {
+          const propKeys = Object.keys(propertyDefinitions);
+          console.log('🔍 [DEBUG] Found componentPropertyDefinitions with keys:', propKeys);
+
+          for (const propName in propertyDefinitions) {
+            const prop = propertyDefinitions[propName];
+            console.log(`🔍 [DEBUG] Processing property "${propName}":`, prop);
+
+            let displayName = propName;
+            let values: string[] = [];
+            let defaultValue = '';
+
+            // Clean up property name (remove unique identifier for display)
+            if (propName.includes('#')) {
+              displayName = propName.split('#')[0];
+              console.log(`🔍 [DEBUG] Cleaned display name: "${displayName}" from "${propName}"`);
+            }
+
+            switch (prop.type) {
+              case 'VARIANT':
+                values = prop.variantOptions || [];
+                defaultValue = String(prop.defaultValue) || values[0] || 'default';
+                console.log(`🔍 [DEBUG] VARIANT property "${displayName}": values=${values}, default=${defaultValue}`);
+                break;
+
+              case 'BOOLEAN':
+                values = ['true', 'false'];
+                defaultValue = prop.defaultValue ? 'true' : 'false';
+                console.log(`🔍 [DEBUG] BOOLEAN property "${displayName}": default=${defaultValue}`);
+                break;
+
+              case 'TEXT':
+                values = [String(prop.defaultValue || 'Text content')];
+                defaultValue = String(prop.defaultValue || 'Text content');
+                console.log(`🔍 [DEBUG] TEXT property "${displayName}": value=${defaultValue}`);
+                break;
+
+              case 'INSTANCE_SWAP':
+                // Handle instance swap properties
+                if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
+                  values = prop.preferredValues.map((v: any) => {
+                    console.log(`🔍 [DEBUG] INSTANCE_SWAP preferred value:`, v);
+                    return v.key || v.name || 'Component instance';
+                  });
+                } else {
+                  values = ['Component instance'];
+                }
+                defaultValue = values[0] || 'Component instance';
+                console.log(`🔍 [DEBUG] INSTANCE_SWAP property "${displayName}": values=${values}, default=${defaultValue}`);
+                break;
+
+              default:
+                console.log(`🔍 [DEBUG] Unknown property type "${prop.type}" for "${displayName}"`);
+                values = ['Property value'];
+                defaultValue = 'Default';
+            }
+
+            actualProperties.push({
+              name: displayName,
+              values,
+              default: defaultValue
+            });
+
+            console.log(`🔍 [DEBUG] Added property:`, { name: displayName, values, default: defaultValue });
+          }
+        } else {
+          console.log('🔍 [DEBUG] componentPropertyDefinitions is not a valid object:', propertyDefinitions);
         }
+      } else {
+        console.log('🔍 [DEBUG] componentPropertyDefinitions property does not exist on componentSet');
+      }
+    } catch (error) {
+      console.error('🔍 [ERROR] Could not access componentPropertyDefinitions:', error);
+      console.error('🔍 [ERROR] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    }
 
-        properties.push({
-          name: propName,
-          values,
-          default: defaultValue
-        });
+    // Method 2: Fallback to variantGroupProperties if componentPropertyDefinitions failed
+    if (actualProperties.length === 0) {
+      console.log('🔍 [DEBUG] No properties found, trying variantGroupProperties fallback...');
+      try {
+        const variantProps = componentSet.variantGroupProperties;
+        console.log('🔍 [DEBUG] variantGroupProperties:', variantProps);
+
+        if (variantProps) {
+          const variantKeys = Object.keys(variantProps);
+          console.log('🔍 [DEBUG] Found variantGroupProperties with keys:', variantKeys);
+
+          for (const propName in variantProps) {
+            const prop = variantProps[propName];
+            console.log(`🔍 [DEBUG] Processing variant property "${propName}":`, prop);
+
+            actualProperties.push({
+              name: propName,
+              values: prop.values,
+              default: prop.values[0] || 'default'
+            });
+          }
+        } else {
+          console.log('🔍 [DEBUG] variantGroupProperties is null/undefined');
+        }
+      } catch (error) {
+        console.warn('🔍 [WARN] Component set has errors, cannot access variantGroupProperties:', error);
       }
     }
-    
-    // Method 2: Try componentProperties (fallback)
-    else if ('componentProperties' in component && component.componentProperties) {
-      console.log('Found componentProperties:', Object.keys(component.componentProperties));
-      
-      for (const propName in component.componentProperties) {
-        const prop = component.componentProperties[propName];
-        
-        let values: string[] = [];
-        let defaultValue = '';
-        
-        switch (prop.type) {
-          case 'BOOLEAN':
-            values = ['true', 'false'];
-            defaultValue = prop.defaultValue ? 'true' : 'false';
-            break;
-          case 'TEXT':
-            values = [prop.defaultValue || 'Text content'];
-            defaultValue = prop.defaultValue || 'Text content';
-            break;
-          case 'INSTANCE_SWAP':
-            values = prop.preferredValues?.map(v => v.name) || ['Component instance'];
-            defaultValue = prop.preferredValues?.[0]?.name || 'Component instance';
-            break;
-          case 'VARIANT':
-            values = prop.variantOptions || ['Variant option'];
-            defaultValue = prop.defaultValue || values[0] || 'Default';
-            break;
-          default:
-            values = ['Property value'];
-            defaultValue = 'Default';
-        }
 
-        properties.push({
-          name: propName,
-          values,
-          default: defaultValue
-        });
-      }
-    } else {
-      console.log('No component properties found on component:', component.name);
-      console.log('Available keys:', Object.keys(component));
+    // Method 3: Enhanced structural analysis when APIs fail
+    if (actualProperties.length === 0) {
+      console.log('🔍 [DEBUG] All Figma APIs failed, using comprehensive structural analysis...');
+      const structuralProperties = extractPropertiesFromStructuralAnalysis(componentSet);
+      console.log('🔍 [DEBUG] Properties from structural analysis:', structuralProperties);
+      actualProperties.push(...structuralProperties);
     }
-    
-  } catch (error) {
-    console.error('Error extracting component properties:', error);
+
+    // Method 4: Final fallback - extract from variant names
+    if (actualProperties.length === 0) {
+      console.log('🔍 [DEBUG] Final fallback: extracting from variant names');
+      const variantPropsFromNames = extractPropertiesFromVariantNames(componentSet);
+      console.log('🔍 [DEBUG] Properties from variant names:', variantPropsFromNames);
+      actualProperties.push(...variantPropsFromNames);
+    }
+
+  } else if (node.type === 'COMPONENT') {
+    const component = node as ComponentNode;
+    console.log('🔍 [DEBUG] Processing COMPONENT node:', component.name);
+
+    // For individual components, try componentPropertyDefinitions first
+    try {
+      if ('componentPropertyDefinitions' in component) {
+        const propertyDefinitions = component.componentPropertyDefinitions;
+        console.log('🔍 [DEBUG] Component componentPropertyDefinitions:', propertyDefinitions);
+
+        if (propertyDefinitions && typeof propertyDefinitions === 'object') {
+          const propKeys = Object.keys(propertyDefinitions);
+          console.log('🔍 [DEBUG] Found componentPropertyDefinitions on component with keys:', propKeys);
+
+          for (const propName in propertyDefinitions) {
+            const prop = propertyDefinitions[propName];
+
+            let displayName = propName;
+            let values: string[] = [];
+            let defaultValue = '';
+
+            // Clean up property name (remove unique identifier for display)
+            if (propName.includes('#')) {
+              displayName = propName.split('#')[0];
+            }
+
+            switch (prop.type) {
+              case 'BOOLEAN':
+                values = ['true', 'false'];
+                defaultValue = prop.defaultValue ? 'true' : 'false';
+                break;
+
+              case 'TEXT':
+                values = [String(prop.defaultValue || 'Text content')];
+                defaultValue = String(prop.defaultValue || 'Text content');
+                break;
+
+              case 'INSTANCE_SWAP':
+                if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
+                  values = prop.preferredValues.map((v: any) => v.key || v.name || 'Component instance');
+                } else {
+                  values = ['Component instance'];
+                }
+                defaultValue = values[0] || 'Component instance';
+                break;
+
+              default:
+                values = ['Property value'];
+                defaultValue = 'Default';
+            }
+
+            actualProperties.push({
+              name: displayName,
+              values,
+              default: defaultValue
+            });
+          }
+        }
+      } else {
+        console.log('🔍 [DEBUG] componentPropertyDefinitions does not exist on component');
+      }
+    } catch (error) {
+      console.warn('🔍 [WARN] Could not access componentPropertyDefinitions on component:', error);
+    }
+
+    // Check if component is part of a component set for variant properties
+    if (component.parent && component.parent.type === 'COMPONENT_SET') {
+      const componentSet = component.parent as ComponentSetNode;
+      console.log('🔍 [DEBUG] Component is part of a component set, getting variant properties...');
+
+      try {
+        const variantProps = componentSet.variantGroupProperties;
+        if (variantProps) {
+          for (const propName in variantProps) {
+            const prop = variantProps[propName];
+            // Only add if not already present
+            if (!actualProperties.find(p => p.name === propName)) {
+              actualProperties.push({
+                name: propName,
+                values: prop.values,
+                default: prop.values[0] || 'default'
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('🔍 [WARN] Component set has errors, cannot access variantGroupProperties:', error);
+      }
+    }
+
+  } else if (node.type === 'INSTANCE') {
+    // This case is already handled above in PRIORITY 1
+    console.log('🔍 [DEBUG] Instance case already handled in priority 1');
   }
 
-  console.log(`Extracted ${properties.length} properties:`, properties.map(p => p.name));
-  return properties;
+  // Remove duplicates and return
+  const uniqueProperties: Array<{ name: string; values: string[]; default: string }> = [];
+  actualProperties.forEach(prop => {
+    if (!uniqueProperties.find(p => p.name === prop.name)) {
+      uniqueProperties.push(prop);
+    }
+  });
+
+  console.log(`🔍 [DEBUG] Final result: Extracted ${uniqueProperties.length} unique properties:`, uniqueProperties.map(p => ({ name: p.name, valueCount: p.values.length, default: p.default })));
+  return uniqueProperties;
 }
 
 /**
- * Detect additional properties from component structure (like icon, text content, etc.)
+ * Comprehensive structural analysis to extract properties when Figma APIs fail completely
  */
-function detectAdditionalProperties(node: SceneNode): Array<{ name: string; values: string[]; default: string }> {
+function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode): Array<{ name: string; values: string[]; default: string }> {
   const properties: Array<{ name: string; values: string[]; default: string }> = [];
-  const allNodes = getAllChildNodes(node);
 
-  // Detect icon property
-  const iconNodes = allNodes.filter(child => 
-    child.type === 'VECTOR' || 
-    child.type === 'FRAME' || 
-    child.name.toLowerCase().includes('icon') ||
-    child.name.toLowerCase().includes('symbol')
-  );
+  console.log('🔍 [STRUCTURAL] Starting comprehensive structural analysis of component set:', componentSet.name);
 
-  if (iconNodes.length > 0) {
-    // Check if there are multiple different icon variants
-    const iconNames = iconNodes.map(n => n.name).filter((name, index, arr) => 
-      arr.indexOf(name) === index
+  // First, get all variant properties from variant names
+  const variantProperties = extractPropertiesFromVariantNames(componentSet);
+  properties.push(...variantProperties);
+
+  // Analyze the structure of individual variants to find additional properties
+  const allChildNames: Set<string> = new Set();
+  const textLayers: Set<string> = new Set();
+  const instanceLayers: Set<string> = new Set();
+  const booleanIndicators: Set<string> = new Set();
+
+  componentSet.children.forEach(variant => {
+    if (variant.type === 'COMPONENT') {
+      console.log(`🔍 [STRUCTURAL] Analyzing variant: ${variant.name}`);
+
+      // Traverse the variant to find all child nodes
+      const traverseNode = (node: SceneNode, depth = 0) => {
+        const indent = '  '.repeat(depth);
+        console.log(`🔍 [STRUCTURAL] ${indent}Found child: ${node.name} (type: ${node.type})`);
+
+        allChildNames.add(node.name);
+
+        // Track different types of layers
+        if (node.type === 'TEXT') {
+          textLayers.add(node.name);
+        } else if (node.type === 'INSTANCE') {
+          instanceLayers.add(node.name);
+        }
+
+        // Look for boolean indicators (visible/hidden pattern)
+        if (node.visible === false || node.name.toLowerCase().includes('hidden')) {
+          booleanIndicators.add(node.name);
+        }
+
+        // Recursively traverse children
+        if ('children' in node && node.children) {
+          node.children.forEach(child => traverseNode(child, depth + 1));
+        }
+      };
+
+      traverseNode(variant);
+    }
+  });
+
+  console.log('🔍 [STRUCTURAL] Analysis results:');
+  console.log('🔍 [STRUCTURAL] - All child names:', Array.from(allChildNames));
+  console.log('🔍 [STRUCTURAL] - Text layers:', Array.from(textLayers));
+  console.log('🔍 [STRUCTURAL] - Instance layers:', Array.from(instanceLayers));
+  console.log('🔍 [STRUCTURAL] - Boolean indicators:', Array.from(booleanIndicators));
+
+  // Infer additional properties from common patterns
+
+  // 1. Text properties (if there are text layers)
+  textLayers.forEach(textLayerName => {
+    const cleanName = textLayerName.replace(/\s*(layer|text|label)?\s*/gi, '').trim();
+    if (cleanName && !properties.find(p => p.name.toLowerCase() === cleanName.toLowerCase())) {
+      properties.push({
+        name: cleanName,
+        values: ['Text content'],
+        default: 'Label'
+      });
+      console.log(`🔍 [STRUCTURAL] Added TEXT property: ${cleanName}`);
+    }
+  });
+
+  // 2. Instance swap properties (for icon/component slots)
+  instanceLayers.forEach(instanceLayerName => {
+    const cleanName = instanceLayerName.replace(/\s*(layer|instance)?\s*/gi, '').trim();
+    if (cleanName && !properties.find(p => p.name.toLowerCase() === cleanName.toLowerCase())) {
+      properties.push({
+        name: cleanName,
+        values: ['Component instance'],
+        default: 'Default component'
+      });
+      console.log(`🔍 [STRUCTURAL] Added INSTANCE_SWAP property: ${cleanName}`);
+    }
+  });
+
+  // 3. Boolean properties (for show/hide toggles)
+  const commonBooleanPatterns = [
+    'icon before', 'icon after', 'slot before', 'slot after',
+    'before', 'after', 'prefix', 'suffix', 'leading', 'trailing'
+  ];
+
+  commonBooleanPatterns.forEach(pattern => {
+    const foundLayer = Array.from(allChildNames).find(name =>
+      name.toLowerCase().includes(pattern.toLowerCase())
     );
-    
-    properties.push({
-      name: 'icon',
-      values: iconNames.length > 1 ? iconNames : ['arrow-right', 'chevron-down', 'plus', 'close'],
-      default: iconNames[0] || 'arrow-right'
+
+    if (foundLayer && !properties.find(p => p.name.toLowerCase().includes(pattern.toLowerCase()))) {
+      const propertyName = pattern.split(' ').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1)
+      ).join(' ');
+
+      properties.push({
+        name: propertyName,
+        values: ['true', 'false'],
+        default: 'false'
+      });
+      console.log(`🔍 [STRUCTURAL] Added BOOLEAN property: ${propertyName}`);
+    }
+  });
+
+  // 4. Common button properties if this looks like a button
+  const componentName = componentSet.name.toLowerCase();
+  if (componentName.includes('button') || componentName.includes('btn')) {
+    const commonButtonProperties = [
+      { name: 'Slot Before', type: 'BOOLEAN' },
+      { name: 'Text', type: 'TEXT' },
+      { name: 'Icon Before', type: 'INSTANCE_SWAP' },
+      { name: 'Icon After', type: 'INSTANCE_SWAP' }
+    ];
+
+    commonButtonProperties.forEach(({ name, type }) => {
+      if (!properties.find(p => p.name.toLowerCase() === name.toLowerCase())) {
+        let values: string[], defaultValue: string;
+
+        switch (type) {
+          case 'BOOLEAN':
+            values = ['true', 'false'];
+            defaultValue = 'false';
+            break;
+          case 'TEXT':
+            values = ['Text content'];
+            defaultValue = 'Label';
+            break;
+          case 'INSTANCE_SWAP':
+            values = ['Component instance'];
+            defaultValue = 'Default icon';
+            break;
+          default:
+            values = ['Property value'];
+            defaultValue = 'Default';
+        }
+
+        properties.push({
+          name,
+          values,
+          default: defaultValue
+        });
+        console.log(`🔍 [STRUCTURAL] Added common ${type} property: ${name}`);
+      }
     });
   }
 
-  // Detect text content property
-  const textNodes = allNodes.filter(child => child.type === 'TEXT');
-  if (textNodes.length > 0) {
-    properties.push({
-      name: 'label',
-      values: ['Button text', 'Custom label'],
-      default: 'Button text'
-    });
-  }
-
+  console.log(`🔍 [STRUCTURAL] Final structural analysis result: ${properties.length} properties found`);
   return properties;
 }
 
@@ -580,9 +873,9 @@ function extractActualComponentStates(node: SceneNode): string[] {
 
   if (node.type === 'COMPONENT_SET') {
     const componentSet = node as ComponentSetNode;
-    
+
     // Safely access variantGroupProperties with error handling
-    let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
+    let variantProps: Record<string, {values: string[]}> | undefined;
     try {
       variantProps = componentSet.variantGroupProperties;
     } catch (error) {
@@ -645,7 +938,8 @@ function extractActualComponentStates(node: SceneNode): string[] {
  */
 export async function processEnhancedAnalysis(
   claudeData: any,
-  node: SceneNode
+  node: SceneNode,
+  selectedNode?: SceneNode
 ): Promise<EnhancedAnalysisResult> {
   // Extract tokens from the actual node
   const tokens = await extractDesignTokensFromNode(node);
@@ -653,8 +947,8 @@ export async function processEnhancedAnalysis(
   // Get component context for analysis
   const context = extractAdditionalContext(node);
 
-  // EXTRACT ACTUAL FIGMA DATA (source of truth)
-  const actualProperties = extractActualComponentProperties(node);
+  // EXTRACT ACTUAL FIGMA DATA (source of truth) with selected node for instance properties
+  const actualProperties = extractActualComponentProperties(node, selectedNode);
   const actualStates = extractActualComponentStates(node);
 
   // Build audit results with proper separation of facts vs recommendations
@@ -723,7 +1017,7 @@ export async function processEnhancedAnalysis(
       }
     });
   }
-  
+
   // If no issues were found or processed, show positive result
   if (audit.naming.length === 0) {
     audit.naming.push({
@@ -745,7 +1039,7 @@ export async function processEnhancedAnalysis(
       }
     });
   }
-  
+
   // If no issues were found or processed, show positive result
   if (audit.consistency.length === 0) {
     audit.consistency.push({

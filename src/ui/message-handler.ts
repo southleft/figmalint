@@ -143,6 +143,7 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
 
     // Single component analysis
     let selectedNode = selection[0];
+    const originalSelectedNode = selectedNode; // Keep track of the original selection
 
     // Handle instances
     if (selectedNode.type === 'INSTANCE') {
@@ -159,7 +160,7 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     if (selectedNode.type === 'COMPONENT' && selectedNode.parent?.type === 'COMPONENT_SET') {
       const component = selectedNode as ComponentNode;
       const parentComponentSet = component.parent as ComponentSetNode;
-      
+
       figma.notify('Analyzing parent component set to include all variants...', { timeout: 2000 });
       selectedNode = parentComponentSet;
     }
@@ -184,8 +185,8 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     // Parse JSON response
     const enhancedData = extractJSONFromResponse(analysis);
 
-    // Process the enhanced data
-    const result = await processEnhancedAnalysis(enhancedData, selectedNode);
+    // Process the enhanced data with the original selected node for property extraction
+    const result = await processEnhancedAnalysis(enhancedData, selectedNode, originalSelectedNode);
 
     // Store for later use
     (globalThis as any).lastAnalyzedMetadata = result.metadata;

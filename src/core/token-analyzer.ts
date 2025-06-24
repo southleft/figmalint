@@ -241,12 +241,12 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     // Extract stroke weight only if there are visible strokes
     if ('strokeWeight' in currentNode && typeof currentNode.strokeWeight === 'number') {
       console.log(`🔍 Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
-      
+
       const hasStrokes = 'strokes' in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
       const hasVisibleStrokes = hasStrokes && currentNode.strokes.some(stroke => stroke.visible !== false);
-      
+
       console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}`);
-      
+
       if (currentNode.strokeWeight > 0 && hasVisibleStrokes) {
         const strokeWeightValue = `${currentNode.strokeWeight}px`;
         // Get the color of the first visible stroke
@@ -255,7 +255,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         if (firstVisibleStroke && firstVisibleStroke.type === 'SOLID' && firstVisibleStroke.color) {
           strokeColor = rgbToHex(firstVisibleStroke.color.r, firstVisibleStroke.color.g, firstVisibleStroke.color.b);
         }
-        
+
         if (!borderSet.has(strokeWeightValue)) {
           console.log(`   ✅ Adding stroke weight: ${strokeWeightValue}`);
           borderSet.add(strokeWeightValue);
@@ -297,9 +297,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             source: 'hard-coded',
             context: {
               nodeType: currentNode.type,
-              nodeName: currentNode.name,
-              paddingType: `padding-${padding.name}`,
-              layoutMode: 'layoutMode' in currentNode ? currentNode.layoutMode : 'NONE'
+              nodeName: currentNode.name
             }
           });
         }
