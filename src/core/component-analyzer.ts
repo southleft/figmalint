@@ -951,6 +951,15 @@ export async function processEnhancedAnalysis(
   const actualProperties = extractActualComponentProperties(node, selectedNode);
   const actualStates = extractActualComponentStates(node);
 
+  // Generate property recommendations if component has few or no properties
+  let recommendations: Array<{ name: string; type: string; description: string; examples: string[] }> | undefined;
+
+  const shouldGenerateRecommendations = actualProperties.length <= 2; // Threshold for generating recommendations
+  if (shouldGenerateRecommendations) {
+    console.log('🔍 [DEBUG] Component has few properties, generating recommendations...');
+    recommendations = generatePropertyRecommendations(node.name, actualProperties);
+  }
+
   // Build audit results with proper separation of facts vs recommendations
   const audit = {
     states: [] as Array<{ name: string; found: boolean }>,
@@ -1105,6 +1114,292 @@ export async function processEnhancedAnalysis(
     metadata: cleanMetadata,
     tokens,
     audit,
-    properties: actualProperties // This will be used by the UI for the property cheat sheet
+    properties: actualProperties, // This will be used by the UI for the property cheat sheet
+    recommendations
   };
+}
+
+/**
+ * Generate property recommendations for components with few or no properties
+ */
+function generatePropertyRecommendations(componentName: string, existingProperties: Array<{ name: string; values: string[]; default: string }>): Array<{ name: string; type: string; description: string; examples: string[] }> {
+  const recommendations: Array<{ name: string; type: string; description: string; examples: string[] }> = [];
+  const lowerName = componentName.toLowerCase();
+
+  console.log('🔍 [RECOMMENDATIONS] Generating recommendations for:', componentName, 'with', existingProperties.length, 'existing properties');
+
+  // Check what properties are already present
+  const hasProperty = (name: string) => existingProperties.some(prop =>
+    prop.name.toLowerCase().includes(name.toLowerCase()) ||
+    name.toLowerCase().includes(prop.name.toLowerCase())
+  );
+
+  // Avatar/Profile component recommendations
+  if (lowerName.includes('avatar') || lowerName.includes('profile') || lowerName.includes('user')) {
+    if (!hasProperty('size')) {
+      recommendations.push({
+        name: 'Size',
+        type: 'VARIANT',
+        description: 'Different sizes for various use cases (list items, headers, etc.)',
+        examples: ['xs (24px)', 'sm (32px)', 'md (40px)', 'lg (56px)', 'xl (80px)']
+      });
+    }
+
+    if (!hasProperty('initials') && !hasProperty('text')) {
+      recommendations.push({
+        name: 'Initials',
+        type: 'TEXT',
+        description: 'User initials displayed when no image is available',
+        examples: ['JD', 'AS', 'MT']
+      });
+    }
+
+    if (!hasProperty('image') && !hasProperty('src')) {
+      recommendations.push({
+        name: 'Image',
+        type: 'INSTANCE_SWAP',
+        description: 'User profile image or placeholder',
+        examples: ['User photo', 'Default avatar', 'Company logo']
+      });
+    }
+
+    if (!hasProperty('status') && !hasProperty('indicator')) {
+      recommendations.push({
+        name: 'Status Indicator',
+        type: 'BOOLEAN',
+        description: 'Online/offline status or notification badge',
+        examples: ['true (show indicator)', 'false (no indicator)']
+      });
+    }
+
+    if (!hasProperty('border') && !hasProperty('ring')) {
+      recommendations.push({
+        name: 'Border',
+        type: 'BOOLEAN',
+        description: 'Optional border around the avatar',
+        examples: ['true (with border)', 'false (no border)']
+      });
+    }
+  }
+
+  // Button component recommendations
+  else if (lowerName.includes('button') || lowerName.includes('btn')) {
+    if (!hasProperty('variant') && !hasProperty('style')) {
+      recommendations.push({
+        name: 'Variant',
+        type: 'VARIANT',
+        description: 'Visual style variants for different hierarchy levels',
+        examples: ['primary', 'secondary', 'tertiary', 'danger', 'ghost']
+      });
+    }
+
+    if (!hasProperty('size')) {
+      recommendations.push({
+        name: 'Size',
+        type: 'VARIANT',
+        description: 'Button sizes for different contexts',
+        examples: ['sm', 'md', 'lg', 'xl']
+      });
+    }
+
+    if (!hasProperty('state')) {
+      recommendations.push({
+        name: 'State',
+        type: 'VARIANT',
+        description: 'Interactive states for user feedback',
+        examples: ['default', 'hover', 'focus', 'pressed', 'disabled']
+      });
+    }
+
+    if (!hasProperty('icon') && !hasProperty('before') && !hasProperty('after')) {
+      recommendations.push({
+        name: 'Icon Before',
+        type: 'INSTANCE_SWAP',
+        description: 'Optional icon before the button text',
+        examples: ['Plus icon', 'Arrow icon', 'No icon']
+      });
+    }
+
+    if (!hasProperty('text') && !hasProperty('label')) {
+      recommendations.push({
+        name: 'Text',
+        type: 'TEXT',
+        description: 'Button label text',
+        examples: ['Click me', 'Submit', 'Cancel', 'Save changes']
+      });
+    }
+  }
+
+  // Input/Form component recommendations
+  else if (lowerName.includes('input') || lowerName.includes('field') || lowerName.includes('form')) {
+    if (!hasProperty('label')) {
+      recommendations.push({
+        name: 'Label',
+        type: 'TEXT',
+        description: 'Input label for accessibility and clarity',
+        examples: ['Email address', 'Full name', 'Password']
+      });
+    }
+
+    if (!hasProperty('placeholder')) {
+      recommendations.push({
+        name: 'Placeholder',
+        type: 'TEXT',
+        description: 'Placeholder text shown when input is empty',
+        examples: ['Enter your email...', 'Type here...']
+      });
+    }
+
+    if (!hasProperty('state')) {
+      recommendations.push({
+        name: 'State',
+        type: 'VARIANT',
+        description: 'Input states for different interactions',
+        examples: ['default', 'focus', 'error', 'disabled', 'success']
+      });
+    }
+
+    if (!hasProperty('required')) {
+      recommendations.push({
+        name: 'Required',
+        type: 'BOOLEAN',
+        description: 'Whether the field is required',
+        examples: ['true (required)', 'false (optional)']
+      });
+    }
+
+    if (!hasProperty('error') && !hasProperty('helper')) {
+      recommendations.push({
+        name: 'Helper Text',
+        type: 'TEXT',
+        description: 'Helper or error message below the input',
+        examples: ['This field is required', 'Must be a valid email']
+      });
+    }
+  }
+
+  // Card component recommendations
+  else if (lowerName.includes('card')) {
+    if (!hasProperty('variant') && !hasProperty('elevation')) {
+      recommendations.push({
+        name: 'Elevation',
+        type: 'VARIANT',
+        description: 'Card elevation/shadow level',
+        examples: ['none', 'low', 'medium', 'high']
+      });
+    }
+
+    if (!hasProperty('interactive') && !hasProperty('clickable')) {
+      recommendations.push({
+        name: 'Interactive',
+        type: 'BOOLEAN',
+        description: 'Whether the card is clickable/interactive',
+        examples: ['true (clickable)', 'false (static)']
+      });
+    }
+
+    if (!hasProperty('image') && !hasProperty('media')) {
+      recommendations.push({
+        name: 'Media',
+        type: 'INSTANCE_SWAP',
+        description: 'Optional image or media at the top of the card',
+        examples: ['Product image', 'Hero image', 'No media']
+      });
+    }
+  }
+
+  // Badge/Tag component recommendations
+  else if (lowerName.includes('badge') || lowerName.includes('tag') || lowerName.includes('chip')) {
+    if (!hasProperty('variant') && !hasProperty('color')) {
+      recommendations.push({
+        name: 'Variant',
+        type: 'VARIANT',
+        description: 'Badge color/style variants',
+        examples: ['primary', 'secondary', 'success', 'warning', 'error']
+      });
+    }
+
+    if (!hasProperty('size')) {
+      recommendations.push({
+        name: 'Size',
+        type: 'VARIANT',
+        description: 'Badge sizes for different contexts',
+        examples: ['sm', 'md', 'lg']
+      });
+    }
+
+    if (!hasProperty('text') && !hasProperty('label')) {
+      recommendations.push({
+        name: 'Text',
+        type: 'TEXT',
+        description: 'Badge text content',
+        examples: ['New', 'Beta', 'Sale', '5', 'Premium']
+      });
+    }
+
+    if (!hasProperty('removable') && !hasProperty('close')) {
+      recommendations.push({
+        name: 'Removable',
+        type: 'BOOLEAN',
+        description: 'Whether the badge can be removed/dismissed',
+        examples: ['true (show close button)', 'false (static)']
+      });
+    }
+  }
+
+  // Icon component recommendations
+  else if (lowerName.includes('icon')) {
+    if (!hasProperty('size')) {
+      recommendations.push({
+        name: 'Size',
+        type: 'VARIANT',
+        description: 'Icon sizes for different use cases',
+        examples: ['12px', '16px', '20px', '24px', '32px']
+      });
+    }
+
+    if (!hasProperty('color') && !hasProperty('variant')) {
+      recommendations.push({
+        name: 'Color',
+        type: 'VARIANT',
+        description: 'Icon color variants',
+        examples: ['default', 'muted', 'primary', 'success', 'warning', 'error']
+      });
+    }
+  }
+
+  // Generic component recommendations (if no specific type detected)
+  if (recommendations.length === 0) {
+    // Add some common recommendations for any component
+    if (!hasProperty('size')) {
+      recommendations.push({
+        name: 'Size',
+        type: 'VARIANT',
+        description: 'Component sizes for different contexts',
+        examples: ['sm', 'md', 'lg']
+      });
+    }
+
+    if (!hasProperty('variant') && !hasProperty('style')) {
+      recommendations.push({
+        name: 'Variant',
+        type: 'VARIANT',
+        description: 'Visual style variants',
+        examples: ['primary', 'secondary', 'tertiary']
+      });
+    }
+  }
+
+  // Filter out recommendations that are too similar to existing properties
+  const filteredRecommendations = recommendations.filter(rec => {
+    const similarExists = existingProperties.some(existing => {
+      const nameSimilarity = existing.name.toLowerCase().includes(rec.name.toLowerCase()) ||
+                            rec.name.toLowerCase().includes(existing.name.toLowerCase());
+      return nameSimilarity;
+    });
+    return !similarExists;
+  });
+
+  console.log(`🔍 [RECOMMENDATIONS] Generated ${filteredRecommendations.length} recommendations for ${componentName}`);
+  return filteredRecommendations;
 }

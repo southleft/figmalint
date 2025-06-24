@@ -201,7 +201,8 @@ export interface EnhancedAnalysisResult {
   metadata: ComponentMetadata;
   tokens: TokenAnalysis;
   audit: DetailedAuditResults;
-  properties?: Array<{ name: string; values: string[]; default: string }>;
+  properties: Array<{ name: string; values: string[]; default: string }>;
+  recommendations?: Array<{ name: string; type: string; description: string; examples: string[] }>;
 }
 
 export interface DetailedAudit {

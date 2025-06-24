@@ -1344,6 +1344,12 @@
     let batchMode = false;
     let selectedComponents = [];
 
+    // Track the current token summary for display purposes
+    let currentTokenSummary = null;
+
+    // Track the current analysis data for scoring purposes
+    let currentAnalysisData = null;
+
     // DOM Elements
     const apiKeyInput = document.getElementById('api-key');
     const modelSelect = document.getElementById('model-select');
@@ -1855,6 +1861,10 @@
       console.log('Audit data received in UI:', data.audit);
       console.log('Token summary received in UI:', data.tokenSummary);
 
+      // Store analysis data globally for scoring
+      currentAnalysisData = data;
+      window.currentAnalysisData = data;
+
       analyzeButton.disabled = false;
       quickAnalyzeButton.disabled = false;
       currentMetadata = data.metadata;
@@ -1888,10 +1898,10 @@
       // Update Property Cheat Sheet
       if (data.properties && data.properties.length > 0) {
         console.log('UI: Using data.properties:', data.properties);
-        updatePropertyCheatSheet(data.properties);
+        updatePropertyCheatSheet(data.properties, data.recommendations);
       } else if (data.metadata && data.metadata.propertyCheatSheet && data.metadata.propertyCheatSheet.length > 0) {
         console.log('UI: Using data.metadata.propertyCheatSheet:', data.metadata.propertyCheatSheet);
-        updatePropertyCheatSheet(data.metadata.propertyCheatSheet);
+        updatePropertyCheatSheet(data.metadata.propertyCheatSheet, data.recommendations);
       } else if (data.metadata && data.metadata.props && data.metadata.props.length > 0) {
         console.log('UI: Falling back to data.metadata.props:', data.metadata.props);
         // Create basic properties from metadata props
@@ -1917,10 +1927,10 @@
             };
           }
         });
-        updatePropertyCheatSheet(basicProperties);
+        updatePropertyCheatSheet(basicProperties, data.recommendations);
       } else {
-        console.log('UI: No properties found, showing empty state');
-        propertyCheatsheet.innerHTML = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">No properties detected for this component</p>';
+        console.log('UI: No properties found, checking for recommendations only');
+        updatePropertyCheatSheet([], data.recommendations);
       }
 
       // Update Token Suggestions
@@ -1960,6 +1970,37 @@
       let totalCount = 0;
       let weightedPassScore = 0;
       let weightedTotalScore = 0;
+
+      // START WITH BASELINE POSITIVE SCORING - Award points for good practices
+      console.log('🔍 [SCORING] Starting with baseline positive scoring...');
+
+      // Baseline points for just having a component (5 points)
+      weightedTotalScore += 5;
+      weightedPassScore += 5;
+      console.log('🔍 [SCORING] +5 points for having a component structure');
+
+      // Check for design token usage and award points
+      if (currentTokenSummary && currentTokenSummary.actualTokens > 0) {
+        const tokenBonus = Math.min(currentTokenSummary.actualTokens * 2, 10); // Up to 10 bonus points for tokens
+        weightedTotalScore += tokenBonus;
+        weightedPassScore += tokenBonus;
+        console.log(`🔍 [SCORING] +${tokenBonus} points for using ${currentTokenSummary.actualTokens} design tokens`);
+      }
+
+      // Check for properties and award points
+      if (window.currentAnalysisData && window.currentAnalysisData.properties && window.currentAnalysisData.properties.length > 0) {
+        const propertyBonus = Math.min(window.currentAnalysisData.properties.length * 3, 15); // Up to 15 points for properties
+        weightedTotalScore += propertyBonus;
+        weightedPassScore += propertyBonus;
+        console.log(`🔍 [SCORING] +${propertyBonus} points for having ${window.currentAnalysisData.properties.length} component properties`);
+      }
+
+      // Award points for component structure quality
+      if (audit.naming || audit.consistency) {
+        weightedTotalScore += 5;
+        weightedPassScore += 5;
+        console.log('🔍 [SCORING] +5 points for good component structure');
+      }
 
       // States Audit
       if (audit.states && audit.states.length > 0) {
@@ -2200,9 +2241,11 @@
     }
 
     // Update Property Cheat Sheet
-    function updatePropertyCheatSheet(properties) {
+    function updatePropertyCheatSheet(properties, recommendations) {
+      let html = '';
+
       if (properties && properties.length > 0) {
-        let html = '<table class="property-table">';
+        html += '<table class="property-table">';
         html += '<thead><tr><th>Property</th><th>Values</th><th>Default</th></tr></thead>';
         html += '<tbody>';
 
@@ -2219,10 +2262,37 @@
         });
 
         html += '</tbody></table>';
-        propertyCheatsheet.innerHTML = html;
-      } else {
-        // Show fallback content when no properties are available
-        propertyCheatsheet.innerHTML = `
+      }
+
+      // Add recommendations section if available
+      if (recommendations && recommendations.length > 0) {
+        if (html) html += '<div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px;"></div>';
+
+        html += '<div class="recommendations-section">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 12px; color: var(--primary);">💡 Recommended Properties</h4>';
+        html += '<p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;">Consider adding these properties that developers typically expect for this component type:</p>';
+
+        recommendations.forEach(rec => {
+          html += `
+            <div style="background: var(--surface-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <span style="font-weight: 500; font-size: 12px;">${rec.name}</span>
+                <span style="background: var(--primary); color: white; padding: 2px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase;">${rec.type}</span>
+              </div>
+              <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">${rec.description}</p>
+              <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                ${rec.examples.map(example => `<span class="property-value" style="background: var(--surface); font-size: 10px;">${example}</span>`).join('')}
+              </div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+      }
+
+      // Show fallback content when no properties and no recommendations
+      if (!html) {
+        html = `
           <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
             <div style="font-size: 24px; margin-bottom: var(--space-sm);">📋</div>
             <p>This component has no configurable properties</p>
@@ -2230,6 +2300,8 @@
           </div>
         `;
       }
+
+      propertyCheatsheet.innerHTML = html;
     }
 
     // Enhanced Token Suggestions Display
@@ -3047,6 +3119,14 @@
       document.addEventListener('DOMContentLoaded', initializeUI);
     } else {
       initializeUI();
+    }
+
+    function displayEnhancedAnalysis(data) {
+      console.log('UI: Displaying enhanced analysis results:', data);
+
+      // Store analysis data globally for scoring
+      currentAnalysisData = data;
+      window.currentAnalysisData = data;
     }
   </script>
 </body>
