@@ -31,14 +31,7 @@
       return false;
     }
     if (node.type === "COMPONENT_SET") {
-      try {
-        const componentSet = node;
-        componentSet.variantGroupProperties;
-        return true;
-      } catch (error) {
-        console.warn("Component set has errors, skipping:", error);
-        return false;
-      }
+      return true;
     }
     return true;
   }
@@ -555,7 +548,13 @@
       isComponentSet = true;
       try {
         const componentSet = node;
-        const variantProps = componentSet.variantGroupProperties;
+        let variantProps;
+        try {
+          variantProps = componentSet.variantGroupProperties;
+        } catch (variantError) {
+          console.warn("Component set has errors, cannot access variantGroupProperties:", variantError);
+          variantProps = void 0;
+        }
         if (variantProps) {
           potentialVariants.push(...Object.keys(variantProps));
         }
@@ -645,7 +644,13 @@
     const actualProperties = [];
     if (node.type === "COMPONENT_SET") {
       const componentSet = node;
-      const variantProps = componentSet.variantGroupProperties;
+      let variantProps;
+      try {
+        variantProps = componentSet.variantGroupProperties;
+      } catch (error) {
+        console.warn("Component set has errors, cannot access variantGroupProperties:", error);
+        variantProps = void 0;
+      }
       if (variantProps) {
         for (const propName in variantProps) {
           const prop = variantProps[propName];
@@ -660,7 +665,13 @@
       const component = node;
       if (component.parent && component.parent.type === "COMPONENT_SET") {
         const componentSet = component.parent;
-        const variantProps = componentSet.variantGroupProperties;
+        let variantProps;
+        try {
+          variantProps = componentSet.variantGroupProperties;
+        } catch (error) {
+          console.warn("Component set has errors, cannot access variantGroupProperties:", error);
+          variantProps = void 0;
+        }
         if (variantProps) {
           for (const propName in variantProps) {
             const prop = variantProps[propName];
@@ -677,7 +688,13 @@
       const mainComponent = instance.mainComponent;
       if (mainComponent && mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
         const componentSet = mainComponent.parent;
-        const variantProps = componentSet.variantGroupProperties;
+        let variantProps;
+        try {
+          variantProps = componentSet.variantGroupProperties;
+        } catch (error) {
+          console.warn("Component set has errors, cannot access variantGroupProperties:", error);
+          variantProps = void 0;
+        }
         if (variantProps) {
           for (const propName in variantProps) {
             const prop = variantProps[propName];
@@ -732,7 +749,13 @@
     const actualStates = [];
     if (node.type === "COMPONENT_SET") {
       const componentSet = node;
-      const variantProps = componentSet.variantGroupProperties;
+      let variantProps;
+      try {
+        variantProps = componentSet.variantGroupProperties;
+      } catch (error) {
+        console.warn("Component set has errors, cannot access variantGroupProperties:", error);
+        variantProps = void 0;
+      }
       if (variantProps) {
         for (const propName in variantProps) {
           const lowerPropName = propName.toLowerCase();
@@ -1231,6 +1254,7 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
     }
   }
   async function handleEnhancedAnalyze(options) {
+    var _a;
     try {
       if (!storedApiKey) {
         throw new Error("API key not found. Please save your Claude API key first.");
@@ -1253,8 +1277,14 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
           throw new Error("This instance has no main component. Please select a component directly.");
         }
       }
+      if (selectedNode.type === "COMPONENT" && ((_a = selectedNode.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") {
+        const component = selectedNode;
+        const parentComponentSet = component.parent;
+        figma.notify("Analyzing parent component set to include all variants...", { timeout: 2e3 });
+        selectedNode = parentComponentSet;
+      }
       if (!isValidNodeForAnalysis(selectedNode)) {
-        throw new Error("Please select a Frame, Component, or Instance to analyze");
+        throw new Error("Please select a Frame, Component, Component Set, or Instance to analyze");
       }
       const componentContext = extractComponentContext(selectedNode);
       const prompt = createEnhancedMetadataPrompt(componentContext);

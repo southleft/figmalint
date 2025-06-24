@@ -178,7 +178,15 @@ function detectVariantPatterns(node: SceneNode): { isComponentSet: boolean; pote
     isComponentSet = true;
     try {
       const componentSet = node as ComponentSetNode;
-      const variantProps = componentSet.variantGroupProperties;
+      // Safely access variantGroupProperties with error handling
+      let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
+      try {
+        variantProps = componentSet.variantGroupProperties;
+      } catch (variantError) {
+        console.warn('Component set has errors, cannot access variantGroupProperties:', variantError);
+        variantProps = undefined;
+      }
+      
       if (variantProps) {
         potentialVariants.push(...Object.keys(variantProps));
       }
@@ -312,7 +320,15 @@ function extractActualComponentProperties(node: SceneNode): Array<{ name: string
 
   if (node.type === 'COMPONENT_SET') {
     const componentSet = node as ComponentSetNode;
-    const variantProps = componentSet.variantGroupProperties;
+    
+    // Safely access variantGroupProperties with error handling
+    let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
+    try {
+      variantProps = componentSet.variantGroupProperties;
+    } catch (error) {
+      console.warn('Component set has errors, cannot access variantGroupProperties:', error);
+      variantProps = undefined;
+    }
 
     // Extract real variant properties from the component set
     if (variantProps) {
@@ -330,7 +346,15 @@ function extractActualComponentProperties(node: SceneNode): Array<{ name: string
     const component = node as ComponentNode;
     if (component.parent && component.parent.type === 'COMPONENT_SET') {
       const componentSet = component.parent as ComponentSetNode;
-      const variantProps = componentSet.variantGroupProperties;
+      
+      // Safely access variantGroupProperties with error handling
+      let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
+      try {
+        variantProps = componentSet.variantGroupProperties;
+      } catch (error) {
+        console.warn('Component set has errors, cannot access variantGroupProperties:', error);
+        variantProps = undefined;
+      }
 
       if (variantProps) {
         for (const propName in variantProps) {
@@ -350,7 +374,15 @@ function extractActualComponentProperties(node: SceneNode): Array<{ name: string
 
     if (mainComponent && mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
       const componentSet = mainComponent.parent as ComponentSetNode;
-      const variantProps = componentSet.variantGroupProperties;
+      
+      // Safely access variantGroupProperties with error handling
+      let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
+      try {
+        variantProps = componentSet.variantGroupProperties;
+      } catch (error) {
+        console.warn('Component set has errors, cannot access variantGroupProperties:', error);
+        variantProps = undefined;
+      }
 
       if (variantProps) {
         for (const propName in variantProps) {
@@ -434,7 +466,15 @@ function extractActualComponentStates(node: SceneNode): string[] {
 
   if (node.type === 'COMPONENT_SET') {
     const componentSet = node as ComponentSetNode;
-    const variantProps = componentSet.variantGroupProperties;
+    
+    // Safely access variantGroupProperties with error handling
+    let variantProps: Record<string, ComponentPropertyDefinition> | undefined;
+    try {
+      variantProps = componentSet.variantGroupProperties;
+    } catch (error) {
+      console.warn('Component set has errors, cannot access variantGroupProperties:', error);
+      variantProps = undefined;
+    }
 
     // Look for state-related properties
     if (variantProps) {

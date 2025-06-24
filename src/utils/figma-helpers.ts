@@ -22,17 +22,11 @@ export function isValidNodeForAnalysis(node: SceneNode): boolean {
     return false;
   }
 
-  // Special check for component sets - skip if they have errors
+  // Special check for component sets - always allow them for analysis
   if (node.type === 'COMPONENT_SET') {
-    try {
-      // Try to access variant properties to check if the component set is valid
-      const componentSet = node as ComponentSetNode;
-      componentSet.variantGroupProperties; // Just access to verify it's valid
-      return true;
-    } catch (error) {
-      console.warn('Component set has errors, skipping:', error);
-      return false;
-    }
+    // Component sets are always valid for analysis, even if they have errors
+    // The error handling is done in the component-analyzer when accessing properties
+    return true;
   }
 
   return true;

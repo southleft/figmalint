@@ -155,9 +155,18 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
       }
     }
 
+    // Handle component variants - if user selected a variant, analyze the parent component set
+    if (selectedNode.type === 'COMPONENT' && selectedNode.parent?.type === 'COMPONENT_SET') {
+      const component = selectedNode as ComponentNode;
+      const parentComponentSet = component.parent as ComponentSetNode;
+      
+      figma.notify('Analyzing parent component set to include all variants...', { timeout: 2000 });
+      selectedNode = parentComponentSet;
+    }
+
     // Validate node type
     if (!isValidNodeForAnalysis(selectedNode)) {
-      throw new Error('Please select a Frame, Component, or Instance to analyze');
+      throw new Error('Please select a Frame, Component, Component Set, or Instance to analyze');
     }
 
     // Extract component context
