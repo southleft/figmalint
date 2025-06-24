@@ -101,6 +101,21 @@ ${componentContext.additionalContext ? `
 3. **Accessibility Assessment**: Evaluate accessibility compliance
 4. **Naming Convention Review**: Check layer naming consistency
 5. **Design System Integration**: Suggest improvements for scalability
+6. **MCP Server Compatibility**: Ensure component structure supports automated code generation
+
+**MCP Server Integration Focus:**
+- **Property Definitions**: Components need clearly defined props that map to code
+- **State Management**: Interactive components require all necessary states (hover, focus, disabled, etc.)
+- **Token Usage**: Hard-coded values should use design tokens for consistency
+- **Semantic Structure**: Layer names should be descriptive and follow conventions
+- **Variant Patterns**: Only recommend variants when they serve a logical purpose (size, style, or functional differences)
+- **Developer Handoff**: Metadata should include implementation guidance
+
+**Important: Variant Recommendations Guidelines:**
+- Do NOT recommend variants for components that are intentionally single-purpose (icons, badges, simple dividers)
+- Only suggest variants when there's clear evidence the component should have multiple visual or functional states
+- Consider the component family: buttons typically need variants, simple graphics usually don't
+- Base variant suggestions on actual design system patterns, not theoretical possibilities
 
 **Design Token Focus Areas:**
 - **Color Tokens**: Semantic color usage (primary, secondary, neutral, semantic colors)
@@ -189,6 +204,16 @@ ${componentContext.additionalContext ? `
     "namingIssues": ["List layer naming problems with suggestions"],
     "consistencyIssues": ["List design consistency issues"],
     "tokenOpportunities": ["Specific recommendations for design token implementation"]
+  },
+  "mcpReadiness": {
+    "score": "0-100 readiness score for MCP server code generation",
+    "strengths": ["What's already well-structured for code generation"],
+    "gaps": ["What needs to be improved for MCP compatibility"],
+    "recommendations": [
+      "Specific actions to make this component MCP-ready",
+      "Priority improvements for code generation accuracy"
+    ],
+    "implementationNotes": "Developer guidance for implementing this component"
   }
 }
 

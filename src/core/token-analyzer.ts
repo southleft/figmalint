@@ -294,7 +294,13 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             value: `${padding.value}px`,
             type: 'padding',
             isToken: false,
-            source: 'hard-coded'
+            source: 'hard-coded',
+            context: {
+              nodeType: currentNode.type,
+              nodeName: currentNode.name,
+              paddingType: `padding-${padding.name}`,
+              layoutMode: 'layoutMode' in currentNode ? currentNode.layoutMode : 'NONE'
+            }
           });
         }
       });

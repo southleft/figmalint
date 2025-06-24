@@ -333,7 +333,13 @@
               value: `${padding.value}px`,
               type: "padding",
               isToken: false,
-              source: "hard-coded"
+              source: "hard-coded",
+              context: {
+                nodeType: currentNode.type,
+                nodeName: currentNode.name,
+                paddingType: `padding-${padding.name}`,
+                layoutMode: "layoutMode" in currentNode ? currentNode.layoutMode : "NONE"
+              }
             });
           }
         });
@@ -998,8 +1004,14 @@ ${componentContext.additionalContext ? `
 - **State Management**: Interactive components require all necessary states (hover, focus, disabled, etc.)
 - **Token Usage**: Hard-coded values should use design tokens for consistency
 - **Semantic Structure**: Layer names should be descriptive and follow conventions
-- **Variant Patterns**: Component sets should have logical variant properties
+- **Variant Patterns**: Only recommend variants when they serve a logical purpose (size, style, or functional differences)
 - **Developer Handoff**: Metadata should include implementation guidance
+
+**Important: Variant Recommendations Guidelines:**
+- Do NOT recommend variants for components that are intentionally single-purpose (icons, badges, simple dividers)
+- Only suggest variants when there's clear evidence the component should have multiple visual or functional states
+- Consider the component family: buttons typically need variants, simple graphics usually don't
+- Base variant suggestions on actual design system patterns, not theoretical possibilities
 
 **Design Token Focus Areas:**
 - **Color Tokens**: Semantic color usage (primary, secondary, neutral, semantic colors)

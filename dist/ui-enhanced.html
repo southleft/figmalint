@@ -740,10 +740,8 @@
     .token-usage {
       font-size: 10px;
       color: var(--text-secondary);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      cursor: help;
+      line-height: 1.3;
+      word-wrap: break-word;
     }
 
     /* Playground Grid */
@@ -2466,14 +2464,15 @@
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Spacing</h5>';
           hardCodedSpacing.forEach(token => {
             const contextInfo = token.context ?
-              `${token.context.nodeType} in "${token.context.nodeName}"` :
+              `${token.context.paddingType || token.type} on "${token.context.nodeName}" (${token.context.nodeType})` :
               'Unknown context';
 
             html += `
               <div class="token-item-compact warning">
                 <div class="token-details">
                   <div class="token-name">${token.value}</div>
-                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                  <div class="token-usage">${contextInfo}</div>
+                  <div class="token-usage" style="margin-top: 2px; font-style: italic;">${token.suggestion || 'Create or use existing spacing token'}</div>
                 </div>
               </div>
             `;
