@@ -661,6 +661,11 @@
           });
         }
       }
+      if (componentSet.children.length > 0) {
+        const firstComponent = componentSet.children[0];
+        const componentProps = extractComponentProperties(firstComponent);
+        actualProperties.push(...componentProps);
+      }
     } else if (node.type === "COMPONENT") {
       const component = node;
       if (component.parent && component.parent.type === "COMPONENT_SET") {
@@ -683,6 +688,8 @@
           }
         }
       }
+      const componentProps = extractComponentProperties(component);
+      actualProperties.push(...componentProps);
     } else if (node.type === "INSTANCE") {
       const instance = node;
       const mainComponent = instance.mainComponent;
@@ -714,34 +721,53 @@
           }
         }
       }
+      if (mainComponent) {
+        const componentProps = extractComponentProperties(mainComponent);
+        actualProperties.push(...componentProps);
+      }
     }
-    const detectedProperties = detectAdditionalProperties(node);
-    actualProperties.push(...detectedProperties);
     return actualProperties;
   }
-  function detectAdditionalProperties(node) {
+  function extractComponentProperties(component) {
+    var _a, _b, _c;
     const properties = [];
-    const allNodes = getAllChildNodes(node);
-    const iconNodes = allNodes.filter(
-      (child) => child.type === "VECTOR" || child.type === "FRAME" || child.name.toLowerCase().includes("icon") || child.name.toLowerCase().includes("symbol")
-    );
-    if (iconNodes.length > 0) {
-      const iconNames = iconNodes.map((n) => n.name).filter(
-        (name, index, arr) => arr.indexOf(name) === index
-      );
-      properties.push({
-        name: "icon",
-        values: iconNames.length > 1 ? iconNames : ["arrow-right", "chevron-down", "plus", "close"],
-        default: iconNames[0] || "arrow-right"
-      });
-    }
-    const textNodes = allNodes.filter((child) => child.type === "TEXT");
-    if (textNodes.length > 0) {
-      properties.push({
-        name: "label",
-        values: ["Button text", "Custom label"],
-        default: "Button text"
-      });
+    try {
+      const componentProperties = component.componentProperties;
+      if (componentProperties) {
+        for (const propName in componentProperties) {
+          const prop = componentProperties[propName];
+          let values = [];
+          let defaultValue = "";
+          switch (prop.type) {
+            case "BOOLEAN":
+              values = ["true", "false"];
+              defaultValue = prop.defaultValue ? "true" : "false";
+              break;
+            case "TEXT":
+              values = [prop.defaultValue || "Text content"];
+              defaultValue = prop.defaultValue || "Text content";
+              break;
+            case "INSTANCE_SWAP":
+              values = ((_a = prop.preferredValues) == null ? void 0 : _a.map((v) => v.name)) || ["Component instance"];
+              defaultValue = ((_c = (_b = prop.preferredValues) == null ? void 0 : _b[0]) == null ? void 0 : _c.name) || "Component instance";
+              break;
+            case "VARIANT":
+              values = prop.variantOptions || ["Variant option"];
+              defaultValue = prop.defaultValue || values[0] || "Default";
+              break;
+            default:
+              values = ["Property value"];
+              defaultValue = "Default";
+          }
+          properties.push({
+            name: propName,
+            values,
+            default: defaultValue
+          });
+        }
+      }
+    } catch (error) {
+      console.warn("Error extracting component properties:", error);
     }
     return properties;
   }

@@ -341,6 +341,13 @@ function extractActualComponentProperties(node: SceneNode): Array<{ name: string
         });
       }
     }
+
+    // Also extract component properties from the first child component
+    if (componentSet.children.length > 0) {
+      const firstComponent = componentSet.children[0] as ComponentNode;
+      const componentProps = extractComponentProperties(firstComponent);
+      actualProperties.push(...componentProps);
+    }
   } else if (node.type === 'COMPONENT') {
     // For individual components, check if they're part of a component set
     const component = node as ComponentNode;
@@ -367,6 +374,10 @@ function extractActualComponentProperties(node: SceneNode): Array<{ name: string
         }
       }
     }
+
+    // Extract component properties from this component
+    const componentProps = extractComponentProperties(component);
+    actualProperties.push(...componentProps);
   } else if (node.type === 'INSTANCE') {
     // For instances, get properties from the main component
     const instance = node as InstanceNode;
@@ -408,13 +419,69 @@ function extractActualComponentProperties(node: SceneNode): Array<{ name: string
         }
       }
     }
+
+    // Extract component properties from the main component
+    if (mainComponent) {
+      const componentProps = extractComponentProperties(mainComponent);
+      actualProperties.push(...componentProps);
+    }
   }
 
-  // Add common component properties detected from structure
-  const detectedProperties = detectAdditionalProperties(node);
-  actualProperties.push(...detectedProperties);
-
   return actualProperties;
+}
+
+/**
+ * Extract component properties (text, boolean, instance swap) from a component
+ */
+function extractComponentProperties(component: ComponentNode): Array<{ name: string; values: string[]; default: string }> {
+  const properties: Array<{ name: string; values: string[]; default: string }> = [];
+
+  try {
+    // Access component properties safely
+    const componentProperties = component.componentProperties;
+    
+    if (componentProperties) {
+      for (const propName in componentProperties) {
+        const prop = componentProperties[propName];
+        
+        let values: string[] = [];
+        let defaultValue = '';
+        
+        switch (prop.type) {
+          case 'BOOLEAN':
+            values = ['true', 'false'];
+            defaultValue = prop.defaultValue ? 'true' : 'false';
+            break;
+          case 'TEXT':
+            values = [prop.defaultValue || 'Text content'];
+            defaultValue = prop.defaultValue || 'Text content';
+            break;
+          case 'INSTANCE_SWAP':
+            // For instance swap, we'll show the preferred values if available
+            values = prop.preferredValues?.map(v => v.name) || ['Component instance'];
+            defaultValue = prop.preferredValues?.[0]?.name || 'Component instance';
+            break;
+          case 'VARIANT':
+            values = prop.variantOptions || ['Variant option'];
+            defaultValue = prop.defaultValue || values[0] || 'Default';
+            break;
+          default:
+            values = ['Property value'];
+            defaultValue = 'Default';
+        }
+
+        properties.push({
+          name: propName,
+          values,
+          default: defaultValue
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('Error extracting component properties:', error);
+  }
+
+  return properties;
 }
 
 /**
