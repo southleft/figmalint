@@ -1344,9 +1344,6 @@
     let batchMode = false;
     let selectedComponents = [];
 
-    // Track the current token summary for display purposes
-    let currentTokenSummary = null;
-
     // Track the current analysis data for scoring purposes
     let currentAnalysisData = null;
 
@@ -3119,14 +3116,6 @@
       document.addEventListener('DOMContentLoaded', initializeUI);
     } else {
       initializeUI();
-    }
-
-    function displayEnhancedAnalysis(data) {
-      console.log('UI: Displaying enhanced analysis results:', data);
-
-      // Store analysis data globally for scoring
-      currentAnalysisData = data;
-      window.currentAnalysisData = data;
     }
   </script>
 </body>
