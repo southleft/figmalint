@@ -19,6 +19,7 @@ export interface ComponentMetadata {
   accessibility: AccessibilityInfo;
   tokens: TokenRecommendations;
   audit: AuditResults;
+  mcpReadiness?: MCPReadiness;
 }
 
 export interface PropertyDefinition {
@@ -58,6 +59,14 @@ export interface AuditResults {
   tokenOpportunities?: string[];
 }
 
+export interface MCPReadiness {
+  score: number;
+  strengths: string[];
+  gaps: string[];
+  recommendations: string[];
+  implementationNotes: string;
+}
+
 // Token Analysis Types
 export interface DesignToken {
   name: string;
@@ -68,9 +77,11 @@ export interface DesignToken {
   source: 'figma-style' | 'figma-variable' | 'hard-coded' | 'ai-suggestion';
   recommendation?: string;
   suggestion?: string;
+  strokeColor?: string;
   context?: {
     nodeType?: string;
     nodeName?: string;
+    hasVisibleStroke?: boolean;
   };
 }
 
@@ -169,15 +180,7 @@ export type UIMessageType =
   | 'update-model'
   | 'analyze'
   | 'analyze-enhanced'
-  | 'generate-variants'
-  | 'generate-playground'
-  | 'generate-docs-frame'
-  | 'embed-metadata'
-  | 'clear-api-key'
-  | 'save-collab-notes'
-  | 'fix-naming'
-  | 'add-state'
-  | 'fix-accessibility';
+  | 'clear-api-key';
 
 // Enhanced Analysis Types
 export interface EnhancedAnalysisOptions {
@@ -187,11 +190,18 @@ export interface EnhancedAnalysisOptions {
   includeTokens?: boolean;
 }
 
+export interface DetailedAuditResults {
+  states: Array<{ name: string; found: boolean }>;
+  accessibility: Array<{ check: string; status: 'pass' | 'fail' | 'warning'; suggestion: string }>;
+  naming: Array<{ layer: string; issue: string; suggestion: string }>;
+  consistency: Array<{ property: string; issue: string; suggestion: string }>;
+}
+
 export interface EnhancedAnalysisResult {
   metadata: ComponentMetadata;
   tokens: TokenAnalysis;
-  audit: DetailedAudit;
-  suggestions: Suggestion[];
+  audit: DetailedAuditResults;
+  properties?: Array<{ name: string; values: string[]; default: string }>;
 }
 
 export interface DetailedAudit {

@@ -1,6 +1,6 @@
 {
-  "name": "AI Design Co-Pilot",
-  "id": "ai-design-copilot",
+  "name": "FigmaLint",
+  "id": "figmalint",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui-enhanced.html",
