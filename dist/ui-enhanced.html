@@ -1377,7 +1377,7 @@
     const mcpReadiness = document.getElementById('mcp-readiness');
     const mcpScore = document.getElementById('mcp-score');
     const exportMetadataButton = document.getElementById('export-metadata');
-    const exportFormat = document.getElementById('export-format');
+    // Note: export-format element is created dynamically, so we get it in the handler function
 
 
     // Status Icons
@@ -1441,7 +1441,13 @@
         return;
       }
 
-      const format = exportFormat.value;
+      const exportFormatSelect = document.getElementById('export-format');
+      if (!exportFormatSelect) {
+        updateStatus('Export format not selected', 'error');
+        return;
+      }
+      
+      const format = exportFormatSelect.value;
       let content, filename, mimeType;
 
       if (format === 'json') {
