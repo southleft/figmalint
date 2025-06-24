@@ -207,6 +207,10 @@
       gap: var(--space-sm);
     }
 
+    .collapsible-title > .tooltip {
+      left: -8px;
+    }
+
     .collapsible-icon {
       transition: transform var(--transition-fast);
     }
@@ -1475,7 +1479,7 @@
     function generateTypeScriptInterface(metadata) {
       const componentName = metadata.component.replace(/[^a-zA-Z0-9]/g, '');
       let content = `// Generated TypeScript interface for ${metadata.component}\n\n`;
-      
+
       // Props interface
       content += `export interface ${componentName}Props {\n`;
       if (metadata.props && metadata.props.length > 0) {
@@ -1951,6 +1955,8 @@
       let html = '';
       let passCount = 0;
       let totalCount = 0;
+      let weightedPassScore = 0;
+      let weightedTotalScore = 0;
 
       // States Audit
       if (audit.states && audit.states.length > 0) {
@@ -1983,12 +1989,19 @@
           `;
           totalCount++;
           passCount++;
+          // High weight for states (3x) - critical for MCP compatibility
+          weightedTotalScore += 3;
+          weightedPassScore += 3;
         } else {
           // Show standard state audit for interactive components
           audit.states.forEach(state => {
             totalCount++;
             const status = state.found ? 'pass' : 'fail';
             if (state.found) passCount++;
+
+            // High weight for states (3x) - critical for MCP compatibility
+            weightedTotalScore += 3;
+            if (state.found) weightedPassScore += 3;
 
             html += `
               <div class="audit-item">
@@ -2024,6 +2037,10 @@
           totalCount++;
           const status = item.status;
           if (status === 'pass') passCount++;
+
+          // Medium-high weight for accessibility (2x) - important for compliance
+          weightedTotalScore += 2;
+          if (status === 'pass') weightedPassScore += 2;
 
           html += `
             <div class="audit-item">
@@ -2061,6 +2078,10 @@
           const status = isPositive ? 'pass' : 'warning';
           if (isPositive) passCount++;
 
+          // Low weight for naming (0.5x) - nice to have but doesn't affect MCP compatibility
+          weightedTotalScore += 0.5;
+          if (isPositive) weightedPassScore += 0.5;
+
           html += `
             <div class="audit-item">
               <span class="audit-status ${status}">${isPositive ? '✅' : '⚠️'}</span>
@@ -2093,6 +2114,9 @@
         html += '</div>';
         totalCount++;
         passCount++;
+        // Low weight for naming (0.5x) - nice to have but doesn't affect MCP compatibility
+        weightedTotalScore += 0.5;
+        weightedPassScore += 0.5;
       }
 
       // Consistency Audit (if available)
@@ -2117,6 +2141,10 @@
           const isPositive = item.issue && item.issue.includes('follows design system patterns');
           const status = isPositive ? 'pass' : 'warning';
           if (isPositive) passCount++;
+
+          // Medium weight for consistency (2x) - affects code generation quality
+          weightedTotalScore += 2;
+          if (isPositive) weightedPassScore += 2;
 
           html += `
             <div class="audit-item">
@@ -2150,13 +2178,16 @@
         html += '</div>';
         totalCount++;
         passCount++;
+        // Medium weight for consistency (2x) - affects code generation quality
+        weightedTotalScore += 2;
+        weightedPassScore += 2;
       }
 
       auditContent.innerHTML = html;
 
-      // Update audit score - fix divide by zero issue
-      const score = totalCount > 0 ? Math.round((passCount / totalCount) * 100) : 0;
-      console.log(`Audit scoring: ${passCount} passed out of ${totalCount} total = ${score}%`);
+      // Update audit score using weighted scoring for MCP compatibility focus
+      const score = weightedTotalScore > 0 ? Math.round((weightedPassScore / weightedTotalScore) * 100) : 0;
+      console.log(`Audit scoring: ${weightedPassScore} weighted points out of ${weightedTotalScore} total = ${score}% (simple: ${passCount}/${totalCount})`);
 
       auditScore.innerHTML = `<span>Score: ${score}%</span>`;
       auditScore.className = `status-banner ${
@@ -2418,12 +2449,10 @@
           html += '<div style="margin-bottom: 12px;">';
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Spacing Tokens in Use</h5>';
           actualSpacingTokens.forEach(token => {
-            const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
             html += `
               <div class="token-item-compact">
-                <div class="token-swatch-spacing" style="width: ${Math.min(parseInt(token.value), 40)}px; height: 12px; background: var(--success);" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">${spaceIcon} ${token.name}</div>
+                  <div class="token-name">${token.name}</div>
                   <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
                 </div>
               </div>
@@ -2436,16 +2465,14 @@
           html += '<div>';
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Spacing</h5>';
           hardCodedSpacing.forEach(token => {
-            const spaceIcon = token.type === 'padding' ? '📦' : '↔️';
             const contextInfo = token.context ?
-              `${token.context.nodeType} (${token.context.layoutMode}) in "${token.context.nodeName}"` :
+              `${token.context.nodeType} in "${token.context.nodeName}"` :
               'Unknown context';
 
             html += `
               <div class="token-item-compact warning">
-                <div class="token-swatch-spacing" style="width: ${Math.min(parseInt(token.value), 40)}px; height: 12px; background: var(--warning);" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">${spaceIcon} ${token.value} (${token.property})</div>
+                  <div class="token-name">${token.value}</div>
                   <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
               </div>
@@ -2619,7 +2646,7 @@
       let scoreColor = 'var(--error)';
       if (score >= 80) scoreColor = 'var(--success)';
       else if (score >= 60) scoreColor = 'var(--warning)';
-      
+
       mcpScore.innerHTML = `<span style="color: ${scoreColor}">Score: ${score}/100</span>`;
 
       let html = '';
@@ -2668,7 +2695,7 @@
     // Update Developer Export Section
     function updateDeveloperExport(metadata) {
       const developerExportSection = document.getElementById('developer-export');
-      
+
       if (!metadata) {
         exportMetadataButton.disabled = true;
         developerExportSection.innerHTML = `
@@ -2688,7 +2715,7 @@
       }
 
       exportMetadataButton.disabled = false;
-      
+
       // Clear existing content and show proper preview
       const previewHtml = `
         <div class="export-options" style="margin-bottom: var(--space-md);">
@@ -2708,9 +2735,9 @@
           <div style="margin-bottom: 4px;">• TypeScript: Component interface definition</div>
         </div>
       `;
-      
+
       developerExportSection.innerHTML = previewHtml;
-      
+
       // Re-attach event listener since we replaced the button
       const newExportButton = document.getElementById('export-metadata');
       if (newExportButton) {
