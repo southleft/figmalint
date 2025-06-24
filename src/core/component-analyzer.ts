@@ -437,12 +437,15 @@ function extractComponentProperties(component: ComponentNode): Array<{ name: str
   const properties: Array<{ name: string; values: string[]; default: string }> = [];
 
   try {
-    // Access component properties safely
-    const componentProperties = component.componentProperties;
+    console.log('🔍 Extracting properties from component:', component.name);
     
-    if (componentProperties) {
-      for (const propName in componentProperties) {
-        const prop = componentProperties[propName];
+    // Method 1: Try componentPropertyDefinitions (for component sets)
+    if ('componentPropertyDefinitions' in component && component.componentPropertyDefinitions) {
+      console.log('Found componentPropertyDefinitions:', Object.keys(component.componentPropertyDefinitions));
+      
+      for (const propName in component.componentPropertyDefinitions) {
+        const prop = component.componentPropertyDefinitions[propName];
+        console.log(`Processing property: ${propName}, type: ${prop.type}`);
         
         let values: string[] = [];
         let defaultValue = '';
@@ -457,7 +460,6 @@ function extractComponentProperties(component: ComponentNode): Array<{ name: str
             defaultValue = prop.defaultValue || 'Text content';
             break;
           case 'INSTANCE_SWAP':
-            // For instance swap, we'll show the preferred values if available
             values = prop.preferredValues?.map(v => v.name) || ['Component instance'];
             defaultValue = prop.preferredValues?.[0]?.name || 'Component instance';
             break;
@@ -477,10 +479,55 @@ function extractComponentProperties(component: ComponentNode): Array<{ name: str
         });
       }
     }
+    
+    // Method 2: Try componentProperties (fallback)
+    else if ('componentProperties' in component && component.componentProperties) {
+      console.log('Found componentProperties:', Object.keys(component.componentProperties));
+      
+      for (const propName in component.componentProperties) {
+        const prop = component.componentProperties[propName];
+        
+        let values: string[] = [];
+        let defaultValue = '';
+        
+        switch (prop.type) {
+          case 'BOOLEAN':
+            values = ['true', 'false'];
+            defaultValue = prop.defaultValue ? 'true' : 'false';
+            break;
+          case 'TEXT':
+            values = [prop.defaultValue || 'Text content'];
+            defaultValue = prop.defaultValue || 'Text content';
+            break;
+          case 'INSTANCE_SWAP':
+            values = prop.preferredValues?.map(v => v.name) || ['Component instance'];
+            defaultValue = prop.preferredValues?.[0]?.name || 'Component instance';
+            break;
+          case 'VARIANT':
+            values = prop.variantOptions || ['Variant option'];
+            defaultValue = prop.defaultValue || values[0] || 'Default';
+            break;
+          default:
+            values = ['Property value'];
+            defaultValue = 'Default';
+        }
+
+        properties.push({
+          name: propName,
+          values,
+          default: defaultValue
+        });
+      }
+    } else {
+      console.log('No component properties found on component:', component.name);
+      console.log('Available keys:', Object.keys(component));
+    }
+    
   } catch (error) {
-    console.warn('Error extracting component properties:', error);
+    console.error('Error extracting component properties:', error);
   }
 
+  console.log(`Extracted ${properties.length} properties:`, properties.map(p => p.name));
   return properties;
 }
 

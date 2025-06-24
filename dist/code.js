@@ -729,13 +729,15 @@
     return actualProperties;
   }
   function extractComponentProperties(component) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     const properties = [];
     try {
-      const componentProperties = component.componentProperties;
-      if (componentProperties) {
-        for (const propName in componentProperties) {
-          const prop = componentProperties[propName];
+      console.log("\u{1F50D} Extracting properties from component:", component.name);
+      if ("componentPropertyDefinitions" in component && component.componentPropertyDefinitions) {
+        console.log("Found componentPropertyDefinitions:", Object.keys(component.componentPropertyDefinitions));
+        for (const propName in component.componentPropertyDefinitions) {
+          const prop = component.componentPropertyDefinitions[propName];
+          console.log(`Processing property: ${propName}, type: ${prop.type}`);
           let values = [];
           let defaultValue = "";
           switch (prop.type) {
@@ -765,10 +767,47 @@
             default: defaultValue
           });
         }
+      } else if ("componentProperties" in component && component.componentProperties) {
+        console.log("Found componentProperties:", Object.keys(component.componentProperties));
+        for (const propName in component.componentProperties) {
+          const prop = component.componentProperties[propName];
+          let values = [];
+          let defaultValue = "";
+          switch (prop.type) {
+            case "BOOLEAN":
+              values = ["true", "false"];
+              defaultValue = prop.defaultValue ? "true" : "false";
+              break;
+            case "TEXT":
+              values = [prop.defaultValue || "Text content"];
+              defaultValue = prop.defaultValue || "Text content";
+              break;
+            case "INSTANCE_SWAP":
+              values = ((_d = prop.preferredValues) == null ? void 0 : _d.map((v) => v.name)) || ["Component instance"];
+              defaultValue = ((_f = (_e = prop.preferredValues) == null ? void 0 : _e[0]) == null ? void 0 : _f.name) || "Component instance";
+              break;
+            case "VARIANT":
+              values = prop.variantOptions || ["Variant option"];
+              defaultValue = prop.defaultValue || values[0] || "Default";
+              break;
+            default:
+              values = ["Property value"];
+              defaultValue = "Default";
+          }
+          properties.push({
+            name: propName,
+            values,
+            default: defaultValue
+          });
+        }
+      } else {
+        console.log("No component properties found on component:", component.name);
+        console.log("Available keys:", Object.keys(component));
       }
     } catch (error) {
-      console.warn("Error extracting component properties:", error);
+      console.error("Error extracting component properties:", error);
     }
+    console.log(`Extracted ${properties.length} properties:`, properties.map((p) => p.name));
     return properties;
   }
   function extractActualComponentStates(node) {
