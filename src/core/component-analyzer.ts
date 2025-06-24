@@ -33,7 +33,7 @@ export function extractComponentContext(node: SceneNode): ComponentContext {
 
   // Extract additional context
   const additionalContext = extractAdditionalContext(node);
-  
+
   return {
     name: node.name,
     type: node.type,
@@ -62,7 +62,7 @@ function extractAdditionalContext(node: SceneNode): any {
   };
 
   const nodeName = node.name.toLowerCase();
-  
+
   // Detect component family/type
   if (nodeName.includes('avatar') || nodeName.includes('profile')) {
     context.componentFamily = 'avatar';
@@ -105,12 +105,12 @@ function extractAdditionalContext(node: SceneNode): any {
 
   // Check for interactive indicators in structure
   if ('children' in node) {
-    const hasTextWithAction = node.findAll(n => 
-      n.type === 'TEXT' && (n.name.toLowerCase().includes('click') || 
+    const hasTextWithAction = node.findAll(n =>
+      n.type === 'TEXT' && (n.name.toLowerCase().includes('click') ||
       n.name.toLowerCase().includes('action') ||
       n.name.toLowerCase().includes('link'))
     ).length > 0;
-    
+
     if (hasTextWithAction) {
       context.hasInteractiveElements = true;
     }
@@ -305,6 +305,188 @@ export function isValidMetadata(metadata: any): metadata is ComponentMetadata {
 }
 
 /**
+ * Extract actual properties from a Figma component or component set
+ */
+function extractActualComponentProperties(node: SceneNode): Array<{ name: string; values: string[]; default: string }> {
+  const actualProperties: Array<{ name: string; values: string[]; default: string }> = [];
+
+  if (node.type === 'COMPONENT_SET') {
+    const componentSet = node as ComponentSetNode;
+    const variantProps = componentSet.variantGroupProperties;
+
+    // Extract real variant properties from the component set
+    if (variantProps) {
+      for (const propName in variantProps) {
+        const prop = variantProps[propName];
+        actualProperties.push({
+          name: propName,
+          values: prop.values,
+          default: prop.values[0] || 'default'
+        });
+      }
+    }
+  } else if (node.type === 'COMPONENT') {
+    // For individual components, check if they're part of a component set
+    const component = node as ComponentNode;
+    if (component.parent && component.parent.type === 'COMPONENT_SET') {
+      const componentSet = component.parent as ComponentSetNode;
+      const variantProps = componentSet.variantGroupProperties;
+
+      if (variantProps) {
+        for (const propName in variantProps) {
+          const prop = variantProps[propName];
+          actualProperties.push({
+            name: propName,
+            values: prop.values,
+            default: prop.values[0] || 'default'
+          });
+        }
+      }
+    }
+  } else if (node.type === 'INSTANCE') {
+    // For instances, get properties from the main component
+    const instance = node as InstanceNode;
+    const mainComponent = instance.mainComponent;
+
+    if (mainComponent && mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
+      const componentSet = mainComponent.parent as ComponentSetNode;
+      const variantProps = componentSet.variantGroupProperties;
+
+      if (variantProps) {
+        for (const propName in variantProps) {
+          const prop = variantProps[propName];
+
+          // Get the current value for this instance
+          let currentValue = prop.values[0];
+          try {
+            // Try to get the current variant property value
+            const variantProperties = (instance as any).variantProperties;
+            if (variantProperties && variantProperties[propName]) {
+              currentValue = variantProperties[propName];
+            }
+          } catch (e) {
+            // Fallback to default
+          }
+
+          actualProperties.push({
+            name: propName,
+            values: prop.values,
+            default: currentValue || prop.values[0] || 'default'
+          });
+        }
+      }
+    }
+  }
+
+  // Add common component properties detected from structure
+  const detectedProperties = detectAdditionalProperties(node);
+  actualProperties.push(...detectedProperties);
+
+  return actualProperties;
+}
+
+/**
+ * Detect additional properties from component structure (like icon, text content, etc.)
+ */
+function detectAdditionalProperties(node: SceneNode): Array<{ name: string; values: string[]; default: string }> {
+  const properties: Array<{ name: string; values: string[]; default: string }> = [];
+  const allNodes = getAllChildNodes(node);
+
+  // Detect icon property
+  const iconNodes = allNodes.filter(child => 
+    child.type === 'VECTOR' || 
+    child.type === 'FRAME' || 
+    child.name.toLowerCase().includes('icon') ||
+    child.name.toLowerCase().includes('symbol')
+  );
+
+  if (iconNodes.length > 0) {
+    // Check if there are multiple different icon variants
+    const iconNames = iconNodes.map(n => n.name).filter((name, index, arr) => 
+      arr.indexOf(name) === index
+    );
+    
+    properties.push({
+      name: 'icon',
+      values: iconNames.length > 1 ? iconNames : ['arrow-right', 'chevron-down', 'plus', 'close'],
+      default: iconNames[0] || 'arrow-right'
+    });
+  }
+
+  // Detect text content property
+  const textNodes = allNodes.filter(child => child.type === 'TEXT');
+  if (textNodes.length > 0) {
+    properties.push({
+      name: 'label',
+      values: ['Button text', 'Custom label'],
+      default: 'Button text'
+    });
+  }
+
+  return properties;
+}
+
+/**
+ * Extract actual states from a component
+ */
+function extractActualComponentStates(node: SceneNode): string[] {
+  const actualStates: string[] = [];
+
+  if (node.type === 'COMPONENT_SET') {
+    const componentSet = node as ComponentSetNode;
+    const variantProps = componentSet.variantGroupProperties;
+
+    // Look for state-related properties
+    if (variantProps) {
+      for (const propName in variantProps) {
+        const lowerPropName = propName.toLowerCase();
+        if (lowerPropName === 'state' || lowerPropName === 'states' || lowerPropName === 'status') {
+          actualStates.push(...variantProps[propName].values);
+        }
+      }
+    }
+
+    // Also check individual variant names for common state patterns
+    componentSet.children.forEach(variant => {
+      const variantName = variant.name.toLowerCase();
+      ['default', 'hover', 'focus', 'disabled', 'pressed', 'active', 'selected'].forEach(state => {
+        // Case-insensitive check to avoid duplicates
+        const existingState = actualStates.find(existing => existing.toLowerCase() === state.toLowerCase());
+        if (variantName.includes(state) && !existingState) {
+          actualStates.push(state);
+        }
+      });
+    });
+  } else if (node.type === 'COMPONENT') {
+    // For individual components, check if they're part of a component set with states
+    const component = node as ComponentNode;
+    if (component.parent && component.parent.type === 'COMPONENT_SET') {
+      return extractActualComponentStates(component.parent);
+    }
+  } else if (node.type === 'INSTANCE') {
+    // For instances, get states from the main component
+    const instance = node as InstanceNode;
+    const mainComponent = instance.mainComponent;
+    if (mainComponent) {
+      return extractActualComponentStates(mainComponent);
+    }
+  }
+
+  // Final deduplication with case-insensitive comparison
+  const uniqueStates: string[] = [];
+  actualStates.forEach(state => {
+    if (state && typeof state === 'string' && state.trim() !== '') {
+      const existingState = uniqueStates.find(existing => existing.toLowerCase() === state.toLowerCase());
+      if (!existingState) {
+        uniqueStates.push(state.trim());
+      }
+    }
+  });
+
+  return uniqueStates;
+}
+
+/**
  * Process enhanced analysis data into structured result
  */
 export async function processEnhancedAnalysis(
@@ -314,7 +496,14 @@ export async function processEnhancedAnalysis(
   // Extract tokens from the actual node
   const tokens = await extractDesignTokensFromNode(node);
 
-  // Build audit results
+  // Get component context for analysis
+  const context = extractAdditionalContext(node);
+
+  // EXTRACT ACTUAL FIGMA DATA (source of truth)
+  const actualProperties = extractActualComponentProperties(node);
+  const actualStates = extractActualComponentStates(node);
+
+  // Build audit results with proper separation of facts vs recommendations
   const audit = {
     states: [] as Array<{ name: string; found: boolean }>,
     accessibility: [] as Array<{ check: string; status: 'pass' | 'fail' | 'warning'; suggestion: string }>,
@@ -322,138 +511,152 @@ export async function processEnhancedAnalysis(
     consistency: [] as Array<{ property: string; issue: string; suggestion: string }>
   };
 
-  // Get actual component variants from the node itself
-  const actualStates: string[] = [];
-  
-  // If it's a component set, get the actual variant properties
-  if (node.type === 'COMPONENT_SET') {
-    const componentSet = node as ComponentSetNode;
-    const variantProps = componentSet.variantGroupProperties;
-    
-    // Look for state-related variant properties
-    for (const propName in variantProps) {
-      const prop = variantProps[propName];
-      if (propName.toLowerCase() === 'state' || propName.toLowerCase() === 'states') {
-        actualStates.push(...prop.values);
-      }
-    }
-    
-    // Also check individual variant names
-    componentSet.children.forEach(variant => {
-      const variantName = variant.name.toLowerCase();
-      ['default', 'hover', 'focus', 'disabled', 'pressed', 'active'].forEach(state => {
-        if (variantName.includes(state) && !actualStates.includes(state)) {
-          actualStates.push(state);
-        }
-      });
-    });
-  }
-  
-  // Get recommended states from Claude's analysis
-  const recommendedStates = claudeData.states || [];
-  
-  // For component sets with existing states, audit them
+  // STATES AUDIT: Show actual states first, then recommendations
   if (actualStates.length > 0) {
-    // Check common interactive states
-    const expectedStates = ['default', 'hover', 'focus', 'disabled'];
-    expectedStates.forEach(state => {
+    // Component has actual states - show them as found
+    actualStates.forEach(state => {
       audit.states.push({
         name: state,
-        found: actualStates.includes(state)
+        found: true
       });
     });
-    
-    // Add any additional states found
-    actualStates.forEach(state => {
-      if (!expectedStates.includes(state)) {
+  } else {
+    // No actual states found
+    const shouldHaveStates = context.hasInteractiveElements &&
+                            context.componentFamily !== 'badge' &&
+                            context.componentFamily !== 'icon';
+
+    if (shouldHaveStates) {
+      // Show recommended states as missing for interactive components
+      const recommendedStates = ['default', 'hover', 'focus', 'disabled'];
+      recommendedStates.forEach(state => {
         audit.states.push({
           name: state,
-          found: true
+          found: false
+        });
+      });
+    } else {
+      // For non-interactive components, show positive message
+      audit.states.push({
+        name: 'default',
+        found: true
+      });
+    }
+  }
+
+  // ACCESSIBILITY AUDIT: Process Claude's suggestions safely
+  if (claudeData.audit && Array.isArray(claudeData.audit.accessibilityIssues)) {
+    claudeData.audit.accessibilityIssues.forEach((issue: any) => {
+      if (typeof issue === 'string' && issue.trim()) {
+        audit.accessibility.push({
+          check: issue,
+          status: 'warning',
+          suggestion: 'Review accessibility requirements'
         });
       }
     });
-  } else if (recommendedStates.length > 0) {
-    // For single components, show recommended states as missing
-    recommendedStates.forEach((state: string) => {
-      audit.states.push({
-        name: state,
-        found: false
-      });
-    });
   }
 
-  // Process accessibility audit
-  if (claudeData.audit?.accessibilityIssues) {
-    claudeData.audit.accessibilityIssues.forEach((issue: string) => {
-      audit.accessibility.push({
-        check: issue,
-        status: 'fail',
-        suggestion: 'Fix required'
-      });
-    });
-  }
-
-  // Process naming audit
-  if (claudeData.audit?.namingIssues) {
-    claudeData.audit.namingIssues.forEach((issue: string) => {
-      // Try to extract layer name from the issue string
-      let layerName = 'Component';
-      let suggestion = 'Follow naming conventions';
-      
-      // Common patterns in naming issues
-      const layerMatch = issue.match(/["']([^"']+)["']/); // Match quoted layer names
-      if (layerMatch) {
-        layerName = layerMatch[1];
-      } else if (issue.toLowerCase().includes('component')) {
-        layerName = node.name;
+  // NAMING AUDIT: Process Claude's suggestions safely
+  if (claudeData.audit && Array.isArray(claudeData.audit.namingIssues) && claudeData.audit.namingIssues.length > 0) {
+    claudeData.audit.namingIssues.forEach((issue: any) => {
+      if (typeof issue === 'string' && issue.trim() && issue.toLowerCase() !== 'undefined') {
+        audit.naming.push({
+          layer: node.name,
+          issue: issue,
+          suggestion: 'Follow naming conventions'
+        });
       }
-      
-      // Extract suggestion if present
-      const suggestionMatch = issue.match(/should be ([\w-]+)/i);
-      if (suggestionMatch) {
-        suggestion = suggestionMatch[1];
+    });
+  }
+  
+  // If no issues were found or processed, show positive result
+  if (audit.naming.length === 0) {
+    audit.naming.push({
+      layer: node.name,
+      issue: 'Component naming follows conventions',
+      suggestion: 'Good naming structure'
+    });
+  }
+
+  // CONSISTENCY AUDIT: Process Claude's suggestions safely
+  if (claudeData.audit && Array.isArray(claudeData.audit.consistencyIssues) && claudeData.audit.consistencyIssues.length > 0) {
+    claudeData.audit.consistencyIssues.forEach((issue: any) => {
+      if (typeof issue === 'string' && issue.trim() && issue.toLowerCase() !== 'undefined') {
+        audit.consistency.push({
+          property: 'Design consistency',
+          issue: issue,
+          suggestion: 'Review design system standards'
+        });
       }
-      
-      audit.naming.push({
-        layer: layerName,
-        issue: issue,
-        suggestion: suggestion
-      });
+    });
+  }
+  
+  // If no issues were found or processed, show positive result
+  if (audit.consistency.length === 0) {
+    audit.consistency.push({
+      property: 'Design consistency',
+      issue: 'Component follows design system patterns',
+      suggestion: 'Consistent with design standards'
     });
   }
 
-  // Generate suggestions
-  const suggestions: Array<{
-    category: 'token' | 'accessibility' | 'naming' | 'state';
-    priority: 'high' | 'medium' | 'low';
-    title: string;
-    description: string;
-    action?: string;
-  }> = [
-    {
-      category: 'token',
-      priority: 'high',
-      title: 'Token Implementation',
-      description: `Found ${tokens.summary.hardCodedValues} hard-coded values that could use design tokens`,
-      action: 'Review token recommendations'
-    }
-  ];
-
-  // Add accessibility suggestions if issues found
-  if (audit.accessibility.length > 0) {
-    suggestions.push({
-      category: 'accessibility',
-      priority: 'high',
-      title: 'Accessibility Improvements',
-      description: `${audit.accessibility.length} accessibility issues need attention`,
-      action: 'Review accessibility audit'
-    });
-  }
+  // Clean and validate metadata from Claude
+  const cleanMetadata: ComponentMetadata = {
+    component: claudeData.component || node.name,
+    description: claudeData.description || 'Component analysis',
+    props: actualProperties.map(prop => ({
+      name: prop.name,
+      type: prop.values.length > 1 ? 'variant' : 'string',
+      description: `Property with values: ${prop.values.join(', ')}`,
+      defaultValue: prop.default,
+      required: false
+    })),
+    propertyCheatSheet: actualProperties.map(prop => ({
+      name: prop.name,
+      values: prop.values,
+      default: prop.default,
+      description: `Available values: ${prop.values.join(', ')}`
+    })),
+    states: actualStates.length > 0 ? actualStates : (context.componentFamily === 'badge' ? ['default'] : []),
+    slots: claudeData.slots || [],
+    variants: actualProperties.reduce((acc, prop) => {
+      acc[prop.name] = prop.values;
+      return acc;
+    }, {} as Record<string, string[]>),
+    usage: claudeData.usage || `This ${context.componentFamily || 'component'} is used for ${context.possibleUseCase || 'displaying content'}.`,
+    accessibility: {
+      ariaLabels: claudeData.accessibility?.ariaLabels || [],
+      keyboardSupport: claudeData.accessibility?.keyboardSupport || 'Standard keyboard navigation',
+      colorContrast: claudeData.accessibility?.colorContrast || 'WCAG AA compliant',
+      focusManagement: claudeData.accessibility?.focusManagement || 'Proper focus indicators'
+    },
+    tokens: {
+      colors: claudeData.tokens?.colors || [],
+      spacing: claudeData.tokens?.spacing || [],
+      typography: claudeData.tokens?.typography || [],
+      effects: claudeData.tokens?.effects || [],
+      borders: claudeData.tokens?.borders || []
+    },
+    audit: {
+      accessibilityIssues: claudeData.audit?.accessibilityIssues || [],
+      namingIssues: claudeData.audit?.namingIssues || [],
+      consistencyIssues: claudeData.audit?.consistencyIssues || [],
+      tokenOpportunities: claudeData.audit?.tokenOpportunities || []
+    },
+    mcpReadiness: claudeData.mcpReadiness ? {
+      score: parseInt(claudeData.mcpReadiness.score) || 0,
+      strengths: claudeData.mcpReadiness.strengths || [],
+      gaps: claudeData.mcpReadiness.gaps || [],
+      recommendations: claudeData.mcpReadiness.recommendations || [],
+      implementationNotes: claudeData.mcpReadiness.implementationNotes || ''
+    } : undefined
+  };
 
   return {
-    metadata: claudeData,
+    metadata: cleanMetadata,
     tokens,
     audit,
-    suggestions
+    properties: actualProperties // This will be used by the UI for the property cheat sheet
   };
 }

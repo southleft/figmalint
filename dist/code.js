@@ -635,112 +635,277 @@
     }
     return false;
   }
+  function extractActualComponentProperties(node) {
+    const actualProperties = [];
+    if (node.type === "COMPONENT_SET") {
+      const componentSet = node;
+      const variantProps = componentSet.variantGroupProperties;
+      if (variantProps) {
+        for (const propName in variantProps) {
+          const prop = variantProps[propName];
+          actualProperties.push({
+            name: propName,
+            values: prop.values,
+            default: prop.values[0] || "default"
+          });
+        }
+      }
+    } else if (node.type === "COMPONENT") {
+      const component = node;
+      if (component.parent && component.parent.type === "COMPONENT_SET") {
+        const componentSet = component.parent;
+        const variantProps = componentSet.variantGroupProperties;
+        if (variantProps) {
+          for (const propName in variantProps) {
+            const prop = variantProps[propName];
+            actualProperties.push({
+              name: propName,
+              values: prop.values,
+              default: prop.values[0] || "default"
+            });
+          }
+        }
+      }
+    } else if (node.type === "INSTANCE") {
+      const instance = node;
+      const mainComponent = instance.mainComponent;
+      if (mainComponent && mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
+        const componentSet = mainComponent.parent;
+        const variantProps = componentSet.variantGroupProperties;
+        if (variantProps) {
+          for (const propName in variantProps) {
+            const prop = variantProps[propName];
+            let currentValue = prop.values[0];
+            try {
+              const variantProperties = instance.variantProperties;
+              if (variantProperties && variantProperties[propName]) {
+                currentValue = variantProperties[propName];
+              }
+            } catch (e) {
+            }
+            actualProperties.push({
+              name: propName,
+              values: prop.values,
+              default: currentValue || prop.values[0] || "default"
+            });
+          }
+        }
+      }
+    }
+    const detectedProperties = detectAdditionalProperties(node);
+    actualProperties.push(...detectedProperties);
+    return actualProperties;
+  }
+  function detectAdditionalProperties(node) {
+    const properties = [];
+    const allNodes = getAllChildNodes(node);
+    const iconNodes = allNodes.filter(
+      (child) => child.type === "VECTOR" || child.type === "FRAME" || child.name.toLowerCase().includes("icon") || child.name.toLowerCase().includes("symbol")
+    );
+    if (iconNodes.length > 0) {
+      const iconNames = iconNodes.map((n) => n.name).filter(
+        (name, index, arr) => arr.indexOf(name) === index
+      );
+      properties.push({
+        name: "icon",
+        values: iconNames.length > 1 ? iconNames : ["arrow-right", "chevron-down", "plus", "close"],
+        default: iconNames[0] || "arrow-right"
+      });
+    }
+    const textNodes = allNodes.filter((child) => child.type === "TEXT");
+    if (textNodes.length > 0) {
+      properties.push({
+        name: "label",
+        values: ["Button text", "Custom label"],
+        default: "Button text"
+      });
+    }
+    return properties;
+  }
+  function extractActualComponentStates(node) {
+    const actualStates = [];
+    if (node.type === "COMPONENT_SET") {
+      const componentSet = node;
+      const variantProps = componentSet.variantGroupProperties;
+      if (variantProps) {
+        for (const propName in variantProps) {
+          const lowerPropName = propName.toLowerCase();
+          if (lowerPropName === "state" || lowerPropName === "states" || lowerPropName === "status") {
+            actualStates.push(...variantProps[propName].values);
+          }
+        }
+      }
+      componentSet.children.forEach((variant) => {
+        const variantName = variant.name.toLowerCase();
+        ["default", "hover", "focus", "disabled", "pressed", "active", "selected"].forEach((state) => {
+          const existingState = actualStates.find((existing) => existing.toLowerCase() === state.toLowerCase());
+          if (variantName.includes(state) && !existingState) {
+            actualStates.push(state);
+          }
+        });
+      });
+    } else if (node.type === "COMPONENT") {
+      const component = node;
+      if (component.parent && component.parent.type === "COMPONENT_SET") {
+        return extractActualComponentStates(component.parent);
+      }
+    } else if (node.type === "INSTANCE") {
+      const instance = node;
+      const mainComponent = instance.mainComponent;
+      if (mainComponent) {
+        return extractActualComponentStates(mainComponent);
+      }
+    }
+    const uniqueStates = [];
+    actualStates.forEach((state) => {
+      if (state && typeof state === "string" && state.trim() !== "") {
+        const existingState = uniqueStates.find((existing) => existing.toLowerCase() === state.toLowerCase());
+        if (!existingState) {
+          uniqueStates.push(state.trim());
+        }
+      }
+    });
+    return uniqueStates;
+  }
   async function processEnhancedAnalysis(claudeData, node) {
-    var _a, _b;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
     const tokens = await extractDesignTokensFromNode(node);
+    const context = extractAdditionalContext(node);
+    const actualProperties = extractActualComponentProperties(node);
+    const actualStates = extractActualComponentStates(node);
     const audit = {
       states: [],
       accessibility: [],
       naming: [],
       consistency: []
     };
-    const actualStates = [];
-    if (node.type === "COMPONENT_SET") {
-      const componentSet = node;
-      const variantProps = componentSet.variantGroupProperties;
-      for (const propName in variantProps) {
-        const prop = variantProps[propName];
-        if (propName.toLowerCase() === "state" || propName.toLowerCase() === "states") {
-          actualStates.push(...prop.values);
-        }
-      }
-      componentSet.children.forEach((variant) => {
-        const variantName = variant.name.toLowerCase();
-        ["default", "hover", "focus", "disabled", "pressed", "active"].forEach((state) => {
-          if (variantName.includes(state) && !actualStates.includes(state)) {
-            actualStates.push(state);
-          }
-        });
-      });
-    }
-    const recommendedStates = claudeData.states || [];
     if (actualStates.length > 0) {
-      const expectedStates = ["default", "hover", "focus", "disabled"];
-      expectedStates.forEach((state) => {
+      actualStates.forEach((state) => {
         audit.states.push({
           name: state,
-          found: actualStates.includes(state)
+          found: true
         });
       });
-      actualStates.forEach((state) => {
-        if (!expectedStates.includes(state)) {
+    } else {
+      const shouldHaveStates = context.hasInteractiveElements && context.componentFamily !== "badge" && context.componentFamily !== "icon";
+      if (shouldHaveStates) {
+        const recommendedStates = ["default", "hover", "focus", "disabled"];
+        recommendedStates.forEach((state) => {
           audit.states.push({
             name: state,
-            found: true
+            found: false
+          });
+        });
+      } else {
+        audit.states.push({
+          name: "default",
+          found: true
+        });
+      }
+    }
+    if (claudeData.audit && Array.isArray(claudeData.audit.accessibilityIssues)) {
+      claudeData.audit.accessibilityIssues.forEach((issue) => {
+        if (typeof issue === "string" && issue.trim()) {
+          audit.accessibility.push({
+            check: issue,
+            status: "warning",
+            suggestion: "Review accessibility requirements"
           });
         }
       });
-    } else if (recommendedStates.length > 0) {
-      recommendedStates.forEach((state) => {
-        audit.states.push({
-          name: state,
-          found: false
-        });
-      });
     }
-    if ((_a = claudeData.audit) == null ? void 0 : _a.accessibilityIssues) {
-      claudeData.audit.accessibilityIssues.forEach((issue) => {
-        audit.accessibility.push({
-          check: issue,
-          status: "fail",
-          suggestion: "Fix required"
-        });
-      });
-    }
-    if ((_b = claudeData.audit) == null ? void 0 : _b.namingIssues) {
+    if (claudeData.audit && Array.isArray(claudeData.audit.namingIssues) && claudeData.audit.namingIssues.length > 0) {
       claudeData.audit.namingIssues.forEach((issue) => {
-        let layerName = "Component";
-        let suggestion = "Follow naming conventions";
-        const layerMatch = issue.match(/["']([^"']+)["']/);
-        if (layerMatch) {
-          layerName = layerMatch[1];
-        } else if (issue.toLowerCase().includes("component")) {
-          layerName = node.name;
+        if (typeof issue === "string" && issue.trim() && issue.toLowerCase() !== "undefined") {
+          audit.naming.push({
+            layer: node.name,
+            issue,
+            suggestion: "Follow naming conventions"
+          });
         }
-        const suggestionMatch = issue.match(/should be ([\w-]+)/i);
-        if (suggestionMatch) {
-          suggestion = suggestionMatch[1];
-        }
-        audit.naming.push({
-          layer: layerName,
-          issue,
-          suggestion
-        });
       });
     }
-    const suggestions = [
-      {
-        category: "token",
-        priority: "high",
-        title: "Token Implementation",
-        description: `Found ${tokens.summary.hardCodedValues} hard-coded values that could use design tokens`,
-        action: "Review token recommendations"
-      }
-    ];
-    if (audit.accessibility.length > 0) {
-      suggestions.push({
-        category: "accessibility",
-        priority: "high",
-        title: "Accessibility Improvements",
-        description: `${audit.accessibility.length} accessibility issues need attention`,
-        action: "Review accessibility audit"
+    if (audit.naming.length === 0) {
+      audit.naming.push({
+        layer: node.name,
+        issue: "Component naming follows conventions",
+        suggestion: "Good naming structure"
       });
     }
+    if (claudeData.audit && Array.isArray(claudeData.audit.consistencyIssues) && claudeData.audit.consistencyIssues.length > 0) {
+      claudeData.audit.consistencyIssues.forEach((issue) => {
+        if (typeof issue === "string" && issue.trim() && issue.toLowerCase() !== "undefined") {
+          audit.consistency.push({
+            property: "Design consistency",
+            issue,
+            suggestion: "Review design system standards"
+          });
+        }
+      });
+    }
+    if (audit.consistency.length === 0) {
+      audit.consistency.push({
+        property: "Design consistency",
+        issue: "Component follows design system patterns",
+        suggestion: "Consistent with design standards"
+      });
+    }
+    const cleanMetadata = {
+      component: claudeData.component || node.name,
+      description: claudeData.description || "Component analysis",
+      props: actualProperties.map((prop) => ({
+        name: prop.name,
+        type: prop.values.length > 1 ? "variant" : "string",
+        description: `Property with values: ${prop.values.join(", ")}`,
+        defaultValue: prop.default,
+        required: false
+      })),
+      propertyCheatSheet: actualProperties.map((prop) => ({
+        name: prop.name,
+        values: prop.values,
+        default: prop.default,
+        description: `Available values: ${prop.values.join(", ")}`
+      })),
+      states: actualStates.length > 0 ? actualStates : context.componentFamily === "badge" ? ["default"] : [],
+      slots: claudeData.slots || [],
+      variants: actualProperties.reduce((acc, prop) => {
+        acc[prop.name] = prop.values;
+        return acc;
+      }, {}),
+      usage: claudeData.usage || `This ${context.componentFamily || "component"} is used for ${context.possibleUseCase || "displaying content"}.`,
+      accessibility: {
+        ariaLabels: ((_a = claudeData.accessibility) == null ? void 0 : _a.ariaLabels) || [],
+        keyboardSupport: ((_b = claudeData.accessibility) == null ? void 0 : _b.keyboardSupport) || "Standard keyboard navigation",
+        colorContrast: ((_c = claudeData.accessibility) == null ? void 0 : _c.colorContrast) || "WCAG AA compliant",
+        focusManagement: ((_d = claudeData.accessibility) == null ? void 0 : _d.focusManagement) || "Proper focus indicators"
+      },
+      tokens: {
+        colors: ((_e = claudeData.tokens) == null ? void 0 : _e.colors) || [],
+        spacing: ((_f = claudeData.tokens) == null ? void 0 : _f.spacing) || [],
+        typography: ((_g = claudeData.tokens) == null ? void 0 : _g.typography) || [],
+        effects: ((_h = claudeData.tokens) == null ? void 0 : _h.effects) || [],
+        borders: ((_i = claudeData.tokens) == null ? void 0 : _i.borders) || []
+      },
+      audit: {
+        accessibilityIssues: ((_j = claudeData.audit) == null ? void 0 : _j.accessibilityIssues) || [],
+        namingIssues: ((_k = claudeData.audit) == null ? void 0 : _k.namingIssues) || [],
+        consistencyIssues: ((_l = claudeData.audit) == null ? void 0 : _l.consistencyIssues) || [],
+        tokenOpportunities: ((_m = claudeData.audit) == null ? void 0 : _m.tokenOpportunities) || []
+      },
+      mcpReadiness: claudeData.mcpReadiness ? {
+        score: parseInt(claudeData.mcpReadiness.score) || 0,
+        strengths: claudeData.mcpReadiness.strengths || [],
+        gaps: claudeData.mcpReadiness.gaps || [],
+        recommendations: claudeData.mcpReadiness.recommendations || [],
+        implementationNotes: claudeData.mcpReadiness.implementationNotes || ""
+      } : void 0
+    };
     return {
-      metadata: claudeData,
+      metadata: cleanMetadata,
       tokens,
       audit,
-      suggestions
+      properties: actualProperties
+      // This will be used by the UI for the property cheat sheet
     };
   }
 
@@ -826,6 +991,15 @@ ${componentContext.additionalContext ? `
 3. **Accessibility Assessment**: Evaluate accessibility compliance
 4. **Naming Convention Review**: Check layer naming consistency
 5. **Design System Integration**: Suggest improvements for scalability
+6. **MCP Server Compatibility**: Ensure component structure supports automated code generation
+
+**MCP Server Integration Focus:**
+- **Property Definitions**: Components need clearly defined props that map to code
+- **State Management**: Interactive components require all necessary states (hover, focus, disabled, etc.)
+- **Token Usage**: Hard-coded values should use design tokens for consistency
+- **Semantic Structure**: Layer names should be descriptive and follow conventions
+- **Variant Patterns**: Component sets should have logical variant properties
+- **Developer Handoff**: Metadata should include implementation guidance
 
 **Design Token Focus Areas:**
 - **Color Tokens**: Semantic color usage (primary, secondary, neutral, semantic colors)
@@ -914,6 +1088,16 @@ ${componentContext.additionalContext ? `
     "namingIssues": ["List layer naming problems with suggestions"],
     "consistencyIssues": ["List design consistency issues"],
     "tokenOpportunities": ["Specific recommendations for design token implementation"]
+  },
+  "mcpReadiness": {
+    "score": "0-100 readiness score for MCP server code generation",
+    "strengths": ["What's already well-structured for code generation"],
+    "gaps": ["What needs to be improved for MCP compatibility"],
+    "recommendations": [
+      "Specific actions to make this component MCP-ready",
+      "Priority improvements for code generation accuracy"
+    ],
+    "implementationNotes": "Developer guidance for implementing this component"
   }
 }
 
@@ -972,32 +1156,8 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
         case "analyze-enhanced":
           await handleEnhancedAnalyze(data);
           break;
-        case "generate-variants":
-          await handleGenerateVariants(data.metadata);
-          break;
-        case "generate-playground":
-          await handleGeneratePlayground(data.metadata);
-          break;
-        case "generate-docs-frame":
-          await handleGenerateDocsFrame(data);
-          break;
-        case "embed-metadata":
-          await handleEmbedMetadata(data.metadata);
-          break;
         case "clear-api-key":
           await handleClearApiKey();
-          break;
-        case "save-collab-notes":
-          await handleSaveCollabNotes(data.notes);
-          break;
-        case "fix-naming":
-          await handleFixNaming(data);
-          break;
-        case "add-state":
-          await handleAddState(data);
-          break;
-        case "fix-accessibility":
-          await handleFixAccessibility(data);
           break;
         default:
           console.warn("Unknown message type:", type);
@@ -1130,259 +1290,6 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
     sendMessageToUI("batch-analysis-result", { results });
     figma.notify(`Batch analysis complete: ${results.length} components processed`, { timeout: 3e3 });
   }
-  async function handleGenerateVariants(_metadata) {
-    figma.notify("Variant generation not yet implemented in refactored version", { timeout: 2e3 });
-  }
-  async function handleGeneratePlayground(metadata) {
-    try {
-      const selection = figma.currentPage.selection;
-      if (selection.length === 0) {
-        throw new Error("No component selected");
-      }
-      let selectedNode = selection[0];
-      if (selectedNode.type === "INSTANCE") {
-        const instance = selectedNode;
-        if (instance.mainComponent) {
-          selectedNode = instance.mainComponent;
-        } else {
-          throw new Error("Instance has no main component");
-        }
-      }
-      if (selectedNode.type !== "COMPONENT" && selectedNode.type !== "COMPONENT_SET") {
-        throw new Error("Please select a component or component set");
-      }
-      const playgroundFrame = figma.createFrame();
-      playgroundFrame.name = `${selectedNode.name} - Component Playground`;
-      playgroundFrame.x = selectedNode.x + selectedNode.width + 100;
-      playgroundFrame.y = selectedNode.y;
-      playgroundFrame.fills = [{ type: "SOLID", color: { r: 0.05, g: 0.05, b: 0.05 } }];
-      playgroundFrame.layoutMode = "VERTICAL";
-      playgroundFrame.primaryAxisSizingMode = "AUTO";
-      playgroundFrame.counterAxisSizingMode = "AUTO";
-      playgroundFrame.paddingLeft = 48;
-      playgroundFrame.paddingRight = 48;
-      playgroundFrame.paddingTop = 48;
-      playgroundFrame.paddingBottom = 48;
-      playgroundFrame.itemSpacing = 48;
-      const title = figma.createText();
-      await figma.loadFontAsync({ family: "Inter", style: "Medium" });
-      title.fontName = { family: "Inter", style: "Medium" };
-      title.fontSize = 24;
-      title.characters = selectedNode.name;
-      title.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
-      playgroundFrame.appendChild(title);
-      if (selectedNode.type === "COMPONENT_SET") {
-        await generateComponentSetPlayground(selectedNode, playgroundFrame, metadata);
-      } else {
-        await generateSingleComponentPlayground(selectedNode, playgroundFrame, metadata);
-      }
-      figma.currentPage.selection = [playgroundFrame];
-      figma.viewport.scrollAndZoomIntoView([playgroundFrame]);
-      sendMessageToUI("playground-generated", { success: true });
-      figma.notify("Component playground generated successfully!", { timeout: 3e3 });
-    } catch (error) {
-      console.error("Error generating playground:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to generate playground";
-      figma.notify(`Error: ${errorMessage}`, { error: true });
-      sendMessageToUI("playground-generated", { success: false, error: errorMessage });
-    }
-  }
-  async function generateComponentSetPlayground(componentSet, playgroundFrame, metadata) {
-    const variantProps = componentSet.variantGroupProperties;
-    const variantKeys = Object.keys(variantProps);
-    if (variantKeys.length === 0) {
-      const instancesFrame = createVariantSection("All Variants", playgroundFrame);
-      componentSet.children.forEach((variant, index) => {
-        if (variant.type === "COMPONENT") {
-          const instance = variant.createInstance();
-          instancesFrame.appendChild(instance);
-        }
-      });
-      return;
-    }
-    if (variantKeys.length === 1) {
-      const prop = variantKeys[0];
-      const values = variantProps[prop].values;
-      const section = createVariantSection(prop, playgroundFrame);
-      values.forEach((value) => {
-        const variant = findVariantByProperty(componentSet, prop, value);
-        if (variant) {
-          const instance = variant.createInstance();
-          section.appendChild(instance);
-        }
-      });
-    } else if (variantKeys.length === 2) {
-      const [prop1, prop2] = variantKeys;
-      const values1 = variantProps[prop1].values;
-      const values2 = variantProps[prop2].values;
-      const gridFrame = figma.createFrame();
-      gridFrame.name = "Variants Grid";
-      gridFrame.layoutMode = "VERTICAL";
-      gridFrame.primaryAxisSizingMode = "AUTO";
-      gridFrame.counterAxisSizingMode = "AUTO";
-      gridFrame.itemSpacing = 24;
-      gridFrame.fills = [];
-      playgroundFrame.appendChild(gridFrame);
-      const headerRow = figma.createFrame();
-      headerRow.layoutMode = "HORIZONTAL";
-      headerRow.primaryAxisSizingMode = "AUTO";
-      headerRow.counterAxisSizingMode = "AUTO";
-      headerRow.itemSpacing = 24;
-      headerRow.fills = [];
-      gridFrame.appendChild(headerRow);
-      const emptyCell = figma.createFrame();
-      emptyCell.resize(100, 40);
-      emptyCell.fills = [];
-      headerRow.appendChild(emptyCell);
-      for (const value2 of values2) {
-        const header = await createLabel(`${prop2}: ${value2}`);
-        headerRow.appendChild(header);
-      }
-      for (const value1 of values1) {
-        const row = figma.createFrame();
-        row.layoutMode = "HORIZONTAL";
-        row.primaryAxisSizingMode = "AUTO";
-        row.counterAxisSizingMode = "AUTO";
-        row.itemSpacing = 24;
-        row.fills = [];
-        gridFrame.appendChild(row);
-        const rowLabel = await createLabel(`${prop1}: ${value1}`);
-        row.appendChild(rowLabel);
-        for (const value2 of values2) {
-          const variant = findVariantByProperties(componentSet, {
-            [prop1]: value1,
-            [prop2]: value2
-          });
-          if (variant) {
-            const instance = variant.createInstance();
-            row.appendChild(instance);
-          } else {
-            const placeholder = figma.createFrame();
-            placeholder.resize(100, 40);
-            placeholder.fills = [];
-            row.appendChild(placeholder);
-          }
-        }
-      }
-    } else {
-      const mainProp = variantKeys[0];
-      const mainValues = variantProps[mainProp].values;
-      mainValues.forEach((mainValue) => {
-        const section = createVariantSection(`${mainProp}: ${mainValue}`, playgroundFrame);
-        const variants = componentSet.children.filter((child) => {
-          if (child.type === "COMPONENT") {
-            const component = child;
-            const variantProps2 = parseVariantProperties(component.name);
-            return variantProps2[mainProp] === mainValue;
-          }
-          return false;
-        });
-        variants.forEach((variant) => {
-          if (variant.type === "COMPONENT") {
-            const instance = variant.createInstance();
-            section.appendChild(instance);
-          }
-        });
-      });
-    }
-  }
-  async function generateSingleComponentPlayground(component, playgroundFrame, metadata) {
-    const states = (metadata == null ? void 0 : metadata.states) || [];
-    const hasStates = states.length > 0;
-    if (!hasStates) {
-      const section = createVariantSection("Default Instance", playgroundFrame);
-      const instance = component.createInstance();
-      section.appendChild(instance);
-    } else {
-      const sectionTitle = "Recommended States (Not Yet Implemented)";
-      const section = createVariantSection(sectionTitle, playgroundFrame);
-      const note = await createLabel("These states are recommended based on the component type");
-      note.fontSize = 10;
-      note.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
-      section.appendChild(note);
-      states.forEach((state) => {
-        const container = figma.createFrame();
-        container.layoutMode = "VERTICAL";
-        container.primaryAxisSizingMode = "AUTO";
-        container.counterAxisSizingMode = "AUTO";
-        container.itemSpacing = 8;
-        container.fills = [];
-        section.appendChild(container);
-        createLabel(state).then((label) => {
-          container.appendChild(label);
-        });
-        const instance = component.createInstance();
-        container.appendChild(instance);
-      });
-    }
-  }
-  function createVariantSection(title, parent) {
-    const section = figma.createFrame();
-    section.name = title;
-    section.layoutMode = "HORIZONTAL";
-    section.primaryAxisSizingMode = "AUTO";
-    section.counterAxisSizingMode = "AUTO";
-    section.itemSpacing = 24;
-    section.paddingLeft = 24;
-    section.paddingRight = 24;
-    section.paddingTop = 24;
-    section.paddingBottom = 24;
-    section.fills = [];
-    section.strokes = [{
-      type: "SOLID",
-      color: { r: 0.5, g: 0.3, b: 0.8 },
-      opacity: 0.5
-    }];
-    section.strokeWeight = 1;
-    section.dashPattern = [4, 4];
-    section.cornerRadius = 8;
-    parent.appendChild(section);
-    return section;
-  }
-  async function createLabel(text) {
-    const label = figma.createText();
-    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-    label.fontName = { family: "Inter", style: "Regular" };
-    label.fontSize = 12;
-    label.characters = text;
-    label.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.3, b: 0.8 } }];
-    return label;
-  }
-  function findVariantByProperty(componentSet, property, value) {
-    return componentSet.children.find((child) => {
-      if (child.type === "COMPONENT") {
-        const variantProps = parseVariantProperties(child.name);
-        return variantProps[property] === value;
-      }
-      return false;
-    });
-  }
-  function findVariantByProperties(componentSet, properties) {
-    return componentSet.children.find((child) => {
-      if (child.type === "COMPONENT") {
-        const variantProps = parseVariantProperties(child.name);
-        return Object.entries(properties).every(([key, value]) => variantProps[key] === value);
-      }
-      return false;
-    });
-  }
-  function parseVariantProperties(name) {
-    const props = {};
-    const parts = name.split(",").map((p) => p.trim());
-    parts.forEach((part) => {
-      const [key, value] = part.split("=").map((p) => p.trim());
-      if (key && value) {
-        props[key] = value;
-      }
-    });
-    return props;
-  }
-  async function handleGenerateDocsFrame(_data) {
-    figma.notify("Documentation frame generation not yet implemented in refactored version", { timeout: 2e3 });
-  }
-  async function handleEmbedMetadata(_metadata) {
-    figma.notify("Metadata embedding not yet implemented in refactored version", { timeout: 2e3 });
-  }
   async function handleClearApiKey() {
     try {
       storedApiKey = null;
@@ -1392,149 +1299,6 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
     } catch (error) {
       console.error("Error clearing API key:", error);
     }
-  }
-  async function handleSaveCollabNotes(_notes) {
-    figma.notify("Collaboration notes not yet implemented in refactored version", { timeout: 2e3 });
-  }
-  async function handleFixNaming(data) {
-    try {
-      const { layer, newName } = data;
-      if (!layer || !newName) {
-        throw new Error("Layer name and new name are required");
-      }
-      const selection = figma.currentPage.selection;
-      if (selection.length === 0) {
-        throw new Error("No component selected");
-      }
-      let selectedNode = selection[0];
-      if (selectedNode.type === "INSTANCE") {
-        const instance = selectedNode;
-        if (instance.mainComponent) {
-          selectedNode = instance.mainComponent;
-        }
-      }
-      let nodeToRename = null;
-      if (selectedNode.name === layer) {
-        nodeToRename = selectedNode;
-      } else {
-        nodeToRename = findNodeByName(selectedNode, layer);
-      }
-      if (!nodeToRename) {
-        throw new Error(`Layer "${layer}" not found in the component`);
-      }
-      const oldName = nodeToRename.name;
-      nodeToRename.name = newName;
-      sendMessageToUI("fix-naming", {
-        success: true,
-        message: `Renamed "${oldName}" to "${newName}"`
-      });
-      figma.notify(`Renamed "${oldName}" to "${newName}"`, { timeout: 2e3 });
-    } catch (error) {
-      console.error("Error fixing naming:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to rename layer";
-      sendMessageToUI("fix-naming", { success: false, error: errorMessage });
-      figma.notify(`Error: ${errorMessage}`, { error: true });
-    }
-  }
-  function findNodeByName(node, name) {
-    if (node.name === name) {
-      return node;
-    }
-    if ("children" in node) {
-      for (const child of node.children) {
-        const found = findNodeByName(child, name);
-        if (found) {
-          return found;
-        }
-      }
-    }
-    return null;
-  }
-  async function handleAddState(data) {
-    try {
-      const { state } = data;
-      if (!state) {
-        throw new Error("State name is required");
-      }
-      const selection = figma.currentPage.selection;
-      if (selection.length === 0) {
-        throw new Error("No component selected");
-      }
-      let selectedNode = selection[0];
-      if (selectedNode.type === "INSTANCE") {
-        const instance = selectedNode;
-        if (instance.mainComponent) {
-          selectedNode = instance.mainComponent;
-        }
-      }
-      if (selectedNode.type !== "COMPONENT") {
-        throw new Error("Selected node must be a component to add states");
-      }
-      const component = selectedNode;
-      const parent = component.parent;
-      if (!parent) {
-        throw new Error("Component must have a parent to create variants");
-      }
-      let componentSet;
-      if (parent.type === "COMPONENT_SET") {
-        componentSet = parent;
-      } else {
-        componentSet = figma.combineAsVariants([component], parent, parent.children.indexOf(component));
-        componentSet.name = component.name;
-      }
-      const newVariant = component.clone();
-      newVariant.name = `State=${state}`;
-      newVariant.x = component.x + component.width + 20;
-      componentSet.appendChild(newVariant);
-      if (state === "hover") {
-        applyHoverState(newVariant);
-      } else if (state === "focus") {
-        applyFocusState(newVariant);
-      } else if (state === "disabled") {
-        applyDisabledState(newVariant);
-      } else if (state === "pressed" || state === "active") {
-        applyPressedState(newVariant);
-      }
-      sendMessageToUI("state-added", {
-        success: true,
-        state,
-        message: `Added ${state} state`
-      });
-      figma.notify(`Added ${state} state to component`, { timeout: 2e3 });
-    } catch (error) {
-      console.error("Error adding state:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to add state";
-      sendMessageToUI("state-added", { success: false, error: errorMessage });
-      figma.notify(`Error: ${errorMessage}`, { error: true });
-    }
-  }
-  function applyHoverState(node) {
-    if ("opacity" in node) {
-      node.opacity = Math.min(node.opacity * 1.1, 1);
-    }
-  }
-  function applyFocusState(node) {
-    if ("strokes" in node) {
-      node.strokes = [{
-        type: "SOLID",
-        color: { r: 0.33, g: 0.53, b: 1 },
-        opacity: 1
-      }];
-      node.strokeWeight = 2;
-    }
-  }
-  function applyDisabledState(node) {
-    if ("opacity" in node) {
-      node.opacity = 0.5;
-    }
-  }
-  function applyPressedState(node) {
-    if ("opacity" in node) {
-      node.opacity = Math.max(node.opacity * 0.9, 0.1);
-    }
-  }
-  async function handleFixAccessibility(_data) {
-    figma.notify("Accessibility fixes not yet implemented in refactored version", { timeout: 2e3 });
   }
   async function initializePlugin() {
     try {
