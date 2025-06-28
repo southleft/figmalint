@@ -44,12 +44,45 @@ export function rgbToHex(r: number, g: number, b: number): string {
 }
 
 /**
- * Safely get variable name by ID
+ * Safely get variable name by ID using async method
  */
-export function getVariableName(variableId: string): string | null {
+export async function getVariableName(variableId: string): Promise<string | null> {
   try {
-    const variable = figma.variables.getVariableById(variableId);
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
     return variable ? variable.name : null;
+  } catch (error) {
+    console.warn('Could not access variable:', variableId, error);
+    return null;
+  }
+}
+
+/**
+ * Safely get variable value for display (returns resolved value when possible)
+ */
+export async function getVariableValue(variableId: string, node?: SceneNode): Promise<string | null> {
+  try {
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) return null;
+
+    // Try to resolve the variable value for the current node
+    if (node && variable.resolveForConsumer) {
+      try {
+        const resolved = variable.resolveForConsumer(node);
+        if (resolved && typeof resolved.value === 'object' && 'r' in resolved.value) {
+          // It's a color value
+          const color = resolved.value as { r: number; g: number; b: number };
+          return rgbToHex(color.r, color.g, color.b);
+        } else if (resolved && resolved.value !== undefined) {
+          // Other value types
+          return String(resolved.value);
+        }
+      } catch (resolveError) {
+        console.warn('Could not resolve variable value:', resolveError);
+      }
+    }
+
+    // Fallback to variable name if resolution fails
+    return variable.name;
   } catch (error) {
     console.warn('Could not access variable:', variableId, error);
     return null;
@@ -238,4 +271,54 @@ export function generateSemanticTokenName(
     default:
       return `token-${type}-${value}`;
   }
+}
+
+/**
+ * Generate a descriptive path for a node to help with debugging
+ */
+export function getNodePath(node: SceneNode): string {
+  const path: string[] = [];
+  let currentNode: BaseNode | null = node;
+
+  while (currentNode && currentNode.type !== 'DOCUMENT') {
+    if (currentNode.type === 'PAGE') {
+      break; // Don't include page in the path
+    }
+
+    // For component variants, include the variant properties
+    if (currentNode.type === 'COMPONENT' && currentNode.parent?.type === 'COMPONENT_SET') {
+      // Extract variant name (e.g., "Hover, Checked=True, Focus=True")
+      path.unshift(`${currentNode.name}`);
+    } else {
+      path.unshift(currentNode.name);
+    }
+
+    currentNode = currentNode.parent;
+  }
+
+  return path.join(' → ');
+}
+
+/**
+ * Generate a concise description for debugging context
+ */
+export function getDebugContext(node: SceneNode): { path: string; description: string } {
+  const path = getNodePath(node);
+
+  // Create a user-friendly description
+  let description = `Found in "${node.name}"`;
+
+  // If it's part of a component variant, be more specific
+  if (node.parent?.type === 'COMPONENT_SET' ||
+      (node.parent && node.parent.parent?.type === 'COMPONENT_SET')) {
+    description = `Found in variant: "${node.name}"`;
+  } else if (path.includes('→')) {
+    // Show the immediate parent context for nested elements
+    const pathParts = path.split(' → ');
+    if (pathParts.length > 1) {
+      description = `Found in "${pathParts[pathParts.length - 1]}" (${pathParts[pathParts.length - 2]})`;
+    }
+  }
+
+  return { path, description };
 }

@@ -8,6 +8,9 @@
   "permissions": ["currentuser"],
   "documentAccess": "dynamic-page",
   "networkAccess": {
-    "allowedDomains": ["https://api.anthropic.com"]
+    "allowedDomains": [
+      "https://api.anthropic.com",
+      "https://design-systems-mcp.southleft-llc.workers.dev"
+    ]
   }
 }

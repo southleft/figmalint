@@ -1,6 +1,6 @@
 {
   "name": "figmalint",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "FigmaLint - Component linting for Figma that audits design system compliance, MCP compatibility, accessibility, and generates developer handoff documentation.",
   "main": "dist/code.js",
   "scripts": {
@@ -10,6 +10,8 @@
     "copy-assets": "cp ui-enhanced.html dist/ && cp manifest.json dist/",
     "clean": "rm -rf dist",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:mcp": "node scripts/test-mcp-connection.js",
+    "test:mcp-integration": "node scripts/test-figma-plugin-mcp.js",
     "lint": "tsc --noEmit",
     "prebuild": "npm run clean"
   },

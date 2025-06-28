@@ -1101,13 +1101,20 @@ export async function processEnhancedAnalysis(
       consistencyIssues: claudeData.audit?.consistencyIssues || [],
       tokenOpportunities: claudeData.audit?.tokenOpportunities || []
     },
-    mcpReadiness: claudeData.mcpReadiness ? {
-      score: parseInt(claudeData.mcpReadiness.score) || 0,
-      strengths: claudeData.mcpReadiness.strengths || [],
-      gaps: claudeData.mcpReadiness.gaps || [],
-      recommendations: claudeData.mcpReadiness.recommendations || [],
-      implementationNotes: claudeData.mcpReadiness.implementationNotes || ''
-    } : undefined
+    mcpReadiness: claudeData.mcpReadiness ?
+      enhanceMCPReadinessWithFallback(claudeData.mcpReadiness, {
+        node,
+        context,
+        actualProperties,
+        actualStates,
+        tokens
+      }) : generateFallbackMCPReadiness({
+        node,
+        context,
+        actualProperties,
+        actualStates,
+        tokens
+      })
   };
 
   return {
@@ -1116,6 +1123,152 @@ export async function processEnhancedAnalysis(
     audit,
     properties: actualProperties, // This will be used by the UI for the property cheat sheet
     recommendations
+  };
+}
+
+/**
+ * Generate fallback MCP readiness data when Claude doesn't provide it
+ */
+function generateFallbackMCPReadiness(data: {
+  node: SceneNode;
+  context: any;
+  actualProperties: Array<{ name: string; values: string[]; default: string }>;
+  actualStates: string[];
+  tokens: any;
+}): any {
+  const { node, context, actualProperties, actualStates, tokens } = data;
+  const family = context.componentFamily || 'generic';
+
+  // Analyze component structure to determine strengths
+  const strengths: string[] = [];
+  const gaps: string[] = [];
+  const recommendations: string[] = [];
+
+  // Check layer naming
+  if (node.name && node.name.trim() !== '' && !node.name.toLowerCase().includes('untitled')) {
+    strengths.push('Component has descriptive naming');
+  } else {
+    gaps.push('Component name needs improvement');
+    recommendations.push('Use descriptive component names that indicate purpose');
+  }
+
+  // Check component structure
+  if (context.hierarchy && context.hierarchy.length > 1) {
+    strengths.push('Well-structured component hierarchy');
+  } else {
+    gaps.push('Simple component structure');
+  }
+
+  // Check for properties
+  if (actualProperties.length > 0) {
+    strengths.push(`Has ${actualProperties.length} configurable properties`);
+  } else {
+    gaps.push('No configurable properties defined');
+    recommendations.push('Add component properties for customization');
+  }
+
+  // Check for states based on component family
+  const shouldHaveStates = context.hasInteractiveElements && family !== 'badge' && family !== 'icon';
+  if (shouldHaveStates) {
+    if (actualStates.length > 1) {
+      strengths.push('Includes multiple component states');
+    } else {
+      gaps.push('Missing interactive states');
+      recommendations.push('Add hover, focus, and disabled states for interactive components');
+    }
+  }
+
+  // Check for design tokens usage
+  const hasTokens = tokens && (
+    (tokens.colors && tokens.colors.some((t: any) => t.isActualToken)) ||
+    (tokens.spacing && tokens.spacing.some((t: any) => t.isActualToken)) ||
+    (tokens.typography && tokens.typography.some((t: any) => t.isActualToken))
+  );
+
+  if (hasTokens) {
+    strengths.push('Uses design tokens for consistency');
+  } else {
+    gaps.push('Limited design token usage');
+    recommendations.push('Replace hard-coded values with design tokens');
+  }
+
+  // Component family specific recommendations
+  if (family === 'avatar' && actualProperties.length === 0) {
+    gaps.push('Missing size variants');
+    recommendations.push('Add size property for different use cases');
+  } else if (family === 'button' && actualStates.length <= 1) {
+    gaps.push('Incomplete accessibility features');
+    recommendations.push('Add accessibility states and ARIA labels');
+  }
+
+  // Ensure we have minimum content
+  if (strengths.length === 0) {
+    strengths.push('Component follows basic structure patterns');
+  }
+  if (gaps.length === 0) {
+    gaps.push('Component could benefit from additional states');
+  }
+  if (recommendations.length === 0) {
+    recommendations.push('Consider adding size variants for scalability');
+  }
+
+  // Calculate score based on strengths vs gaps
+  const baseScore = Math.max(40, 100 - (gaps.length * 15) + (strengths.length * 10));
+  const score = Math.min(100, baseScore);
+
+  return {
+    score,
+    strengths,
+    gaps,
+    recommendations,
+    implementationNotes: `This ${family} component can be enhanced for better MCP code generation compatibility by addressing the identified gaps.`
+  };
+}
+
+/**
+ * Enhance MCP readiness data from Claude with fallback content
+ */
+function enhanceMCPReadinessWithFallback(mcpData: any, data: {
+  node: SceneNode;
+  context: any;
+  actualProperties: Array<{ name: string; values: string[]; default: string }>;
+  actualStates: string[];
+  tokens: any;
+}): any {
+  const score = parseInt(mcpData.score) || 0;
+  let strengths = Array.isArray(mcpData.strengths) ? mcpData.strengths.filter((s: any) =>
+    typeof s === 'string' && s.trim() && !s.includes('REQUIRED') && !s.includes('Examples')
+  ) : [];
+  let gaps = Array.isArray(mcpData.gaps) ? mcpData.gaps.filter((g: any) =>
+    typeof g === 'string' && g.trim() && !g.includes('REQUIRED') && !g.includes('Examples')
+  ) : [];
+  let recommendations = Array.isArray(mcpData.recommendations) ? mcpData.recommendations.filter((r: any) =>
+    typeof r === 'string' && r.trim() && !r.includes('REQUIRED') && !r.includes('Examples')
+  ) : [];
+
+  // Generate fallback content if Claude didn't provide enough
+  if (strengths.length === 0 || gaps.length === 0 || recommendations.length === 0) {
+    console.log('🔄 Enhancing MCP readiness with fallback content...');
+    const fallback = generateFallbackMCPReadiness(data);
+
+    if (strengths.length === 0) {
+      strengths = fallback.strengths;
+    }
+    if (gaps.length === 0) {
+      gaps = fallback.gaps;
+    }
+    if (recommendations.length === 0) {
+      recommendations = fallback.recommendations;
+    }
+  }
+
+  return {
+    score,
+    strengths,
+    gaps,
+    recommendations,
+    implementationNotes: mcpData.implementationNotes ||
+      `This component can be optimized for MCP code generation by addressing the identified improvements.`
   };
 }
 

@@ -1,7 +1,7 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { DesignToken, TokenAnalysis, TokenCategory } from '../types';
-import { rgbToHex, getVariableName } from '../utils/figma-helpers';
+import { rgbToHex, getVariableName, getVariableValue, getDebugContext } from '../utils/figma-helpers';
 
 /**
  * Extract comprehensive design tokens from a Figma node
@@ -121,107 +121,199 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
 
     await Promise.all(stylePromises);
 
-    // Check for Figma Variables with proper type checking
+    // Check for Figma Variables with comprehensive property checking
     if ('boundVariables' in currentNode && currentNode.boundVariables) {
       const boundVars = currentNode.boundVariables;
+      console.log(`🔍 [VARIABLES] Checking bound variables for ${currentNode.name}:`, Object.keys(boundVars));
 
-      // Color variables - check only valid properties
-      if (boundVars.fills) {
+      // Helper function to process variable arrays
+      const processVariableArray = async (variables: any, propertyName: string, targetSet: Set<string>, targetArray: DesignToken[], tokenType: string) => {
         try {
-          const variables = Array.isArray(boundVars.fills) ? boundVars.fills : [boundVars.fills];
-          variables.forEach((v: any) => {
+          const varArray = Array.isArray(variables) ? variables : [variables];
+          for (const v of varArray) {
             if (v?.id && typeof v.id === 'string') {
-              const varName = getVariableName(v.id);
-              if (varName && !colorSet.has(varName)) {
-                colorSet.add(varName);
-                colors.push({
+              const varName = await getVariableName(v.id);
+              console.log(`   🎯 Found ${propertyName} variable:`, varName);
+              if (varName && !targetSet.has(varName)) {
+                targetSet.add(varName);
+
+                // Get actual value for color-related variables
+                let displayValue = varName;
+                if (tokenType === 'color' && (propertyName === 'fills' || propertyName === 'strokes')) {
+                  const actualValue = await getVariableValue(v.id, currentNode);
+                  if (actualValue && actualValue.startsWith('#')) {
+                    displayValue = actualValue;
+                  }
+                }
+
+                targetArray.push({
                   name: varName,
-                  value: varName,
-                  type: 'fills-variable',
+                  value: displayValue,
+                  type: `${propertyName}-variable`,
                   isToken: true,
                   isActualToken: true,
                   source: 'figma-variable'
                 });
+                console.log(`   ✅ Added ${tokenType} token: ${varName} (value: ${displayValue})`);
               }
             }
-          });
+          }
         } catch (error) {
-          console.warn('Error processing fills variables:', error);
+          console.warn(`Error processing ${propertyName} variables:`, error);
         }
-      }
+      };
 
-      // Check strokes if available
-      if (boundVars.strokes) {
-        try {
-          const variables = Array.isArray(boundVars.strokes) ? boundVars.strokes : [boundVars.strokes];
-          variables.forEach((v: any) => {
-            if (v?.id && typeof v.id === 'string') {
-              const varName = getVariableName(v.id);
-              if (varName && !colorSet.has(varName)) {
-                colorSet.add(varName);
-                colors.push({
-                  name: varName,
-                  value: varName,
-                  type: 'strokes-variable',
-                  isToken: true,
-                  isActualToken: true,
-                  source: 'figma-variable'
-                });
-              }
-            }
-          });
-        } catch (error) {
-          console.warn('Error processing strokes variables:', error);
-        }
-      }
-
-      // Spacing variables - check only valid properties
-      const spacingProps = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'itemSpacing'] as const;
-      spacingProps.forEach(prop => {
-        const variable = (boundVars as any)[prop];
+      // Helper function to process single variables
+      const processSingleVariable = async (variable: any, propertyName: string, targetSet: Set<string>, targetArray: DesignToken[], tokenType: string) => {
         if (variable && typeof variable === 'object' && 'id' in variable && typeof variable.id === 'string') {
-          const varName = getVariableName(variable.id);
-          if (varName && !spacingSet.has(varName)) {
-            spacingSet.add(varName);
-            spacing.push({
+          const varName = await getVariableName(variable.id);
+          console.log(`   🎯 Found ${propertyName} variable:`, varName);
+          if (varName && !targetSet.has(varName)) {
+            targetSet.add(varName);
+            targetArray.push({
               name: varName,
               value: varName,
-              type: `${prop}-variable`,
+              type: `${propertyName}-variable`,
               isToken: true,
               isActualToken: true,
               source: 'figma-variable'
             });
+            console.log(`   ✅ Added ${tokenType} token: ${varName}`);
           }
         }
+      };
+
+      // Process all variable types with proper async handling
+      const variableProcessingPromises: Promise<void>[] = [];
+
+      // Color-related variables
+      if (boundVars.fills) {
+        console.log('   🎨 Processing fills variables...');
+        variableProcessingPromises.push(processVariableArray(boundVars.fills, 'fills', colorSet, colors, 'color'));
+      }
+
+      if (boundVars.strokes) {
+        console.log('   🖊️ Processing strokes variables...');
+        variableProcessingPromises.push(processVariableArray(boundVars.strokes, 'strokes', colorSet, colors, 'color'));
+      }
+
+      // Effects variables (shadows, blurs, etc.)
+      if (boundVars.effects) {
+        console.log('   ✨ Processing effects variables...');
+        variableProcessingPromises.push(processVariableArray(boundVars.effects, 'effects', effectSet, effects, 'effect'));
+      }
+
+      // Border-related variables
+      if (boundVars.strokeWeight) {
+        console.log('   📏 Processing strokeWeight variable...');
+        variableProcessingPromises.push(processSingleVariable(boundVars.strokeWeight, 'strokeWeight', borderSet, borders, 'border'));
+      }
+
+      // Border radius variables
+      const radiusProps = ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius'] as const;
+      radiusProps.forEach(prop => {
+        if ((boundVars as any)[prop]) {
+          console.log(`   🔄 Processing ${prop} variable...`);
+          variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, borderSet, borders, 'border'));
+        }
       });
+
+      // Spacing variables
+      const spacingProps = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'itemSpacing', 'counterAxisSpacing'] as const;
+      spacingProps.forEach(prop => {
+        if ((boundVars as any)[prop]) {
+          console.log(`   📐 Processing ${prop} variable...`);
+          variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, spacingSet, spacing, 'spacing'));
+        }
+      });
+
+      // Size variables
+      const sizeProps = ['width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight'] as const;
+      sizeProps.forEach(prop => {
+        if ((boundVars as any)[prop]) {
+          console.log(`   📦 Processing ${prop} variable...`);
+          variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, spacingSet, spacing, 'size'));
+        }
+      });
+
+      // Opacity variables (treating as effects for now)
+      if (boundVars.opacity) {
+        console.log('   👻 Processing opacity variable...');
+        variableProcessingPromises.push(processSingleVariable(boundVars.opacity, 'opacity', effectSet, effects, 'effect'));
+      }
+
+      // Typography variables (for text nodes)
+      if (currentNode.type === 'TEXT') {
+        const typographyProps = ['fontSize', 'lineHeight', 'letterSpacing', 'paragraphSpacing'] as const;
+        typographyProps.forEach(prop => {
+          if ((boundVars as any)[prop]) {
+            console.log(`   📝 Processing ${prop} variable...`);
+            variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, typographySet, typography, 'typography'));
+          }
+        });
+      }
+
+      // Wait for all variable processing to complete
+      await Promise.all(variableProcessingPromises);
+
+      console.log(`🔍 [VARIABLES] Total variables found for ${currentNode.name}: ${Object.keys(boundVars).length}`);
     }
 
-    // Extract hard-coded values with proper type checking
-    if ('fills' in currentNode && Array.isArray(currentNode.fills) && !currentNode.fillStyleId) {
+    // Extract hard-coded values ONLY if no bound variables and no styles
+    const hasFillVariables = 'boundVariables' in currentNode &&
+                            currentNode.boundVariables &&
+                            currentNode.boundVariables.fills;
+    const hasFillStyle = 'fillStyleId' in currentNode && currentNode.fillStyleId;
+
+    if ('fills' in currentNode && Array.isArray(currentNode.fills) && !hasFillStyle && !hasFillVariables) {
+      console.log(`🔍 [HARD-CODED] Checking fills for ${currentNode.name} (no variables, no style)`);
       currentNode.fills.forEach((fill) => {
         if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
           const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
           if (!colorSet.has(hex)) {
+            console.log(`   ⚠️ Found hard-coded fill: ${hex}`);
             colorSet.add(hex);
+
+            const debugContext = getDebugContext(currentNode);
             colors.push({
               name: `hard-coded-fill-${colors.length + 1}`,
               value: hex,
               type: 'fill',
               isToken: false,
-              source: 'hard-coded'
+              source: 'hard-coded',
+              context: {
+                nodeType: currentNode.type,
+                nodeName: currentNode.name,
+                path: debugContext.path,
+                description: debugContext.description,
+                property: 'fills'
+              }
             });
           }
         }
       });
+    } else if (hasFillVariables) {
+      console.log(`🔍 [VARIABLES] ${currentNode.name} has fill variables - skipping hard-coded detection`);
+    } else if (hasFillStyle) {
+      console.log(`🔍 [STYLES] ${currentNode.name} has fill style - skipping hard-coded detection`);
     }
 
-    // Extract stroke values (color and width)
-    if ('strokes' in currentNode && Array.isArray(currentNode.strokes) && !currentNode.strokeStyleId) {
+    // Extract stroke values ONLY if no bound variables and no styles
+    const hasStrokeVariables = 'boundVariables' in currentNode &&
+                              currentNode.boundVariables &&
+                              currentNode.boundVariables.strokes;
+    const hasStrokeStyle = 'strokeStyleId' in currentNode && currentNode.strokeStyleId;
+
+    if ('strokes' in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
+      console.log(`🔍 [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
       currentNode.strokes.forEach((stroke) => {
         if (stroke.type === 'SOLID' && stroke.visible !== false && stroke.color) {
           const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
           if (!colorSet.has(hex)) {
+            console.log(`   ⚠️ Found hard-coded stroke: ${hex}`);
             colorSet.add(hex);
+
+            const debugContext = getDebugContext(currentNode);
             colors.push({
               name: `hard-coded-stroke-${colors.length + 1}`,
               value: hex,
@@ -230,12 +322,19 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
               source: 'hard-coded',
               context: {
                 nodeType: currentNode.type,
-                nodeName: currentNode.name
+                nodeName: currentNode.name,
+                path: debugContext.path,
+                description: debugContext.description,
+                property: 'strokes'
               }
             });
           }
         }
       });
+    } else if (hasStrokeVariables) {
+      console.log(`🔍 [VARIABLES] ${currentNode.name} has stroke variables - skipping hard-coded detection`);
+    } else if (hasStrokeStyle) {
+      console.log(`🔍 [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
     }
 
     // Extract stroke weight only if there are visible strokes
@@ -259,6 +358,8 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         if (!borderSet.has(strokeWeightValue)) {
           console.log(`   ✅ Adding stroke weight: ${strokeWeightValue}`);
           borderSet.add(strokeWeightValue);
+
+          const debugContext = getDebugContext(currentNode);
           borders.push({
             name: `hard-coded-stroke-weight-${currentNode.strokeWeight}`,
             value: strokeWeightValue,
@@ -269,15 +370,100 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             context: {
               nodeType: currentNode.type,
               nodeName: currentNode.name,
-              hasVisibleStroke: true
+              hasVisibleStroke: true,
+              path: debugContext.path,
+              description: debugContext.description,
+              property: 'strokeWeight'
             }
           });
         }
       }
     }
 
-    // Extract spacing values with proper type checking
-    if ('paddingLeft' in currentNode && typeof currentNode.paddingLeft === 'number') {
+    // Extract hard-coded border radius ONLY if no bound variables
+    const hasRadiusVariables = 'boundVariables' in currentNode &&
+                              currentNode.boundVariables &&
+                              (['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', 'cornerRadius'].some(prop =>
+                                (currentNode.boundVariables as any)[prop]));
+
+    if ('cornerRadius' in currentNode && typeof currentNode.cornerRadius === 'number' && !hasRadiusVariables) {
+      console.log(`🔍 [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
+      const radius = currentNode.cornerRadius;
+      if (radius > 0) {
+        const radiusValue = `${radius}px`;
+        if (!borderSet.has(radiusValue)) {
+          console.log(`   ⚠️ Found hard-coded corner radius: ${radiusValue}`);
+          borderSet.add(radiusValue);
+
+          const debugContext = getDebugContext(currentNode);
+          borders.push({
+            name: `hard-coded-corner-radius-${radius}`,
+            value: radiusValue,
+            type: 'corner-radius',
+            isToken: false,
+            source: 'hard-coded',
+            context: {
+              nodeType: currentNode.type,
+              nodeName: currentNode.name,
+              path: debugContext.path,
+              description: debugContext.description,
+              property: 'cornerRadius'
+            }
+          });
+        }
+      }
+    } else if (hasRadiusVariables) {
+      console.log(`🔍 [VARIABLES] ${currentNode.name} has radius variables - skipping hard-coded detection`);
+    }
+
+    // Also check for individual corner radius properties if they exist
+    if (!hasRadiusVariables && 'topLeftRadius' in currentNode) {
+      console.log(`🔍 [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
+      const radiusProps = [
+        { prop: 'topLeftRadius', name: 'top-left' },
+        { prop: 'topRightRadius', name: 'top-right' },
+        { prop: 'bottomLeftRadius', name: 'bottom-left' },
+        { prop: 'bottomRightRadius', name: 'bottom-right' }
+      ];
+
+      radiusProps.forEach(({ prop, name }) => {
+        if (prop in currentNode && typeof (currentNode as any)[prop] === 'number') {
+          const radius = (currentNode as any)[prop];
+          if (radius > 0) {
+            const radiusValue = `${radius}px`;
+            if (!borderSet.has(radiusValue)) {
+              console.log(`   ⚠️ Found hard-coded ${name} radius: ${radiusValue}`);
+              borderSet.add(radiusValue);
+
+              const debugContext = getDebugContext(currentNode);
+              borders.push({
+                name: `hard-coded-${name}-radius-${radius}`,
+                value: radiusValue,
+                type: `${name}-radius`,
+                isToken: false,
+                source: 'hard-coded',
+                context: {
+                  nodeType: currentNode.type,
+                  nodeName: currentNode.name,
+                  path: debugContext.path,
+                  description: debugContext.description,
+                  property: prop
+                }
+              });
+            }
+          }
+        }
+      });
+    }
+
+    // Extract spacing values ONLY if no bound variables
+    const hasPaddingVariables = 'boundVariables' in currentNode &&
+                               currentNode.boundVariables &&
+                               (['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'].some(prop =>
+                                 (currentNode.boundVariables as any)[prop]));
+
+    if ('paddingLeft' in currentNode && typeof currentNode.paddingLeft === 'number' && !hasPaddingVariables) {
+      console.log(`🔍 [HARD-CODED] Checking padding for ${currentNode.name} (no variables)`);
       const frame = currentNode as FrameNode;
       const paddings = [
         { value: frame.paddingLeft, name: 'left' },
@@ -288,7 +474,10 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
 
       paddings.forEach((padding) => {
         if (typeof padding.value === 'number' && padding.value > 1 && !spacingSet.has(padding.value.toString())) {
+          console.log(`   ⚠️ Found hard-coded padding-${padding.name}: ${padding.value}px`);
           spacingSet.add(padding.value.toString());
+
+          const debugContext = getDebugContext(currentNode);
           spacing.push({
             name: `hard-coded-padding-${padding.name}-${padding.value}`,
             value: `${padding.value}px`,
@@ -297,11 +486,16 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             source: 'hard-coded',
             context: {
               nodeType: currentNode.type,
-              nodeName: currentNode.name
+              nodeName: currentNode.name,
+              path: debugContext.path,
+              description: debugContext.description,
+              property: `padding${padding.name.charAt(0).toUpperCase() + padding.name.slice(1)}`
             }
           });
         }
       });
+    } else if (hasPaddingVariables) {
+      console.log(`🔍 [VARIABLES] ${currentNode.name} has padding variables - skipping hard-coded detection`);
     }
 
     // Traverse children

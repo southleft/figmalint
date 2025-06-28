@@ -7,11 +7,17 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-3-sonnet-20240229';
 const MAX_TOKENS = 2048;
 
+// Deterministic settings for consistency
+const DETERMINISTIC_CONFIG = {
+  temperature: 0.1, // Low temperature for consistency
+  top_p: 0.1,      // Low top_p for deterministic responses
+};
+
 /**
- * Send a prompt to Claude API and get a response
+ * Send a prompt to Claude API and get a response with deterministic settings
  */
-export async function fetchClaude(prompt: string, apiKey: string, model: string = DEFAULT_MODEL): Promise<string> {
-  console.log('Making Claude API call directly...');
+export async function fetchClaude(prompt: string, apiKey: string, model: string = DEFAULT_MODEL, isDeterministic: boolean = true): Promise<string> {
+  console.log('Making Claude API call with deterministic settings...');
 
   // Prepare the request payload for Anthropic API
   const requestBody: ClaudeAPIRequest = {
@@ -22,7 +28,9 @@ export async function fetchClaude(prompt: string, apiKey: string, model: string 
         content: prompt.trim()
       }
     ],
-    max_tokens: MAX_TOKENS
+    max_tokens: MAX_TOKENS,
+    // Add deterministic parameters for consistent responses
+    ...(isDeterministic ? DETERMINISTIC_CONFIG : {})
   };
 
   // Headers for direct Anthropic API request
@@ -207,13 +215,19 @@ ${componentContext.additionalContext ? `
   },
   "mcpReadiness": {
     "score": "0-100 readiness score for MCP server code generation",
-    "strengths": ["What's already well-structured for code generation"],
-    "gaps": ["What needs to be improved for MCP compatibility"],
-    "recommendations": [
-      "Specific actions to make this component MCP-ready",
-      "Priority improvements for code generation accuracy"
+    "strengths": [
+      "REQUIRED: List 2-3 specific strengths this component already has for code generation",
+      "Examples: 'Clear component structure', 'Good naming conventions', 'Semantic layer hierarchy', 'Uses design tokens', 'Has defined states', 'Accessible markup structure'"
     ],
-    "implementationNotes": "Developer guidance for implementing this component"
+    "gaps": [
+      "REQUIRED: List 2-4 specific gaps that limit MCP code generation effectiveness",
+      "Examples: 'Missing interactive states', 'Hard-coded spacing values', 'Unclear component variants', 'No accessibility attributes', 'Inconsistent naming'"
+    ],
+    "recommendations": [
+      "REQUIRED: List 2-4 specific, actionable recommendations to improve MCP readiness",
+      "Examples: 'Add hover and focus states', 'Replace hard-coded spacing with tokens', 'Define size variant properties', 'Add ARIA labels for accessibility', 'Standardize layer naming convention'"
+    ],
+    "implementationNotes": "Developer guidance for implementing this component in code"
   }
 }
 

@@ -1,4 +1,4 @@
-# AI Design Co-Pilot
+# FigmaLint
 
 A Figma plugin that acts as an **audit and education tool** for design systems. It helps designers understand developer expectations and structure components properly for engineering handoff.
 
@@ -6,7 +6,7 @@ A Figma plugin that acts as an **audit and education tool** for design systems. 
 
 This plugin **does not modify or generate components**. Instead, it analyzes existing Figma components and provides:
 - **Component audits** with recommendations
-- **Design token analysis** and suggestions  
+- **Design token analysis** and suggestions
 - **Educational feedback** on component structure
 - **Metadata export** for development teams
 
@@ -34,6 +34,24 @@ This plugin **does not modify or generate components**. Instead, it analyzes exi
 - Lists actual Figma component properties and variants
 - Shows available values for each property
 - Provides context for how properties should be used
+
+## Recent Updates
+
+### Variable Detection & Display Fixes (Latest)
+- **Fixed Variable Access**: Updated from deprecated synchronous `figma.variables.getVariableById()` to proper async `figma.variables.getVariableByIdAsync()`
+- **Color Value Resolution**: Variables now show actual color values (hex codes) in swatches instead of just variable names
+- **Removed Hard-coded AI Suggestions**: Eliminated the persistent "semantic-color-primary" suggestion that appeared regardless of context
+- **Added Border Radius Detection**: Now properly detects hard-coded border radius values with context about which node they come from
+- **Enhanced Debug Context**: Hard-coded values now show detailed path information for complex components (e.g., "Found in variant: Hover, Checked=True, Focus=True → handle")
+- **Separated Stroke Weight from Border Radius**: Fixed confusion where stroke weights were incorrectly categorized as border radius values
+- **Fixed Interactive States Capitalization**: All states now display with consistent title case (e.g., "Idle state defined", "Hover state defined")
+- **Streamlined Developer Handoff**: Removed the unhelpful TypeScript interface export, keeping only JSON metadata and Markdown documentation options
+- **Better Error Handling**: Improved async handling and error recovery for variable processing
+
+### Enhanced Token Analysis
+- **Comprehensive Variable Support**: Detects Figma Variables for colors, spacing, typography, borders, effects, and opacity
+- **Mixed Token Detection**: Combines Figma Variables, Named Styles, and hard-coded values in one analysis
+- **Contextual Information**: Shows which specific node contains hard-coded values for easier debugging
 
 ## 🏗️ Architecture
 

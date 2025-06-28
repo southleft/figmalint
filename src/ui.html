@@ -2,9 +2,9 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>AI Design Co-Pilot</title>
+      <title>FigmaLint</title>
   <style>
-    /* Modern UI Design System for AI Design Co-Pilot */
+            /* Modern UI Design System for FigmaLint */
     :root {
       /* Color Palette - Figma-inspired */
       --primary: #18A0FB;
@@ -1035,7 +1035,7 @@
     <div class="header">
       <div class="plugin-title">
         <div class="plugin-icon">AI</div>
-        <h1 class="plugin-name">Design Co-Pilot</h1>
+                    <h1 class="plugin-name">FigmaLint</h1>
       </div>
       <p class="plugin-description">AI-powered component analysis &amp; documentation</p>
     </div>
@@ -1827,8 +1827,7 @@
               ${state.found
                 ? '<span class="audit-status pass">✓</span>'
                 : '<span class="audit-status fail">✗</span>'}
-              <span class="audit-label">${state.name}</span>
-              ${!state.found ? `<button class="audit-action-button" onclick="handleAddState('${state.name.replace(/'/g, "\\'")}')" title="Click to add ${state.name} state">Add state</button>` : ''}
+              <span class="audit-label">${state.name} ${state.found ? '' : 'missing'}</span>
             </div>
           `;
         });
@@ -2653,14 +2652,7 @@
       analysisResults.classList.add('hidden');
     }
 
-    // Handle Add State Button Click
-    window.handleAddState = function(stateName) {
-      sendMessageToPlugin('add-state', {
-        state: stateName,
-        metadata: currentMetadata
-      });
-      updateStatus(`Adding ${stateName} state...`, 'info');
-    }
+
 
     // Handle Fix Accessibility Button Click
     window.handleFixAccessibility = function(issue) {

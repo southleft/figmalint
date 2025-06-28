@@ -42,10 +42,33 @@
     };
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   }
-  function getVariableName(variableId) {
+  async function getVariableName(variableId) {
     try {
-      const variable = figma.variables.getVariableById(variableId);
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
       return variable ? variable.name : null;
+    } catch (error) {
+      console.warn("Could not access variable:", variableId, error);
+      return null;
+    }
+  }
+  async function getVariableValue(variableId, node) {
+    try {
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (!variable) return null;
+      if (node && variable.resolveForConsumer) {
+        try {
+          const resolved = variable.resolveForConsumer(node);
+          if (resolved && typeof resolved.value === "object" && "r" in resolved.value) {
+            const color = resolved.value;
+            return rgbToHex(color.r, color.g, color.b);
+          } else if (resolved && resolved.value !== void 0) {
+            return String(resolved.value);
+          }
+        } catch (resolveError) {
+          console.warn("Could not resolve variable value:", resolveError);
+        }
+      }
+      return variable.name;
     } catch (error) {
       console.warn("Could not access variable:", variableId, error);
       return null;
@@ -81,6 +104,37 @@
       }
     }
     return textContent;
+  }
+  function getNodePath(node) {
+    var _a;
+    const path = [];
+    let currentNode = node;
+    while (currentNode && currentNode.type !== "DOCUMENT") {
+      if (currentNode.type === "PAGE") {
+        break;
+      }
+      if (currentNode.type === "COMPONENT" && ((_a = currentNode.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") {
+        path.unshift(`${currentNode.name}`);
+      } else {
+        path.unshift(currentNode.name);
+      }
+      currentNode = currentNode.parent;
+    }
+    return path.join(" \u2192 ");
+  }
+  function getDebugContext(node) {
+    var _a, _b;
+    const path = getNodePath(node);
+    let description = `Found in "${node.name}"`;
+    if (((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET" || node.parent && ((_b = node.parent.parent) == null ? void 0 : _b.type) === "COMPONENT_SET") {
+      description = `Found in variant: "${node.name}"`;
+    } else if (path.includes("\u2192")) {
+      const pathParts = path.split(" \u2192 ");
+      if (pathParts.length > 1) {
+        description = `Found in "${pathParts[pathParts.length - 1]}" (${pathParts[pathParts.length - 2]})`;
+      }
+    }
+    return { path, description };
   }
 
   // src/core/token-analyzer.ts
@@ -176,94 +230,155 @@
       await Promise.all(stylePromises);
       if ("boundVariables" in currentNode && currentNode.boundVariables) {
         const boundVars = currentNode.boundVariables;
-        if (boundVars.fills) {
+        console.log(`\u{1F50D} [VARIABLES] Checking bound variables for ${currentNode.name}:`, Object.keys(boundVars));
+        const processVariableArray = async (variables, propertyName, targetSet, targetArray, tokenType) => {
           try {
-            const variables = Array.isArray(boundVars.fills) ? boundVars.fills : [boundVars.fills];
-            variables.forEach((v) => {
+            const varArray = Array.isArray(variables) ? variables : [variables];
+            for (const v of varArray) {
               if ((v == null ? void 0 : v.id) && typeof v.id === "string") {
-                const varName = getVariableName(v.id);
-                if (varName && !colorSet.has(varName)) {
-                  colorSet.add(varName);
-                  colors.push({
+                const varName = await getVariableName(v.id);
+                console.log(`   \u{1F3AF} Found ${propertyName} variable:`, varName);
+                if (varName && !targetSet.has(varName)) {
+                  targetSet.add(varName);
+                  let displayValue = varName;
+                  if (tokenType === "color" && (propertyName === "fills" || propertyName === "strokes")) {
+                    const actualValue = await getVariableValue(v.id, currentNode);
+                    if (actualValue && actualValue.startsWith("#")) {
+                      displayValue = actualValue;
+                    }
+                  }
+                  targetArray.push({
                     name: varName,
-                    value: varName,
-                    type: "fills-variable",
+                    value: displayValue,
+                    type: `${propertyName}-variable`,
                     isToken: true,
                     isActualToken: true,
                     source: "figma-variable"
                   });
+                  console.log(`   \u2705 Added ${tokenType} token: ${varName} (value: ${displayValue})`);
                 }
               }
-            });
+            }
           } catch (error) {
-            console.warn("Error processing fills variables:", error);
+            console.warn(`Error processing ${propertyName} variables:`, error);
           }
-        }
-        if (boundVars.strokes) {
-          try {
-            const variables = Array.isArray(boundVars.strokes) ? boundVars.strokes : [boundVars.strokes];
-            variables.forEach((v) => {
-              if ((v == null ? void 0 : v.id) && typeof v.id === "string") {
-                const varName = getVariableName(v.id);
-                if (varName && !colorSet.has(varName)) {
-                  colorSet.add(varName);
-                  colors.push({
-                    name: varName,
-                    value: varName,
-                    type: "strokes-variable",
-                    isToken: true,
-                    isActualToken: true,
-                    source: "figma-variable"
-                  });
-                }
-              }
-            });
-          } catch (error) {
-            console.warn("Error processing strokes variables:", error);
-          }
-        }
-        const spacingProps = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "itemSpacing"];
-        spacingProps.forEach((prop) => {
-          const variable = boundVars[prop];
+        };
+        const processSingleVariable = async (variable, propertyName, targetSet, targetArray, tokenType) => {
           if (variable && typeof variable === "object" && "id" in variable && typeof variable.id === "string") {
-            const varName = getVariableName(variable.id);
-            if (varName && !spacingSet.has(varName)) {
-              spacingSet.add(varName);
-              spacing.push({
+            const varName = await getVariableName(variable.id);
+            console.log(`   \u{1F3AF} Found ${propertyName} variable:`, varName);
+            if (varName && !targetSet.has(varName)) {
+              targetSet.add(varName);
+              targetArray.push({
                 name: varName,
                 value: varName,
-                type: `${prop}-variable`,
+                type: `${propertyName}-variable`,
                 isToken: true,
                 isActualToken: true,
                 source: "figma-variable"
               });
+              console.log(`   \u2705 Added ${tokenType} token: ${varName}`);
             }
           }
+        };
+        const variableProcessingPromises = [];
+        if (boundVars.fills) {
+          console.log("   \u{1F3A8} Processing fills variables...");
+          variableProcessingPromises.push(processVariableArray(boundVars.fills, "fills", colorSet, colors, "color"));
+        }
+        if (boundVars.strokes) {
+          console.log("   \u{1F58A}\uFE0F Processing strokes variables...");
+          variableProcessingPromises.push(processVariableArray(boundVars.strokes, "strokes", colorSet, colors, "color"));
+        }
+        if (boundVars.effects) {
+          console.log("   \u2728 Processing effects variables...");
+          variableProcessingPromises.push(processVariableArray(boundVars.effects, "effects", effectSet, effects, "effect"));
+        }
+        if (boundVars.strokeWeight) {
+          console.log("   \u{1F4CF} Processing strokeWeight variable...");
+          variableProcessingPromises.push(processSingleVariable(boundVars.strokeWeight, "strokeWeight", borderSet, borders, "border"));
+        }
+        const radiusProps = ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"];
+        radiusProps.forEach((prop) => {
+          if (boundVars[prop]) {
+            console.log(`   \u{1F504} Processing ${prop} variable...`);
+            variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, borderSet, borders, "border"));
+          }
         });
+        const spacingProps = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "itemSpacing", "counterAxisSpacing"];
+        spacingProps.forEach((prop) => {
+          if (boundVars[prop]) {
+            console.log(`   \u{1F4D0} Processing ${prop} variable...`);
+            variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, spacingSet, spacing, "spacing"));
+          }
+        });
+        const sizeProps = ["width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight"];
+        sizeProps.forEach((prop) => {
+          if (boundVars[prop]) {
+            console.log(`   \u{1F4E6} Processing ${prop} variable...`);
+            variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, spacingSet, spacing, "size"));
+          }
+        });
+        if (boundVars.opacity) {
+          console.log("   \u{1F47B} Processing opacity variable...");
+          variableProcessingPromises.push(processSingleVariable(boundVars.opacity, "opacity", effectSet, effects, "effect"));
+        }
+        if (currentNode.type === "TEXT") {
+          const typographyProps = ["fontSize", "lineHeight", "letterSpacing", "paragraphSpacing"];
+          typographyProps.forEach((prop) => {
+            if (boundVars[prop]) {
+              console.log(`   \u{1F4DD} Processing ${prop} variable...`);
+              variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, typographySet, typography, "typography"));
+            }
+          });
+        }
+        await Promise.all(variableProcessingPromises);
+        console.log(`\u{1F50D} [VARIABLES] Total variables found for ${currentNode.name}: ${Object.keys(boundVars).length}`);
       }
-      if ("fills" in currentNode && Array.isArray(currentNode.fills) && !currentNode.fillStyleId) {
+      const hasFillVariables = "boundVariables" in currentNode && currentNode.boundVariables && currentNode.boundVariables.fills;
+      const hasFillStyle = "fillStyleId" in currentNode && currentNode.fillStyleId;
+      if ("fills" in currentNode && Array.isArray(currentNode.fills) && !hasFillStyle && !hasFillVariables) {
+        console.log(`\u{1F50D} [HARD-CODED] Checking fills for ${currentNode.name} (no variables, no style)`);
         currentNode.fills.forEach((fill) => {
           if (fill.type === "SOLID" && fill.visible !== false && fill.color) {
             const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
             if (!colorSet.has(hex)) {
+              console.log(`   \u26A0\uFE0F Found hard-coded fill: ${hex}`);
               colorSet.add(hex);
+              const debugContext = getDebugContext(currentNode);
               colors.push({
                 name: `hard-coded-fill-${colors.length + 1}`,
                 value: hex,
                 type: "fill",
                 isToken: false,
-                source: "hard-coded"
+                source: "hard-coded",
+                context: {
+                  nodeType: currentNode.type,
+                  nodeName: currentNode.name,
+                  path: debugContext.path,
+                  description: debugContext.description,
+                  property: "fills"
+                }
               });
             }
           }
         });
+      } else if (hasFillVariables) {
+        console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has fill variables - skipping hard-coded detection`);
+      } else if (hasFillStyle) {
+        console.log(`\u{1F50D} [STYLES] ${currentNode.name} has fill style - skipping hard-coded detection`);
       }
-      if ("strokes" in currentNode && Array.isArray(currentNode.strokes) && !currentNode.strokeStyleId) {
+      const hasStrokeVariables = "boundVariables" in currentNode && currentNode.boundVariables && currentNode.boundVariables.strokes;
+      const hasStrokeStyle = "strokeStyleId" in currentNode && currentNode.strokeStyleId;
+      if ("strokes" in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
+        console.log(`\u{1F50D} [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
         currentNode.strokes.forEach((stroke) => {
           if (stroke.type === "SOLID" && stroke.visible !== false && stroke.color) {
             const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
             if (!colorSet.has(hex)) {
+              console.log(`   \u26A0\uFE0F Found hard-coded stroke: ${hex}`);
               colorSet.add(hex);
+              const debugContext = getDebugContext(currentNode);
               colors.push({
                 name: `hard-coded-stroke-${colors.length + 1}`,
                 value: hex,
@@ -272,12 +387,19 @@
                 source: "hard-coded",
                 context: {
                   nodeType: currentNode.type,
-                  nodeName: currentNode.name
+                  nodeName: currentNode.name,
+                  path: debugContext.path,
+                  description: debugContext.description,
+                  property: "strokes"
                 }
               });
             }
           }
         });
+      } else if (hasStrokeVariables) {
+        console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has stroke variables - skipping hard-coded detection`);
+      } else if (hasStrokeStyle) {
+        console.log(`\u{1F50D} [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
       }
       if ("strokeWeight" in currentNode && typeof currentNode.strokeWeight === "number") {
         console.log(`\u{1F50D} Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
@@ -294,6 +416,7 @@
           if (!borderSet.has(strokeWeightValue)) {
             console.log(`   \u2705 Adding stroke weight: ${strokeWeightValue}`);
             borderSet.add(strokeWeightValue);
+            const debugContext = getDebugContext(currentNode);
             borders.push({
               name: `hard-coded-stroke-weight-${currentNode.strokeWeight}`,
               value: strokeWeightValue,
@@ -304,13 +427,83 @@
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
-                hasVisibleStroke: true
+                hasVisibleStroke: true,
+                path: debugContext.path,
+                description: debugContext.description,
+                property: "strokeWeight"
               }
             });
           }
         }
       }
-      if ("paddingLeft" in currentNode && typeof currentNode.paddingLeft === "number") {
+      const hasRadiusVariables = "boundVariables" in currentNode && currentNode.boundVariables && ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", "cornerRadius"].some((prop) => currentNode.boundVariables[prop]);
+      if ("cornerRadius" in currentNode && typeof currentNode.cornerRadius === "number" && !hasRadiusVariables) {
+        console.log(`\u{1F50D} [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
+        const radius = currentNode.cornerRadius;
+        if (radius > 0) {
+          const radiusValue = `${radius}px`;
+          if (!borderSet.has(radiusValue)) {
+            console.log(`   \u26A0\uFE0F Found hard-coded corner radius: ${radiusValue}`);
+            borderSet.add(radiusValue);
+            const debugContext = getDebugContext(currentNode);
+            borders.push({
+              name: `hard-coded-corner-radius-${radius}`,
+              value: radiusValue,
+              type: "corner-radius",
+              isToken: false,
+              source: "hard-coded",
+              context: {
+                nodeType: currentNode.type,
+                nodeName: currentNode.name,
+                path: debugContext.path,
+                description: debugContext.description,
+                property: "cornerRadius"
+              }
+            });
+          }
+        }
+      } else if (hasRadiusVariables) {
+        console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has radius variables - skipping hard-coded detection`);
+      }
+      if (!hasRadiusVariables && "topLeftRadius" in currentNode) {
+        console.log(`\u{1F50D} [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
+        const radiusProps = [
+          { prop: "topLeftRadius", name: "top-left" },
+          { prop: "topRightRadius", name: "top-right" },
+          { prop: "bottomLeftRadius", name: "bottom-left" },
+          { prop: "bottomRightRadius", name: "bottom-right" }
+        ];
+        radiusProps.forEach(({ prop, name }) => {
+          if (prop in currentNode && typeof currentNode[prop] === "number") {
+            const radius = currentNode[prop];
+            if (radius > 0) {
+              const radiusValue = `${radius}px`;
+              if (!borderSet.has(radiusValue)) {
+                console.log(`   \u26A0\uFE0F Found hard-coded ${name} radius: ${radiusValue}`);
+                borderSet.add(radiusValue);
+                const debugContext = getDebugContext(currentNode);
+                borders.push({
+                  name: `hard-coded-${name}-radius-${radius}`,
+                  value: radiusValue,
+                  type: `${name}-radius`,
+                  isToken: false,
+                  source: "hard-coded",
+                  context: {
+                    nodeType: currentNode.type,
+                    nodeName: currentNode.name,
+                    path: debugContext.path,
+                    description: debugContext.description,
+                    property: prop
+                  }
+                });
+              }
+            }
+          }
+        });
+      }
+      const hasPaddingVariables = "boundVariables" in currentNode && currentNode.boundVariables && ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"].some((prop) => currentNode.boundVariables[prop]);
+      if ("paddingLeft" in currentNode && typeof currentNode.paddingLeft === "number" && !hasPaddingVariables) {
+        console.log(`\u{1F50D} [HARD-CODED] Checking padding for ${currentNode.name} (no variables)`);
         const frame = currentNode;
         const paddings = [
           { value: frame.paddingLeft, name: "left" },
@@ -320,7 +513,9 @@
         ];
         paddings.forEach((padding) => {
           if (typeof padding.value === "number" && padding.value > 1 && !spacingSet.has(padding.value.toString())) {
+            console.log(`   \u26A0\uFE0F Found hard-coded padding-${padding.name}: ${padding.value}px`);
             spacingSet.add(padding.value.toString());
+            const debugContext = getDebugContext(currentNode);
             spacing.push({
               name: `hard-coded-padding-${padding.name}-${padding.value}`,
               value: `${padding.value}px`,
@@ -329,11 +524,16 @@
               source: "hard-coded",
               context: {
                 nodeType: currentNode.type,
-                nodeName: currentNode.name
+                nodeName: currentNode.name,
+                path: debugContext.path,
+                description: debugContext.description,
+                property: `padding${padding.name.charAt(0).toUpperCase() + padding.name.slice(1)}`
               }
             });
           }
         });
+      } else if (hasPaddingVariables) {
+        console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has padding variables - skipping hard-coded detection`);
       }
       if ("children" in currentNode) {
         for (const child of currentNode.children) {
@@ -1252,13 +1452,19 @@
         consistencyIssues: ((_l = claudeData.audit) == null ? void 0 : _l.consistencyIssues) || [],
         tokenOpportunities: ((_m = claudeData.audit) == null ? void 0 : _m.tokenOpportunities) || []
       },
-      mcpReadiness: claudeData.mcpReadiness ? {
-        score: parseInt(claudeData.mcpReadiness.score) || 0,
-        strengths: claudeData.mcpReadiness.strengths || [],
-        gaps: claudeData.mcpReadiness.gaps || [],
-        recommendations: claudeData.mcpReadiness.recommendations || [],
-        implementationNotes: claudeData.mcpReadiness.implementationNotes || ""
-      } : void 0
+      mcpReadiness: claudeData.mcpReadiness ? enhanceMCPReadinessWithFallback(claudeData.mcpReadiness, {
+        node,
+        context,
+        actualProperties,
+        actualStates,
+        tokens
+      }) : generateFallbackMCPReadiness({
+        node,
+        context,
+        actualProperties,
+        actualStates,
+        tokens
+      })
     };
     return {
       metadata: cleanMetadata,
@@ -1267,6 +1473,103 @@
       properties: actualProperties,
       // This will be used by the UI for the property cheat sheet
       recommendations
+    };
+  }
+  function generateFallbackMCPReadiness(data) {
+    const { node, context, actualProperties, actualStates, tokens } = data;
+    const family = context.componentFamily || "generic";
+    const strengths = [];
+    const gaps = [];
+    const recommendations = [];
+    if (node.name && node.name.trim() !== "" && !node.name.toLowerCase().includes("untitled")) {
+      strengths.push("Component has descriptive naming");
+    } else {
+      gaps.push("Component name needs improvement");
+      recommendations.push("Use descriptive component names that indicate purpose");
+    }
+    if (context.hierarchy && context.hierarchy.length > 1) {
+      strengths.push("Well-structured component hierarchy");
+    } else {
+      gaps.push("Simple component structure");
+    }
+    if (actualProperties.length > 0) {
+      strengths.push(`Has ${actualProperties.length} configurable properties`);
+    } else {
+      gaps.push("No configurable properties defined");
+      recommendations.push("Add component properties for customization");
+    }
+    const shouldHaveStates = context.hasInteractiveElements && family !== "badge" && family !== "icon";
+    if (shouldHaveStates) {
+      if (actualStates.length > 1) {
+        strengths.push("Includes multiple component states");
+      } else {
+        gaps.push("Missing interactive states");
+        recommendations.push("Add hover, focus, and disabled states for interactive components");
+      }
+    }
+    const hasTokens = tokens && (tokens.colors && tokens.colors.some((t) => t.isActualToken) || tokens.spacing && tokens.spacing.some((t) => t.isActualToken) || tokens.typography && tokens.typography.some((t) => t.isActualToken));
+    if (hasTokens) {
+      strengths.push("Uses design tokens for consistency");
+    } else {
+      gaps.push("Limited design token usage");
+      recommendations.push("Replace hard-coded values with design tokens");
+    }
+    if (family === "avatar" && actualProperties.length === 0) {
+      gaps.push("Missing size variants");
+      recommendations.push("Add size property for different use cases");
+    } else if (family === "button" && actualStates.length <= 1) {
+      gaps.push("Incomplete accessibility features");
+      recommendations.push("Add accessibility states and ARIA labels");
+    }
+    if (strengths.length === 0) {
+      strengths.push("Component follows basic structure patterns");
+    }
+    if (gaps.length === 0) {
+      gaps.push("Component could benefit from additional states");
+    }
+    if (recommendations.length === 0) {
+      recommendations.push("Consider adding size variants for scalability");
+    }
+    const baseScore = Math.max(40, 100 - gaps.length * 15 + strengths.length * 10);
+    const score = Math.min(100, baseScore);
+    return {
+      score,
+      strengths,
+      gaps,
+      recommendations,
+      implementationNotes: `This ${family} component can be enhanced for better MCP code generation compatibility by addressing the identified gaps.`
+    };
+  }
+  function enhanceMCPReadinessWithFallback(mcpData, data) {
+    const score = parseInt(mcpData.score) || 0;
+    let strengths = Array.isArray(mcpData.strengths) ? mcpData.strengths.filter(
+      (s) => typeof s === "string" && s.trim() && !s.includes("REQUIRED") && !s.includes("Examples")
+    ) : [];
+    let gaps = Array.isArray(mcpData.gaps) ? mcpData.gaps.filter(
+      (g) => typeof g === "string" && g.trim() && !g.includes("REQUIRED") && !g.includes("Examples")
+    ) : [];
+    let recommendations = Array.isArray(mcpData.recommendations) ? mcpData.recommendations.filter(
+      (r) => typeof r === "string" && r.trim() && !r.includes("REQUIRED") && !r.includes("Examples")
+    ) : [];
+    if (strengths.length === 0 || gaps.length === 0 || recommendations.length === 0) {
+      console.log("\u{1F504} Enhancing MCP readiness with fallback content...");
+      const fallback = generateFallbackMCPReadiness(data);
+      if (strengths.length === 0) {
+        strengths = fallback.strengths;
+      }
+      if (gaps.length === 0) {
+        gaps = fallback.gaps;
+      }
+      if (recommendations.length === 0) {
+        recommendations = fallback.recommendations;
+      }
+    }
+    return {
+      score,
+      strengths,
+      gaps,
+      recommendations,
+      implementationNotes: mcpData.implementationNotes || `This component can be optimized for MCP code generation by addressing the identified improvements.`
     };
   }
   function generatePropertyRecommendations(componentName, existingProperties) {
@@ -1508,9 +1811,15 @@
   var ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
   var DEFAULT_MODEL = "claude-3-sonnet-20240229";
   var MAX_TOKENS = 2048;
-  async function fetchClaude(prompt, apiKey, model = DEFAULT_MODEL) {
-    console.log("Making Claude API call directly...");
-    const requestBody = {
+  var DETERMINISTIC_CONFIG = {
+    temperature: 0.1,
+    // Low temperature for consistency
+    top_p: 0.1
+    // Low top_p for deterministic responses
+  };
+  async function fetchClaude(prompt, apiKey, model = DEFAULT_MODEL, isDeterministic = true) {
+    console.log("Making Claude API call with deterministic settings...");
+    const requestBody = __spreadValues({
       model,
       messages: [
         {
@@ -1519,7 +1828,7 @@
         }
       ],
       max_tokens: MAX_TOKENS
-    };
+    }, isDeterministic ? DETERMINISTIC_CONFIG : {});
     const headers = {
       "content-type": "application/json",
       "x-api-key": apiKey.trim(),
@@ -1559,167 +1868,6 @@
       throw error;
     }
   }
-  function createEnhancedMetadataPrompt(componentContext) {
-    return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
-
-**Component Analysis Context:**
-- Component Name: ${componentContext.name}
-- Component Type: ${componentContext.type}
-- Layer Structure: ${JSON.stringify(componentContext.hierarchy, null, 2)}
-- Detected Colors: ${componentContext.colors && componentContext.colors.length > 0 ? componentContext.colors.join(", ") : "None detected"}
-- Detected Spacing: ${componentContext.spacing && componentContext.spacing.length > 0 ? componentContext.spacing.join(", ") : "None detected"}
-- Text Content: ${componentContext.textContent || "No text content"}
-
-**Additional Context & Considerations:**
-${componentContext.additionalContext ? `
-- Component Family: ${componentContext.additionalContext.componentFamily || "Generic"}
-- Possible Use Case: ${componentContext.additionalContext.possibleUseCase || "Unknown"}
-- Has Interactive Elements: ${componentContext.additionalContext.hasInteractiveElements ? "Yes" : "No"}
-- Design Patterns: ${componentContext.additionalContext.designPatterns.join(", ") || "None identified"}
-- Considerations: ${componentContext.additionalContext.suggestedConsiderations.join("; ") || "None"}
-` : "- No additional context available"}
-
-**Analysis Requirements:**
-
-1. **Component Metadata**: Provide comprehensive component documentation
-2. **Design Token Analysis**: Analyze and recommend semantic design tokens
-3. **Accessibility Assessment**: Evaluate accessibility compliance
-4. **Naming Convention Review**: Check layer naming consistency
-5. **Design System Integration**: Suggest improvements for scalability
-6. **MCP Server Compatibility**: Ensure component structure supports automated code generation
-
-**MCP Server Integration Focus:**
-- **Property Definitions**: Components need clearly defined props that map to code
-- **State Management**: Interactive components require all necessary states (hover, focus, disabled, etc.)
-- **Token Usage**: Hard-coded values should use design tokens for consistency
-- **Semantic Structure**: Layer names should be descriptive and follow conventions
-- **Variant Patterns**: Only recommend variants when they serve a logical purpose (size, style, or functional differences)
-- **Developer Handoff**: Metadata should include implementation guidance
-
-**Important: Variant Recommendations Guidelines:**
-- Do NOT recommend variants for components that are intentionally single-purpose (icons, badges, simple dividers)
-- Only suggest variants when there's clear evidence the component should have multiple visual or functional states
-- Consider the component family: buttons typically need variants, simple graphics usually don't
-- Base variant suggestions on actual design system patterns, not theoretical possibilities
-
-**Design Token Focus Areas:**
-- **Color Tokens**: Semantic color usage (primary, secondary, neutral, semantic colors)
-- **Spacing Tokens**: Consistent spacing patterns (padding, margins, gaps)
-- **Typography Tokens**: Font sizes, weights, line heights, letter spacing
-- **Effect Tokens**: Shadows, blurs, and other visual effects
-- **Border Tokens**: Border radius, stroke weights
-- **Layout Tokens**: Grid systems, breakpoints, container sizes
-
-**Response Format (JSON only):**
-{
-  "component": "Component name and purpose",
-  "description": "Detailed component description and use cases",
-  "props": [
-    {
-      "name": "property name",
-      "type": "string|boolean|number|variant",
-      "description": "Property purpose and usage",
-      "defaultValue": "default value",
-      "required": true/false
-    }
-  ],
-  "states": ["IMPORTANT: Use the Additional Context section above to determine appropriate states. For avatars marked as interactive, include hover/focus states. Only list states that make sense based on the component's use case and interactivity"],
-  "slots": ["slot descriptions for content areas"],
-  "variants": {
-    "size": ["small", "medium", "large"],
-    "variant": ["primary", "secondary", "outline"],
-    "theme": ["light", "dark"]
-  },
-  "usage": "When and how to use this component",
-  "accessibility": {
-    "ariaLabels": ["required aria labels"],
-    "keyboardSupport": "keyboard interaction requirements",
-    "colorContrast": "contrast compliance status",
-    "focusManagement": "focus behavior description"
-  },
-  "tokens": {
-    "colors": [
-      "semantic-color-primary",
-      "semantic-color-secondary",
-      "neutral-background-default",
-      "neutral-text-primary",
-      "semantic-color-success",
-      "semantic-color-error",
-      "semantic-color-warning"
-    ],
-    "spacing": [
-      "spacing-xs-4px",
-      "spacing-sm-8px",
-      "spacing-md-16px",
-      "spacing-lg-24px",
-      "spacing-xl-32px"
-    ],
-    "typography": [
-      "text-size-sm-12px",
-      "text-size-base-14px",
-      "text-size-lg-16px",
-      "text-size-xl-18px",
-      "text-weight-normal-400",
-      "text-weight-medium-500",
-      "text-weight-semibold-600"
-    ],
-    "effects": [
-      "shadow-sm-subtle",
-      "shadow-md-default",
-      "shadow-lg-prominent",
-      "blur-backdrop-light"
-    ],
-    "borders": [
-      "radius-sm-4px",
-      "radius-md-8px",
-      "radius-lg-12px",
-      "radius-full-999px"
-    ]
-  },
-  "propertyCheatSheet": [
-    {
-      "name": "Property name",
-      "values": ["value1", "value2", "value3"],
-      "default": "default value",
-      "description": "What this property controls"
-    }
-  ],
-  "audit": {
-    "accessibilityIssues": ["List specific accessibility issues found"],
-    "namingIssues": ["List layer naming problems with suggestions"],
-    "consistencyIssues": ["List design consistency issues"],
-    "tokenOpportunities": ["Specific recommendations for design token implementation"]
-  },
-  "mcpReadiness": {
-    "score": "0-100 readiness score for MCP server code generation",
-    "strengths": ["What's already well-structured for code generation"],
-    "gaps": ["What needs to be improved for MCP compatibility"],
-    "recommendations": [
-      "Specific actions to make this component MCP-ready",
-      "Priority improvements for code generation accuracy"
-    ],
-    "implementationNotes": "Developer guidance for implementing this component"
-  }
-}
-
-**Analysis Guidelines:**
-
-1. **Be Specific**: Provide actionable, specific recommendations
-2. **Modern Practices**: Follow current design system best practices
-3. **Semantic Naming**: Use semantic token names that describe purpose, not appearance
-4. **Scalability**: Consider how tokens support design system growth
-5. **Accessibility**: Ensure recommendations support inclusive design
-6. **Consistency**: Identify patterns that can be systematized
-
-**Token Naming Convention:**
-- Colors: \`semantic-[purpose]-[variant]\` (e.g., "semantic-color-primary", "neutral-background-subtle")
-- Spacing: \`spacing-[size]-[value]\` (e.g., "spacing-md-16px", "spacing-lg-24px")
-- Typography: \`text-[property]-[variant]-[value]\` (e.g., "text-size-lg-18px", "text-weight-semibold-600")
-- Effects: \`[effect]-[intensity]-[purpose]\` (e.g., "shadow-md-default", "blur-backdrop-light")
-- Borders: \`radius-[size]-[value]\` (e.g., "radius-md-8px", "radius-full-999px")
-
-Focus on creating a comprehensive analysis that helps designers build scalable, consistent, and accessible design systems.`;
-  }
   function extractJSONFromResponse(response) {
     try {
       const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -1734,9 +1882,569 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
     }
   }
 
+  // src/core/consistency-engine.ts
+  var ComponentConsistencyEngine = class {
+    constructor(config = {}) {
+      this.cache = /* @__PURE__ */ new Map();
+      this.designSystemsKnowledge = null;
+      this.config = __spreadValues({
+        enableCaching: true,
+        enableMCPIntegration: true,
+        mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp",
+        consistencyThreshold: 0.95
+      }, config);
+    }
+    /**
+     * Generate a deterministic hash for a component based on its structure
+     */
+    generateComponentHash(context, tokens) {
+      var _a, _b;
+      const hashInput = {
+        name: context.name,
+        type: context.type,
+        hierarchy: this.normalizeHierarchy(context.hierarchy),
+        frameStructure: context.frameStructure,
+        detectedStyles: context.detectedStyles,
+        tokenFingerprint: this.generateTokenFingerprint(tokens),
+        // Don't include dynamic context that could vary
+        staticProperties: {
+          hasInteractiveElements: ((_a = context.additionalContext) == null ? void 0 : _a.hasInteractiveElements) || false,
+          componentFamily: ((_b = context.additionalContext) == null ? void 0 : _b.componentFamily) || "generic"
+        }
+      };
+      return this.createHash(JSON.stringify(hashInput));
+    }
+    /**
+     * Get cached analysis if available and valid
+     */
+    getCachedAnalysis(hash) {
+      if (!this.config.enableCaching) return null;
+      const cached = this.cache.get(hash);
+      if (!cached) return null;
+      const isExpired = Date.now() - cached.timestamp > 24 * 60 * 60 * 1e3;
+      if (isExpired) {
+        this.cache.delete(hash);
+        return null;
+      }
+      console.log("\u2705 Using cached analysis for component hash:", hash);
+      return cached;
+    }
+    /**
+     * Cache analysis result
+     */
+    cacheAnalysis(hash, result) {
+      var _a;
+      if (!this.config.enableCaching) return;
+      this.cache.set(hash, {
+        hash,
+        result,
+        timestamp: Date.now(),
+        mcpKnowledgeVersion: ((_a = this.designSystemsKnowledge) == null ? void 0 : _a.version) || "1.0.0"
+      });
+      console.log("\u{1F4BE} Cached analysis for component hash:", hash);
+    }
+    /**
+    * Load design systems knowledge from MCP server
+    */
+    async loadDesignSystemsKnowledge() {
+      if (!this.config.enableMCPIntegration) {
+        console.log("\u{1F4DA} MCP integration disabled, using fallback knowledge");
+        this.loadFallbackKnowledge();
+        return;
+      }
+      try {
+        console.log("\u{1F504} Loading design systems knowledge from MCP...");
+        const connectivityTest = await this.testMCPConnectivity();
+        if (!connectivityTest) {
+          console.warn("\u26A0\uFE0F MCP server not accessible, using fallback knowledge");
+          this.loadFallbackKnowledge();
+          return;
+        }
+        const [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge] = await Promise.allSettled([
+          this.queryMCP("component analysis best practices"),
+          this.queryMCP("design token naming conventions and patterns"),
+          this.queryMCP("design system accessibility requirements"),
+          this.queryMCP("design system component scoring methodology")
+        ]);
+        this.designSystemsKnowledge = {
+          version: "1.0.0",
+          components: this.processComponentKnowledge(
+            componentKnowledge.status === "fulfilled" ? componentKnowledge.value : null
+          ),
+          tokens: this.processKnowledgeContent(
+            tokenKnowledge.status === "fulfilled" ? tokenKnowledge.value : null
+          ),
+          accessibility: this.processKnowledgeContent(
+            accessibilityKnowledge.status === "fulfilled" ? accessibilityKnowledge.value : null
+          ),
+          scoring: this.processKnowledgeContent(
+            scoringKnowledge.status === "fulfilled" ? scoringKnowledge.value : null
+          ),
+          lastUpdated: Date.now()
+        };
+        const successfulQueries = [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge].filter((result) => result.status === "fulfilled").length;
+        if (successfulQueries > 0) {
+          console.log(`\u2705 Design systems knowledge loaded successfully (${successfulQueries}/4 queries successful)`);
+        } else {
+          console.warn("\u26A0\uFE0F All MCP queries failed, using fallback knowledge");
+          this.loadFallbackKnowledge();
+        }
+      } catch (error) {
+        console.warn("\u26A0\uFE0F Failed to load design systems knowledge:", error);
+        this.loadFallbackKnowledge();
+      }
+    }
+    /**
+    * Test MCP server connectivity using MCP initialization instead of health endpoint
+    */
+    async testMCPConnectivity() {
+      var _a, _b;
+      try {
+        console.log("\u{1F517} Testing MCP server connectivity...");
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("Connectivity test timeout")), 5e3)
+        );
+        const initPayload = {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: { roots: { listChanged: true } },
+            clientInfo: { name: "figmalint", version: "2.0.0" }
+          }
+        };
+        if (!this.config.mcpServerUrl) {
+          throw new Error("MCP server URL not configured");
+        }
+        const fetchPromise = fetch(this.config.mcpServerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(initPayload)
+        });
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (response.ok) {
+          const data = await response.json();
+          if ((_b = (_a = data.result) == null ? void 0 : _a.serverInfo) == null ? void 0 : _b.name) {
+            console.log(`\u2705 MCP server accessible: ${data.result.serverInfo.name}`);
+            return true;
+          }
+        }
+        console.warn(`\u26A0\uFE0F MCP server returned ${response.status}`);
+        return false;
+      } catch (error) {
+        console.warn("\u26A0\uFE0F MCP server connectivity test failed:", error);
+        return false;
+      }
+    }
+    /**
+     * Query the design systems MCP server using proper JSON-RPC protocol
+     */
+    async queryMCP(query) {
+      try {
+        console.log(`\u{1F50D} Querying MCP for: "${query}"`);
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("MCP query timeout")), 5e3)
+        );
+        if (!this.config.mcpServerUrl) {
+          throw new Error("MCP server URL not configured");
+        }
+        const searchPayload = {
+          jsonrpc: "2.0",
+          id: Math.floor(Math.random() * 1e3) + 2,
+          // Random ID > 1 (1 is used for init)
+          method: "tools/call",
+          params: {
+            name: "search_design_knowledge",
+            arguments: {
+              query,
+              limit: 5,
+              category: "components"
+            }
+          }
+        };
+        const fetchPromise = fetch(this.config.mcpServerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(searchPayload)
+        });
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (!response.ok) {
+          throw new Error(`MCP query failed: ${response.status} ${response.statusText}`);
+        }
+        const result = await response.json();
+        console.log(`\u2705 MCP query successful for: "${query}"`);
+        if (result.result && result.result.content) {
+          return {
+            results: result.result.content.map((item) => ({
+              title: item.title || "Design System Knowledge",
+              content: item.content || item.description || "Knowledge content",
+              category: "design-systems"
+            }))
+          };
+        }
+        return { results: [] };
+      } catch (error) {
+        console.warn(`\u26A0\uFE0F MCP query failed for "${query}":`, error);
+        return this.getFallbackKnowledgeForQuery(query);
+      }
+    }
+    /**
+     * Create deterministic analysis prompt with MCP knowledge
+     */
+    createDeterministicPrompt(context) {
+      const basePrompt = this.createBasePrompt(context);
+      const mcpGuidance = this.getMCPGuidance(context);
+      const scoringCriteria = this.getScoringCriteria(context);
+      return `${basePrompt}
+
+**CONSISTENCY REQUIREMENTS:**
+- Use DETERMINISTIC analysis based on the exact component structure provided
+- Apply CONSISTENT scoring criteria for identical components
+- Follow established design system patterns and conventions
+- Provide REPRODUCIBLE results for the same input
+
+**DESIGN SYSTEMS GUIDANCE:**
+${mcpGuidance}
+
+**SCORING METHODOLOGY:**
+${scoringCriteria}
+
+**DETERMINISTIC SETTINGS:**
+- Analysis must be based solely on the provided component structure
+- Scores must be calculated using objective criteria
+- Recommendations must follow established design system patterns
+- Response format must be exactly as specified (JSON only)
+
+**RESPONSE FORMAT (JSON only - no explanatory text):**
+{
+  "component": "Component name and purpose",
+  "description": "Detailed component description based on structure analysis",
+  "score": {
+    "overall": 85,
+    "breakdown": {
+      "structure": 90,
+      "tokens": 80,
+      "accessibility": 85,
+      "consistency": 90
+    }
+  },
+  "props": [...],
+  "states": [...],
+  "slots": [...],
+  "variants": {...},
+  "usage": "Usage guidelines",
+  "accessibility": {...},
+  "tokens": {...},
+  "audit": {...},
+  "mcpReadiness": {...}
+}`;
+    }
+    /**
+     * Validate analysis result for consistency
+     */
+    validateAnalysisConsistency(result, context) {
+      var _a, _b, _c, _d, _e;
+      const issues = [];
+      if (!((_a = result.metadata) == null ? void 0 : _a.component)) issues.push("Missing component name");
+      if (!((_b = result.metadata) == null ? void 0 : _b.description)) issues.push("Missing component description");
+      if (!this.isValidScore((_d = (_c = result.metadata) == null ? void 0 : _c.mcpReadiness) == null ? void 0 : _d.score)) {
+        issues.push("Invalid or missing MCP readiness score");
+      }
+      const family = (_e = context.additionalContext) == null ? void 0 : _e.componentFamily;
+      if (family && !this.validateComponentFamilyConsistency(result, family)) {
+        issues.push(`Inconsistent analysis for ${family} component family`);
+      }
+      if (!this.validateTokenRecommendations(result.tokens)) {
+        issues.push("Inconsistent token recommendations");
+      }
+      if (issues.length > 0) {
+        console.warn("\u26A0\uFE0F Analysis consistency issues found:", issues);
+        return false;
+      }
+      return true;
+    }
+    /**
+     * Apply consistency corrections to analysis result
+     */
+    applyConsistencyCorrections(result, context) {
+      var _a;
+      const corrected = __spreadValues({}, result);
+      if ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) {
+        corrected.metadata = this.applyComponentFamilyCorrections(
+          corrected.metadata,
+          context.additionalContext.componentFamily
+        );
+      }
+      corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
+      corrected.metadata.mcpReadiness = this.ensureConsistentScoring(
+        corrected.metadata.mcpReadiness || {},
+        context
+      );
+      return corrected;
+    }
+    // Private helper methods
+    normalizeHierarchy(hierarchy) {
+      return hierarchy.map((item) => ({
+        name: item.name.toLowerCase().trim(),
+        type: item.type,
+        depth: item.depth
+      }));
+    }
+    generateTokenFingerprint(tokens) {
+      const fingerprint = tokens.map((token) => `${token.type}:${token.isToken}:${token.source}`).sort().join("|");
+      return this.createHash(fingerprint);
+    }
+    createHash(input) {
+      let hash = 0;
+      if (input.length === 0) return hash.toString();
+      for (let i = 0; i < input.length; i++) {
+        const char = input.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash).toString(36);
+    }
+    createBasePrompt(context) {
+      var _a, _b, _c, _d;
+      return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
+
+**Component Analysis Context:**
+- Component Name: ${context.name}
+- Component Type: ${context.type}
+- Layer Structure: ${JSON.stringify(context.hierarchy, null, 2)}
+- Frame Structure: ${JSON.stringify(context.frameStructure)}
+- Detected Styles: ${JSON.stringify(context.detectedStyles)}
+- Component Family: ${((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic"}
+- Interactive Elements: ${((_b = context.additionalContext) == null ? void 0 : _b.hasInteractiveElements) || false}
+- Design Patterns: ${((_d = (_c = context.additionalContext) == null ? void 0 : _c.designPatterns) == null ? void 0 : _d.join(", ")) || "none"}`;
+    }
+    getMCPGuidance(context) {
+      var _a;
+      if (!this.designSystemsKnowledge) {
+        return this.getFallbackGuidance(context);
+      }
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const guidance = this.designSystemsKnowledge.components[family] || this.designSystemsKnowledge.components.generic;
+      return guidance || this.getFallbackGuidance(context);
+    }
+    getScoringCriteria(context) {
+      var _a;
+      if (!((_a = this.designSystemsKnowledge) == null ? void 0 : _a.scoring)) {
+        return this.getFallbackScoringCriteria();
+      }
+      return this.designSystemsKnowledge.scoring;
+    }
+    processComponentKnowledge(knowledge) {
+      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
+        console.log("\u{1F4DD} No component knowledge available, using defaults");
+        return this.getDefaultComponentKnowledge();
+      }
+      const processed = {};
+      knowledge.results.forEach((result) => {
+        if (result.title && result.content) {
+          const componentType = this.extractComponentType(result.title);
+          processed[componentType] = result.content;
+        }
+      });
+      const defaults = this.getDefaultComponentKnowledge();
+      return __spreadValues(__spreadValues({}, defaults), processed);
+    }
+    extractComponentType(title) {
+      const titleLower = title.toLowerCase();
+      if (titleLower.includes("button")) return "button";
+      if (titleLower.includes("avatar")) return "avatar";
+      if (titleLower.includes("input") || titleLower.includes("field")) return "input";
+      if (titleLower.includes("card")) return "card";
+      if (titleLower.includes("badge") || titleLower.includes("tag")) return "badge";
+      return "generic";
+    }
+    processKnowledgeContent(knowledge) {
+      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
+        return "";
+      }
+      return knowledge.results.map((result) => result.content).filter((content) => content).join("\n\n");
+    }
+    getDefaultComponentKnowledge() {
+      return {
+        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (40%), semantic token usage (30%), accessibility (20%), and naming consistency (10%).",
+        avatar: "Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
+        card: "Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
+        badge: "Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
+        input: "Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
+        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (30%), accessibility (30%), semantic naming (25%), and style consistency (15%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (25%), token usage (25%), naming consistency (25%), and accessibility basics (25%)."
+      };
+    }
+    getFallbackKnowledgeForQuery(query) {
+      return {
+        results: [
+          {
+            title: `Fallback guidance for ${query}`,
+            content: this.getFallbackContentForQuery(query),
+            category: "fallback"
+          }
+        ]
+      };
+    }
+    getFallbackContentForQuery(query) {
+      if (query.includes("component analysis")) {
+        return "Components should follow consistent naming, use design tokens, implement proper states, and maintain accessibility standards.";
+      }
+      if (query.includes("token")) {
+        return "Design tokens should use semantic naming patterns like semantic-color-primary, spacing-md-16px, and text-size-lg-18px.";
+      }
+      if (query.includes("accessibility")) {
+        return "Ensure WCAG 2.1 AA compliance with proper ARIA labels, keyboard support, and color contrast.";
+      }
+      if (query.includes("scoring")) {
+        return "Score components based on structure (25%), token usage (25%), accessibility (25%), and consistency (25%).";
+      }
+      return "Follow established design system best practices for consistency and scalability.";
+    }
+    getFallbackGuidance(context) {
+      var _a;
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const guidanceMap = {
+        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (40%), semantic token usage (30%), accessibility (20%), and naming consistency (10%).",
+        avatar: "Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
+        card: "Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
+        badge: "Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
+        input: "Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (25%), token usage (25%), naming consistency (25%), and accessibility basics (25%)."
+      };
+      return guidanceMap[family] || guidanceMap.generic;
+    }
+    getFallbackScoringCriteria() {
+      return `
+    **MCP Readiness Scoring (0-100):**
+    - **Structure (25%)**: Clear hierarchy, logical organization, proper nesting
+    - **Tokens (25%)**: Design token usage vs hard-coded values
+    - **Accessibility (25%)**: WCAG compliance, keyboard support, ARIA labels
+    - **Consistency (25%)**: Naming conventions, pattern adherence, scalability
+
+    **Score Calculation:**
+    - 90-100: Production ready, comprehensive implementation
+    - 80-89: Good implementation, minor improvements needed
+    - 70-79: Solid foundation, some important gaps
+    - 60-69: Basic implementation, significant improvements needed
+    - Below 60: Major issues, substantial rework required
+    `;
+    }
+    loadFallbackKnowledge() {
+      this.designSystemsKnowledge = {
+        version: "1.0.0-fallback",
+        components: {
+          button: "Button components require comprehensive state management",
+          avatar: "Avatar components should support size variants and interactive states",
+          card: "Card components need consistent spacing and content hierarchy",
+          badge: "Badge components should use semantic colors for status indication",
+          input: "Input components require comprehensive accessibility and validation",
+          generic: "Generic components should follow basic design system principles"
+        },
+        tokens: "Use semantic token naming: semantic-color-primary, spacing-md-16px, text-size-lg-18px",
+        accessibility: "Ensure WCAG 2.1 AA compliance with proper ARIA labels and keyboard support",
+        scoring: this.getFallbackScoringCriteria(),
+        lastUpdated: Date.now()
+      };
+    }
+    isValidScore(score) {
+      return typeof score === "number" && score >= 0 && score <= 100;
+    }
+    validateComponentFamilyConsistency(result, family) {
+      const metadata = result.metadata;
+      switch (family) {
+        case "button":
+          return this.validateButtonComponent(metadata);
+        case "avatar":
+          return this.validateAvatarComponent(metadata);
+        case "input":
+          return this.validateInputComponent(metadata);
+        default:
+          return true;
+      }
+    }
+    validateButtonComponent(metadata) {
+      var _a;
+      const hasInteractiveStates = (_a = metadata.states) == null ? void 0 : _a.some(
+        (state) => ["hover", "focus", "active", "disabled"].includes(state.toLowerCase())
+      );
+      return hasInteractiveStates || false;
+    }
+    validateAvatarComponent(metadata) {
+      var _a, _b, _c;
+      const hasSizeVariants = ((_b = (_a = metadata.variants) == null ? void 0 : _a.size) == null ? void 0 : _b.length) > 0;
+      const hasSizeProps = (_c = metadata.props) == null ? void 0 : _c.some(
+        (prop) => prop.name.toLowerCase().includes("size")
+      );
+      return hasSizeVariants || hasSizeProps || false;
+    }
+    validateInputComponent(metadata) {
+      var _a;
+      const hasFormStates = (_a = metadata.states) == null ? void 0 : _a.some(
+        (state) => ["focus", "error", "disabled", "filled"].includes(state.toLowerCase())
+      );
+      return hasFormStates || false;
+    }
+    validateTokenRecommendations(tokens) {
+      var _a;
+      const hasSemanticColors = (_a = tokens.colors) == null ? void 0 : _a.some(
+        (token) => token.name.includes("semantic-") || token.name.includes("primary") || token.name.includes("secondary")
+      );
+      return hasSemanticColors !== false;
+    }
+    applyComponentFamilyCorrections(metadata, family) {
+      var _a, _b, _c;
+      const corrected = __spreadValues({}, metadata);
+      switch (family) {
+        case "button":
+          if (!((_a = corrected.states) == null ? void 0 : _a.includes("hover"))) {
+            corrected.states = [...corrected.states || [], "hover", "focus", "active", "disabled"];
+          }
+          break;
+        case "avatar":
+          if (!((_b = corrected.variants) == null ? void 0 : _b.size) && !((_c = corrected.props) == null ? void 0 : _c.some((p) => p.name.includes("size")))) {
+            corrected.variants = __spreadProps(__spreadValues({}, corrected.variants), { size: ["small", "medium", "large"] });
+          }
+          break;
+      }
+      return corrected;
+    }
+    applyTokenConsistencyCorrections(tokens) {
+      if (!tokens) return tokens;
+      const corrected = __spreadValues({}, tokens);
+      return corrected;
+    }
+    ensureConsistentScoring(mcpReadiness, context) {
+      var _a;
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const baselineScores = {
+        button: { structure: 85, tokens: 80, accessibility: 90, consistency: 85 },
+        avatar: { structure: 90, tokens: 75, accessibility: 85, consistency: 80 },
+        input: { structure: 85, tokens: 85, accessibility: 95, consistency: 90 },
+        generic: { structure: 80, tokens: 75, accessibility: 80, consistency: 75 }
+      };
+      const baseline = baselineScores[family] || baselineScores.generic;
+      return __spreadProps(__spreadValues({}, mcpReadiness), {
+        score: mcpReadiness.score || Math.round((baseline.structure + baseline.tokens + baseline.accessibility + baseline.consistency) / 4),
+        baseline
+      });
+    }
+  };
+  var consistency_engine_default = ComponentConsistencyEngine;
+
   // src/ui/message-handler.ts
   var storedApiKey = null;
   var selectedModel = "claude-3-sonnet-20240229";
+  var consistencyEngine = new consistency_engine_default({
+    enableCaching: true,
+    enableMCPIntegration: true,
+    mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
+  });
   async function handleUIMessage(msg) {
     const { type, data } = msg;
     console.log("Received message:", type, data);
@@ -1853,16 +2561,43 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
       if (!isValidNodeForAnalysis(selectedNode)) {
         throw new Error("Please select a Frame, Component, Component Set, or Instance to analyze");
       }
+      await consistencyEngine.loadDesignSystemsKnowledge();
       const componentContext = extractComponentContext(selectedNode);
-      const prompt = createEnhancedMetadataPrompt(componentContext);
-      figma.notify("Performing enhanced analysis with Claude AI...", { timeout: 3e3 });
-      const analysis = await fetchClaude(prompt, storedApiKey, selectedModel);
+      const tokenAnalysis = await extractDesignTokensFromNode(selectedNode);
+      const allTokens = [
+        ...tokenAnalysis.colors,
+        ...tokenAnalysis.spacing,
+        ...tokenAnalysis.typography,
+        ...tokenAnalysis.effects,
+        ...tokenAnalysis.borders
+      ];
+      const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens);
+      console.log("\u{1F50D} Component hash generated:", componentHash);
+      const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
+      if (cachedAnalysis) {
+        console.log("\u2705 Using cached analysis for consistent results");
+        figma.notify("Using cached analysis for consistent results", { timeout: 2e3 });
+        globalThis.lastAnalyzedMetadata = cachedAnalysis.result.metadata;
+        globalThis.lastAnalyzedNode = selectedNode;
+        sendMessageToUI("enhanced-analysis-result", cachedAnalysis.result);
+        return;
+      }
+      const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
+      figma.notify("Performing enhanced analysis with design systems knowledge...", { timeout: 3e3 });
+      const analysis = await fetchClaude(deterministicPrompt, storedApiKey, selectedModel, true);
       const enhancedData = extractJSONFromResponse(analysis);
-      const result = await processEnhancedAnalysis(enhancedData, selectedNode, originalSelectedNode);
+      let result = await processEnhancedAnalysis(enhancedData, selectedNode, originalSelectedNode);
+      const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
+      if (!isConsistent) {
+        console.log("\u26A0\uFE0F Applying consistency corrections...");
+        result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
+        figma.notify("Applied consistency corrections to analysis", { timeout: 2e3 });
+      }
+      consistencyEngine.cacheAnalysis(componentHash, result);
       globalThis.lastAnalyzedMetadata = result.metadata;
       globalThis.lastAnalyzedNode = selectedNode;
       sendMessageToUI("enhanced-analysis-result", result);
-      figma.notify("Enhanced analysis complete!", { timeout: 3e3 });
+      figma.notify("Enhanced analysis complete! Results cached for consistency.", { timeout: 3e3 });
     } catch (error) {
       console.error("Error during enhanced analysis:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -1875,17 +2610,45 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
   }
   async function handleBatchAnalysis(nodes, _options) {
     const results = [];
+    await consistencyEngine.loadDesignSystemsKnowledge();
     for (const node of nodes) {
       if (isValidNodeForAnalysis(node)) {
         try {
           const componentContext = extractComponentContext(node);
-          const prompt = createEnhancedMetadataPrompt(componentContext);
-          const analysis = await fetchClaude(prompt, storedApiKey, selectedModel);
-          const data = extractJSONFromResponse(analysis);
+          const tokenAnalysis = await extractDesignTokensFromNode(node);
+          const allTokens = [
+            ...tokenAnalysis.colors,
+            ...tokenAnalysis.spacing,
+            ...tokenAnalysis.typography,
+            ...tokenAnalysis.effects,
+            ...tokenAnalysis.borders
+          ];
+          const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens);
+          const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
+          if (cachedAnalysis) {
+            console.log(`\u2705 Using cached analysis for ${node.name}`);
+            results.push({
+              node: node.name,
+              success: true,
+              data: cachedAnalysis.result.metadata,
+              cached: true
+            });
+            continue;
+          }
+          const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
+          const analysis = await fetchClaude(deterministicPrompt, storedApiKey, selectedModel, true);
+          const enhancedData = extractJSONFromResponse(analysis);
+          let result = await processEnhancedAnalysis(enhancedData, node, node);
+          const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
+          if (!isConsistent) {
+            result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
+          }
+          consistencyEngine.cacheAnalysis(componentHash, result);
           results.push({
             node: node.name,
             success: true,
-            data
+            data: result.metadata,
+            cached: false
           });
         } catch (error) {
           results.push({
@@ -1896,8 +2659,10 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
         }
       }
     }
+    const cachedCount = results.filter((r) => r.success && r.cached).length;
+    const analyzedCount = results.filter((r) => r.success && !r.cached).length;
     sendMessageToUI("batch-analysis-result", { results });
-    figma.notify(`Batch analysis complete: ${results.length} components processed`, { timeout: 3e3 });
+    figma.notify(`Batch analysis complete: ${analyzedCount} analyzed, ${cachedCount} from cache`, { timeout: 3e3 });
   }
   async function handleClearApiKey() {
     try {
@@ -1921,6 +2686,12 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
         selectedModel = savedModel;
         console.log("Loaded saved model:", selectedModel);
       }
+      console.log("\u{1F504} Initializing design systems knowledge...");
+      consistencyEngine.loadDesignSystemsKnowledge().then(() => {
+        console.log("\u2705 Design systems knowledge loaded successfully");
+      }).catch((error) => {
+        console.warn("\u26A0\uFE0F Failed to load design systems knowledge, using fallback:", error);
+      });
       console.log("Plugin initialized successfully");
     } catch (error) {
       console.error("Error initializing plugin:", error);
@@ -1931,11 +2702,11 @@ Focus on creating a comprehensive analysis that helps designers build scalable, 
   var PLUGIN_WINDOW_SIZE = { width: 400, height: 700 };
   try {
     figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
-    console.log("\u2705 AI Design Co-Pilot v2.0 - UI shown successfully");
+    console.log("\u2705 FigmaLint v2.0 - UI shown successfully");
   } catch (error) {
     console.log("\u2139\uFE0F UI might already be shown in inspect panel:", error);
   }
   figma.ui.onmessage = handleUIMessage;
   initializePlugin();
-  console.log("\u{1F680} AI Design Co-Pilot v2.0 initialized with modular architecture");
+  console.log("\u{1F680} FigmaLint v2.0 initialized with modular architecture");
 })();

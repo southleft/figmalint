@@ -82,6 +82,9 @@ export interface DesignToken {
     nodeType?: string;
     nodeName?: string;
     hasVisibleStroke?: boolean;
+    path?: string;
+    description?: string;
+    property?: string;
   };
 }
 
@@ -163,6 +166,8 @@ export interface ClaudeAPIRequest {
     content: string;
   }>;
   max_tokens: number;
+  temperature?: number;
+  top_p?: number;
 }
 
 // Plugin State Types

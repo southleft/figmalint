@@ -75,6 +75,16 @@
       background: var(--background);
       border-bottom: 1px solid var(--border);
       min-height: 60px;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Ensure header bottom padding is maintained */
+    .header::after {
+      content: '';
+      display: block;
+      height: 1px;
+      clear: both;
     }
 
     .plugin-title {
@@ -357,6 +367,7 @@
       display: flex;
       gap: var(--space-sm);
       align-items: center;
+      margin-bottom: var(--space-md);
     }
 
     .button-icon {
@@ -1276,7 +1287,21 @@
             </div>
           </div>
 
-          <!-- Developer Export -->
+          <!-- Component Metadata (moved up one position) -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Component Metadata</span>
+              </div>
+            </div>
+            <div class="collapsible-content" id="metadata-content">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 85%;"></div>
+            </div>
+          </div>
+
+          <!-- Developer Handoff (moved to bottom) -->
           <div class="collapsible">
             <div class="collapsible-header" onclick="toggleCollapsible(this)">
               <div class="collapsible-title">
@@ -1293,10 +1318,9 @@
             </div>
             <div class="collapsible-content" id="developer-export">
               <div class="export-options" style="margin-bottom: var(--space-md);">
-                <select id="export-format" class="export-select">
-                  <option value="json">JSON Metadata</option>
-                  <option value="markdown">Markdown Documentation</option>
-                  <option value="typescript">TypeScript Interface</option>
+                <select id="export-format" class="w-full">
+                  <option value="json">JSON: Complete component metadata</option>
+                  <option value="markdown" selected>Markdown: Developer documentation</option>
                 </select>
                 <button class="button button-secondary" id="export-metadata" disabled>
                   Export for Developers
@@ -1304,20 +1328,6 @@
               </div>
               <div class="skeleton"></div>
               <div class="skeleton" style="width: 80%;"></div>
-            </div>
-          </div>
-
-          <!-- Original Metadata Display -->
-          <div class="collapsible">
-            <div class="collapsible-header" onclick="toggleCollapsible(this)">
-              <div class="collapsible-title">
-                <span class="collapsible-icon">▶</span>
-                <span>Component Metadata</span>
-              </div>
-            </div>
-            <div class="collapsible-content" id="metadata-content">
-              <div class="skeleton"></div>
-              <div class="skeleton" style="width: 85%;"></div>
             </div>
           </div>
         </div>
@@ -1379,6 +1389,20 @@
     const mcpReadiness = document.getElementById('mcp-readiness');
     const mcpScore = document.getElementById('mcp-score');
     const exportMetadataButton = document.getElementById('export-metadata');
+
+    // Playground elements
+    const generatePlaygroundButton = document.getElementById('generate-playground');
+    const playgroundEmpty = document.getElementById('playground-empty');
+    const playgroundContent = document.getElementById('playground-content');
+    const playgroundGrid = document.getElementById('playground-grid');
+
+    // Documentation elements
+    const exportDocsButton = document.getElementById('export-docs');
+    const generateDocsFrameButton = document.getElementById('generate-docs-frame');
+    const saveNotesButton = document.getElementById('save-notes');
+    const docsEmpty = document.getElementById('docs-empty');
+    const docsPreview = document.getElementById('docs-preview');
+    const collabNotes = document.getElementById('collab-notes');
     // Note: export-format element is created dynamically, so we get it in the handler function
 
 
@@ -1429,6 +1453,20 @@
         exportMetadataButton.addEventListener('click', handleExportMetadata);
       }
 
+      // Playground and documentation buttons (with null checks)
+      if (generatePlaygroundButton) {
+        generatePlaygroundButton.addEventListener('click', handleGeneratePlayground);
+      }
+      if (exportDocsButton) {
+        exportDocsButton.addEventListener('click', handleExportDocs);
+      }
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.addEventListener('click', handleGenerateDocsFrame);
+      }
+      if (saveNotesButton) {
+        saveNotesButton.addEventListener('click', handleSaveNotes);
+      }
+
       // Listen for messages from plugin
       window.addEventListener('message', handlePluginMessage);
 
@@ -1450,65 +1488,30 @@
       }
 
       const format = exportFormatSelect.value;
-      let content, filename, mimeType;
+      let content = '';
 
       if (format === 'json') {
         content = JSON.stringify(currentMetadata, null, 2);
-        filename = `${currentMetadata.component || 'component'}-metadata.json`;
-        mimeType = 'application/json';
-      } else if (format === 'typescript') {
-        content = generateTypeScriptInterface(currentMetadata);
-        filename = `${currentMetadata.component || 'component'}.types.ts`;
-        mimeType = 'text/typescript';
-      } else {
-        // Markdown format
+      } else if (format === 'markdown') {
         content = generateMarkdownDocumentation(currentMetadata);
-        filename = `${currentMetadata.component || 'component'}-documentation.md`;
-        mimeType = 'text/markdown';
       }
 
-      // Download file
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      if (content) {
+        // Download file
+        const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentMetadata.component || 'component'}-${format.toLowerCase()}.${format === 'json' ? 'json' : 'md'}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
 
-      updateStatus(`${format.toUpperCase()} exported successfully!`, 'success');
-    }
-
-    // Generate TypeScript Interface
-    function generateTypeScriptInterface(metadata) {
-      const componentName = metadata.component.replace(/[^a-zA-Z0-9]/g, '');
-      let content = `// Generated TypeScript interface for ${metadata.component}\n\n`;
-
-      // Props interface
-      content += `export interface ${componentName}Props {\n`;
-      if (metadata.props && metadata.props.length > 0) {
-        metadata.props.forEach(prop => {
-          const type = prop.type === 'variant' ? `'${prop.values?.join("' | '") || 'string'}'` : prop.type;
-          content += `  ${prop.name}${prop.required ? '' : '?'}: ${type};\n`;
-        });
+        updateStatus(`${format.toUpperCase()} exported successfully!`, 'success');
+      } else {
+        updateStatus('No content to export', 'error');
       }
-      content += `}\n\n`;
-
-      // States type
-      if (metadata.states && metadata.states.length > 0) {
-        content += `export type ${componentName}State = '${metadata.states.join("' | '")}';\n\n`;
-      }
-
-      // Variants type
-      if (metadata.variants && Object.keys(metadata.variants).length > 0) {
-        Object.entries(metadata.variants).forEach(([key, values]) => {
-          content += `export type ${componentName}${key.charAt(0).toUpperCase() + key.slice(1)} = '${values.join("' | '")}';\n`;
-        });
-      }
-
-      return content;
     }
 
     // Generate Markdown Documentation
@@ -1685,7 +1688,9 @@
         return;
       }
 
-      generatePlaygroundButton.disabled = true;
+      if (generatePlaygroundButton) {
+        generatePlaygroundButton.disabled = true;
+      }
       updateStatus('Generating playground instances...', 'info');
       sendMessageToPlugin('generate-playground', { metadata: currentMetadata });
     }
@@ -1712,11 +1717,13 @@
         return;
       }
 
-      generateDocsFrameButton.disabled = true;
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.disabled = true;
+      }
       updateStatus('Generating documentation frame...', 'info');
       sendMessageToPlugin('generate-docs-frame', {
         metadata: currentMetadata,
-        notes: collabNotes.value
+        notes: collabNotes && collabNotes.value ? collabNotes.value : ''
       });
     }
 
@@ -1861,7 +1868,7 @@
       // Debug logging
       console.log('UI received enhanced analysis result:', data);
       console.log('Audit data received in UI:', data.audit);
-      console.log('Token summary received in UI:', data.tokenSummary);
+      console.log('Token summary received in UI:', data.tokens ? data.tokens.summary : undefined);
 
       // Store analysis data globally for scoring
       currentAnalysisData = data;
@@ -1871,7 +1878,7 @@
       quickAnalyzeButton.disabled = false;
       currentMetadata = data.metadata;
       currentAuditResults = data.audit;
-      currentTokenSummary = data.tokenSummary;
+      currentTokenSummary = data.tokens ? data.tokens.summary : undefined;
 
       // Update Audit View
       if (data.audit) {
@@ -2054,8 +2061,7 @@
                 ${state.found
                   ? '<span class="audit-status pass">✓</span>'
                   : '<span class="audit-status fail">✗</span>'}
-                <span class="audit-label">${state.name} state ${state.found ? 'defined' : 'missing'}</span>
-                ${!state.found ? `<button class="audit-action-button" onclick="handleAddState('${state.name.replace(/'/g, "\\'")}')" title="Click to add ${state.name} state">Add state</button>` : ''}
+                <span class="audit-label">${state.name.charAt(0).toUpperCase() + state.name.slice(1).toLowerCase()} state ${state.found ? 'defined' : 'missing'}</span>
               </div>
             `;
           });
@@ -2266,20 +2272,45 @@
         html += '</tbody></table>';
       }
 
+      // Combine regular recommendations with slots from metadata
+      let allRecommendations = recommendations ? [...recommendations] : [];
+
+      // Add slots as property recommendations if available from metadata
+      if (currentMetadata && currentMetadata.slots && currentMetadata.slots.length > 0) {
+        console.log('🔧 Adding slots as property recommendations:', currentMetadata.slots);
+
+        currentMetadata.slots.forEach(slot => {
+          const slotName = typeof slot === 'string' ? slot : (slot.name || 'Unnamed Slot');
+          const slotDescription = typeof slot === 'object' && slot.description ?
+            slot.description :
+            'Content slot for customizable elements';
+
+          allRecommendations.push({
+            name: slotName,
+            type: 'slot',
+            description: slotDescription,
+            examples: ['ReactNode', 'string', 'JSX.Element']
+          });
+        });
+      }
+
       // Add recommendations section if available
-      if (recommendations && recommendations.length > 0) {
+      if (allRecommendations && allRecommendations.length > 0) {
         if (html) html += '<div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px;"></div>';
 
         html += '<div class="recommendations-section">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 12px; color: var(--primary);">💡 Recommended Properties</h4>';
         html += '<p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;">Consider adding these properties that developers typically expect for this component type:</p>';
 
-        recommendations.forEach(rec => {
+        allRecommendations.forEach(rec => {
+          const typeColor = rec.type === 'slot' ? 'var(--warning)' : 'var(--primary)';
+          const typeIcon = rec.type === 'slot' ? '📦' : '⚙️';
+
           html += `
             <div style="background: var(--surface-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                <span style="font-weight: 500; font-size: 12px;">${rec.name}</span>
-                <span style="background: var(--primary); color: white; padding: 2px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase;">${rec.type}</span>
+                <span style="font-weight: 500; font-size: 12px;">${typeIcon} ${rec.name}</span>
+                <span style="background: ${typeColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase;">${rec.type}</span>
               </div>
               <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">${rec.description}</p>
               <div style="display: flex; flex-wrap: wrap; gap: 4px;">
@@ -2411,7 +2442,7 @@
                 <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
                 <div class="token-details">
                   <div class="token-name">💡 ${token.name}</div>
-                  <div class="token-usage" title="${token.usage}">${token.usage}</div>
+                  <div class="token-usage" title="${token.recommendation || token.suggestion || 'AI suggested token'}">${token.recommendation || token.suggestion || 'AI suggested token'}</div>
                 </div>
               </div>
             `;
@@ -2494,21 +2525,87 @@
         }
 
         if (hardCodedBorders.length > 0) {
-          html += '<div>';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Border Radius</h5>';
-          hardCodedBorders.forEach(token => {
-            const contextInfo = token.context ? `${token.context.nodeType} in "${token.context.nodeName}"` : 'Unknown context';
-            html += `
-              <div class="token-item-compact warning">
-                <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};" title="${token.value}"></div>
-                <div class="token-details">
-                  <div class="token-name">🔲 ${token.value}</div>
-                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+          // Separate stroke weights from border radius
+          const strokeWeights = hardCodedBorders.filter(token =>
+            token.type === 'stroke-weight' ||
+            (token.context && token.context.property === 'strokeWeight')
+          );
+          const borderRadius = hardCodedBorders.filter(token =>
+            token.type !== 'stroke-weight' &&
+            !(token.context && token.context.property === 'strokeWeight')
+          );
+
+          // Stroke Weight Section
+          if (strokeWeights.length > 0) {
+            html += '<div style="margin-bottom: 12px;">';
+            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Stroke Weight</h5>';
+            strokeWeights.forEach(token => {
+              // Use the enhanced debug context for better information
+              let contextInfo = 'Unknown location';
+              if (token.context) {
+                if (token.context.description) {
+                  contextInfo = token.context.description;
+                } else if (token.context.path) {
+                  contextInfo = `Found in: ${token.context.path}`;
+                } else {
+                  contextInfo = `${token.context.nodeType} in "${token.context.nodeName}"`;
+                }
+
+                // Add property information if available
+                if (token.context.property) {
+                  contextInfo += ` (${token.context.property})`;
+                }
+              }
+
+              html += `
+                <div class="token-item-compact warning">
+                  <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: ${token.value} solid var(--border);"></div>
+                  <div class="token-details">
+                    <div class="token-name">📏 ${token.value}</div>
+                    <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
+                    <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">Use appropriate stroke weight token (e.g., stroke.thin, stroke.medium)</div>
+                  </div>
                 </div>
-              </div>
-            `;
-          });
-          html += '</div>';
+              `;
+            });
+            html += '</div>';
+          }
+
+          // Border Radius Section
+          if (borderRadius.length > 0) {
+            html += '<div>';
+            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Border Radius</h5>';
+            borderRadius.forEach(token => {
+              // Use the enhanced debug context for better information
+              let contextInfo = 'Unknown location';
+              if (token.context) {
+                if (token.context.description) {
+                  contextInfo = token.context.description;
+                } else if (token.context.path) {
+                  contextInfo = `Found in: ${token.context.path}`;
+                } else {
+                  contextInfo = `${token.context.nodeType} in "${token.context.nodeName}"`;
+                }
+
+                // Add property information if available
+                if (token.context.property) {
+                  contextInfo += ` (${token.context.property})`;
+                }
+              }
+
+              html += `
+                <div class="token-item-compact warning">
+                  <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};"></div>
+                  <div class="token-details">
+                    <div class="token-name">🔲 ${token.value}</div>
+                    <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
+                    <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion}</div>
+                  </div>
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
         }
 
         html += '</div>';
@@ -2542,16 +2639,29 @@
           html += '<div>';
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Spacing</h5>';
           hardCodedSpacing.forEach(token => {
-            const contextInfo = token.context ?
-              `${token.context.paddingType || token.type} on "${token.context.nodeName}" (${token.context.nodeType})` :
-              'Unknown context';
+            // Use the enhanced debug context for better information
+            let contextInfo = 'Unknown location';
+            if (token.context) {
+              if (token.context.description) {
+                contextInfo = token.context.description;
+              } else if (token.context.path) {
+                contextInfo = `Found in: ${token.context.path}`;
+              } else {
+                contextInfo = `${token.context.paddingType || token.type} on "${token.context.nodeName}" (${token.context.nodeType})`;
+              }
+
+              // Add property information if available
+              if (token.context.property) {
+                contextInfo += ` (${token.context.property})`;
+              }
+            }
 
             html += `
               <div class="token-item-compact warning">
                 <div class="token-details">
                   <div class="token-name">${token.value}</div>
-                  <div class="token-usage">${contextInfo}</div>
-                  <div class="token-usage" style="margin-top: 2px; font-style: italic;">${token.suggestion || 'Create or use existing spacing token'}</div>
+                  <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
+                  <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion || 'Create or use existing spacing token'}</div>
                 </div>
               </div>
             `;
@@ -2697,22 +2807,25 @@
         }
       }
 
-      // Slots
-      if (metadata.slots && metadata.slots.length > 0) {
-        html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Slots</h4>';
-        html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
-        metadata.slots.forEach(slot => {
-          html += `<span class="property-value" style="background: #FFF4E0; color: var(--warning);">${slot}</span>`;
-        });
-        html += '</div></div>';
-      }
+      // Slots (temporarily removed from metadata display - will be moved to property recommendations)
+      // if (metadata.slots && metadata.slots.length > 0) {
+      //   html += '<div class="mb-md">';
+      //   html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Slots</h4>';
+      //   html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+      //   metadata.slots.forEach(slot => {
+      //     const slotName = typeof slot === 'string' ? slot : (slot.name || 'Unnamed Slot');
+      //     html += `<span class="property-value" style="background: #FFF4E0; color: var(--warning);">${slotName}</span>`;
+      //   });
+      //   html += '</div></div>';
+      // }
 
       metadataContent.innerHTML = html;
     }
 
     // Update MCP Readiness Section
     function updateMCPReadiness(mcpData) {
+      console.log('🔍 [DEBUG] MCP readiness data received:', mcpData);
+
       if (!mcpData) {
         mcpReadiness.innerHTML = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">MCP readiness analysis not available</p>';
         mcpScore.innerHTML = '<span>Score: --</span>';
@@ -2731,32 +2844,41 @@
 
       // Strengths
       if (mcpData.strengths && mcpData.strengths.length > 0) {
+        console.log('✅ Found strengths:', mcpData.strengths);
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--success);">✅ Strengths</h4>';
         mcpData.strengths.forEach(strength => {
           html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${strength}</div>`;
         });
         html += '</div>';
+      } else {
+        console.warn('⚠️ No strengths found in MCP data');
       }
 
       // Gaps
       if (mcpData.gaps && mcpData.gaps.length > 0) {
+        console.log('❌ Found gaps:', mcpData.gaps);
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--error);">❌ Gaps</h4>';
         mcpData.gaps.forEach(gap => {
           html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${gap}</div>`;
         });
         html += '</div>';
+      } else {
+        console.warn('⚠️ No gaps found in MCP data');
       }
 
       // Recommendations
       if (mcpData.recommendations && mcpData.recommendations.length > 0) {
+        console.log('💡 Found recommendations:', mcpData.recommendations);
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--primary);">💡 Recommendations</h4>';
         mcpData.recommendations.forEach(rec => {
           html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${rec}</div>`;
         });
         html += '</div>';
+      } else {
+        console.warn('⚠️ No recommendations found in MCP data');
       }
 
       // Implementation Notes
@@ -2765,6 +2887,11 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Implementation Notes</h4>';
         html += `<div style="font-size: 12px; background: var(--surface); padding: 12px; border-radius: 6px; color: var(--text-secondary);">${mcpData.implementationNotes}</div>`;
         html += '</div>';
+      }
+
+      // Show fallback if no content
+      if (!html) {
+        html = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">MCP readiness data incomplete</p>';
       }
 
       mcpReadiness.innerHTML = html;
@@ -2778,10 +2905,9 @@
         exportMetadataButton.disabled = true;
         developerExportSection.innerHTML = `
           <div class="export-options" style="margin-bottom: var(--space-md);">
-            <select id="export-format" class="export-select">
-              <option value="json">JSON Metadata</option>
-              <option value="markdown">Markdown Documentation</option>
-              <option value="typescript">TypeScript Interface</option>
+            <select id="export-format" class="w-full">
+              <option value="json">JSON: Complete component metadata</option>
+              <option value="markdown" selected>Markdown: Developer documentation</option>
             </select>
             <button class="button button-secondary" id="export-metadata" disabled>
               Export for Developers
@@ -2797,10 +2923,9 @@
       // Clear existing content and show proper preview
       const previewHtml = `
         <div class="export-options" style="margin-bottom: var(--space-md);">
-          <select id="export-format" class="export-select">
-            <option value="json">JSON Metadata</option>
-            <option value="markdown">Markdown Documentation</option>
-            <option value="typescript">TypeScript Interface</option>
+          <select id="export-format" class="w-full">
+            <option value="json">JSON: Complete component metadata</option>
+            <option value="markdown" selected>Markdown: Developer documentation</option>
           </select>
           <button class="button button-secondary" id="export-metadata">
             Export for Developers
@@ -2810,7 +2935,6 @@
           <div style="margin-bottom: 8px;"><strong>Available exports:</strong></div>
           <div style="margin-bottom: 4px;">• JSON: Complete component metadata</div>
           <div style="margin-bottom: 4px;">• Markdown: Developer documentation</div>
-          <div style="margin-bottom: 4px;">• TypeScript: Component interface definition</div>
         </div>
       `;
 
@@ -2827,38 +2951,53 @@
     function updatePlaygroundTab() {
       if (!currentMetadata) return;
 
-      playgroundEmpty.classList.add('hidden');
-      playgroundContent.classList.remove('hidden');
-
-      // Update playground preview
-      let html = '';
-      const hasContent = (currentMetadata.states && currentMetadata.states.length > 0) ||
-                        (currentMetadata.variants && Object.keys(currentMetadata.variants).length > 0);
-
-      if (hasContent) {
-        html = '<p style="text-align: center; color: var(--text-secondary); margin-bottom: 16px;">Click "Generate Instances" to create a visual playground of all component variations</p>';
-      } else {
-        html = '<p style="text-align: center; color: var(--text-tertiary);">No variants or states detected for this component</p>';
+      if (playgroundEmpty) {
+        playgroundEmpty.classList.add('hidden');
+      }
+      if (playgroundContent) {
+        playgroundContent.classList.remove('hidden');
       }
 
-      playgroundGrid.innerHTML = html;
+      // Update playground preview
+      if (playgroundGrid) {
+        let html = '';
+        const hasContent = (currentMetadata.states && currentMetadata.states.length > 0) ||
+                          (currentMetadata.variants && Object.keys(currentMetadata.variants).length > 0);
+
+        if (hasContent) {
+          html = '<p style="text-align: center; color: var(--text-secondary); margin-bottom: 16px;">Click "Generate Instances" to create a visual playground of all component variations</p>';
+        } else {
+          html = '<p style="text-align: center; color: var(--text-tertiary);">No variants or states detected for this component</p>';
+        }
+
+        playgroundGrid.innerHTML = html;
+      }
     }
 
     // Update Documentation Tab
     function updateDocumentationTab() {
       if (!currentMetadata) return;
 
-      docsEmpty.classList.add('hidden');
-      docsPreview.classList.remove('hidden');
+      if (docsEmpty) {
+        docsEmpty.classList.add('hidden');
+      }
+      if (docsPreview) {
+        docsPreview.classList.remove('hidden');
+        // Generate documentation preview
+        const docsHtml = generateDocumentationHTML(currentMetadata);
+        docsPreview.innerHTML = docsHtml;
+      }
 
-      // Generate documentation preview
-      const docsHtml = generateDocumentationHTML(currentMetadata);
-      docsPreview.innerHTML = docsHtml;
-
-      // Enable buttons
-      exportDocsButton.disabled = false;
-      generateDocsFrameButton.disabled = false;
-      saveNotesButton.disabled = false;
+      // Enable buttons with null checks
+      if (exportDocsButton) {
+        exportDocsButton.disabled = false;
+      }
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.disabled = false;
+      }
+      if (saveNotesButton) {
+        saveNotesButton.disabled = false;
+      }
     }
 
     // Generate Documentation HTML
@@ -2982,15 +3121,25 @@
     function updateUIButtonStates() {
       const hasMetadata = currentMetadata !== null;
 
-      generatePlaygroundButton.disabled = !hasMetadata;
-      exportDocsButton.disabled = !hasMetadata;
-      generateDocsFrameButton.disabled = !hasMetadata;
-      saveNotesButton.disabled = !hasMetadata;
+      if (generatePlaygroundButton) {
+        generatePlaygroundButton.disabled = !hasMetadata;
+      }
+      if (exportDocsButton) {
+        exportDocsButton.disabled = !hasMetadata;
+      }
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.disabled = !hasMetadata;
+      }
+      if (saveNotesButton) {
+        saveNotesButton.disabled = !hasMetadata;
+      }
     }
 
     // Handle Playground Generated
     function handlePlaygroundGenerated(data) {
-      generatePlaygroundButton.disabled = false;
+      if (generatePlaygroundButton) {
+        generatePlaygroundButton.disabled = false;
+      }
       if (data.success) {
         updateStatus(data.message || 'Playground generated successfully!', 'success');
         // Switch to playground tab
@@ -3002,7 +3151,9 @@
 
     // Handle Docs Frame Generated
     function handleDocsFrameGenerated(data) {
-      generateDocsFrameButton.disabled = false;
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.disabled = false;
+      }
       if (data.success) {
         updateStatus('Documentation frame generated in Figma!', 'success');
       } else {
@@ -3030,14 +3181,7 @@
       analysisResults.classList.add('hidden');
     }
 
-    // Handle Add State Button Click
-    window.handleAddState = function(stateName) {
-      sendMessageToPlugin('add-state', {
-        state: stateName,
-        metadata: currentMetadata
-      });
-      updateStatus(`Adding ${stateName} state...`, 'info');
-    }
+
 
     // Handle Fix Accessibility Button Click
     window.handleFixAccessibility = function(issue) {
