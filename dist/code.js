@@ -664,6 +664,38 @@
       suggestedConsiderations: []
     };
     const nodeName = node.name.toLowerCase();
+    const containerPatterns = [
+      "tabs",
+      "tab-group",
+      "tabset",
+      "nav",
+      "navbar",
+      "navigation",
+      "menu",
+      "menubar",
+      "dropdown",
+      "form",
+      "form-group",
+      "fieldset",
+      "list",
+      "grid",
+      "collection",
+      "gallery",
+      "group",
+      "container",
+      "wrapper",
+      "layout",
+      "toolbar",
+      "panel",
+      "sidebar",
+      "header",
+      "footer",
+      "card-group",
+      "button-group",
+      "radio-group",
+      "checkbox-group"
+    ];
+    const isContainer = containerPatterns.some((pattern) => nodeName.includes(pattern));
     if (nodeName.includes("avatar") || nodeName.includes("profile")) {
       context.componentFamily = "avatar";
       context.possibleUseCase = "User representation, often clickable for profile access or dropdown menus";
@@ -701,6 +733,13 @@
       context.hasInteractiveElements = false;
       context.suggestedConsiderations.push("Usually decorative, but may be interactive if part of a button");
       context.designPatterns.push("visual-indicator", "decoration");
+    } else if (isContainer) {
+      context.componentFamily = "container";
+      context.possibleUseCase = "Layout container for organizing child components";
+      context.hasInteractiveElements = false;
+      context.suggestedConsiderations.push("Focus on layout and organization rather than interaction states");
+      context.suggestedConsiderations.push("Child components handle individual interactions");
+      context.designPatterns.push("layout-container", "component-organization");
     }
     if ("children" in node) {
       const hasTextWithAction = node.findAll(
@@ -1607,14 +1646,29 @@
         gaps.push("Missing form states - poor accessibility and user experience");
         recommendations.push("Add focus, error, and disabled states with clear visual indicators");
       }
+    } else if (family === "container") {
+      if (!hasVariant && actualProperties.length > 0) {
+        gaps.push("No layout variants defined - limits flexibility for different use cases");
+        recommendations.push("Add orientation property (horizontal, vertical) or density variants");
+      }
+      if (actualProperties.length > 0 && !actualProperties.some((prop) => prop.name.toLowerCase().includes("spacing"))) {
+        gaps.push("No spacing customization - may not fit all design contexts");
+        recommendations.push("Add spacing property to control internal padding and gaps");
+      }
     }
     if (actualProperties.length === 0) {
       gaps.push("No configurable properties - component lacks flexibility for different use cases");
-      recommendations.push("Add component properties to enable customization and reuse");
+      if (family === "container") {
+        recommendations.push("Add layout properties for customization (orientation, spacing, alignment)");
+      } else {
+        recommendations.push("Add component properties to enable customization and reuse");
+      }
     } else if (actualProperties.length === 1 && !hasSize && !hasVariant) {
       gaps.push("Limited customization options - consider adding more properties for flexibility");
-      if (shouldHaveStates && actualStates.length <= 1) {
+      if (family !== "container" && shouldHaveStates && actualStates.length <= 1) {
         recommendations.push("Add interactive states and additional variant options");
+      } else if (family === "container") {
+        recommendations.push("Consider adding layout variant properties (orientation, density)");
       }
     }
     if (strengths.length === 0) {
@@ -1632,7 +1686,7 @@
       score,
       strengths,
       gaps,
-      recommendations,
+      recommendations: deduplicateRecommendations(recommendations),
       implementationNotes: `This ${family} component can be enhanced for better MCP code generation compatibility by addressing the identified gaps.`
     };
   }
@@ -1664,7 +1718,7 @@
       score,
       strengths,
       gaps,
-      recommendations,
+      recommendations: deduplicateRecommendations(recommendations),
       implementationNotes: mcpData.implementationNotes || `This component can be optimized for MCP code generation by addressing the identified improvements.`
     };
   }
@@ -1928,6 +1982,98 @@
     console.log("\u{1F50D} [RECOMMENDATIONS] Existing properties:", existingProperties.map((p) => p.name));
     console.log("\u{1F50D} [RECOMMENDATIONS] Final recommendations:", filteredRecommendations.map((r) => r.name));
     return filteredRecommendations;
+  }
+  function deduplicateRecommendations(recommendations) {
+    if (recommendations.length <= 1) return recommendations;
+    const deduplicated = [];
+    const seenPatterns = /* @__PURE__ */ new Set();
+    const similarityPatterns = [
+      // Component properties patterns
+      {
+        pattern: /add.*component.*propert/i,
+        message: "Add component properties for customization and reuse"
+      },
+      // State patterns
+      {
+        pattern: /add.*(hover|focus|disabled|interactive).*state/i,
+        message: "Add hover, focus, and disabled states with clear visual feedback"
+      },
+      // Token patterns
+      {
+        pattern: /replace.*hard.coded.*(color|spacing|token)/i,
+        message: "Replace remaining hard-coded colors and spacing with design tokens"
+      },
+      // Variant patterns
+      {
+        pattern: /add.*(size|variant).*propert/i,
+        message: "Add size and style variant properties for different use cases"
+      }
+    ];
+    recommendations.forEach((rec) => {
+      const normalizedRec = rec.trim();
+      if (!normalizedRec) return;
+      let shouldAdd = true;
+      let patternMessage = normalizedRec;
+      for (const { pattern, message } of similarityPatterns) {
+        if (pattern.test(normalizedRec)) {
+          if (seenPatterns.has(pattern.source)) {
+            shouldAdd = false;
+            break;
+          } else {
+            seenPatterns.add(pattern.source);
+            patternMessage = message;
+            break;
+          }
+        }
+      }
+      const lowerRec = normalizedRec.toLowerCase();
+      const isDuplicate = deduplicated.some(
+        (existing) => existing.toLowerCase() === lowerRec || // Check for very similar messages (80% similarity)
+        calculateSimilarity(existing.toLowerCase(), lowerRec) > 0.8
+      );
+      if (shouldAdd && !isDuplicate) {
+        deduplicated.push(patternMessage);
+      }
+    });
+    console.log(`\u{1F50D} [DEDUP] Reduced ${recommendations.length} recommendations to ${deduplicated.length}`);
+    if (recommendations.length !== deduplicated.length) {
+      console.log(`\u{1F50D} [DEDUP] Original:`, recommendations);
+      console.log(`\u{1F50D} [DEDUP] Deduplicated:`, deduplicated);
+    }
+    return deduplicated;
+  }
+  function calculateSimilarity(str1, str2) {
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    if (longer.length === 0) return 1;
+    const distance = levenshteinDistance(longer, shorter);
+    return (longer.length - distance) / longer.length;
+  }
+  function levenshteinDistance(str1, str2) {
+    const matrix = [];
+    for (let i = 0; i <= str2.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= str1.length; j++) {
+      matrix[0][j] = j;
+    }
+    for (let i = 1; i <= str2.length; i++) {
+      for (let j = 1; j <= str1.length; j++) {
+        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            // substitution
+            matrix[i][j - 1] + 1,
+            // insertion
+            matrix[i - 1][j] + 1
+            // deletion
+          );
+        }
+      }
+    }
+    return matrix[str2.length][str1.length];
   }
 
   // src/api/claude.ts
