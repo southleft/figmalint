@@ -102,28 +102,36 @@ ${componentContext.additionalContext ? `
 - Considerations: ${componentContext.additionalContext.suggestedConsiderations.join('; ') || 'None'}
 ` : '- No additional context available'}
 
+**IMPORTANT: This is a FIGMA DESIGN component analysis, not code implementation.**
+Focus on design system concerns that can be addressed in Figma, not development implementation details.
+
 **Analysis Requirements:**
 
-1. **Component Metadata**: Provide comprehensive component documentation
+1. **Component Metadata**: Provide comprehensive component documentation for design handoff
 2. **Design Token Analysis**: Analyze and recommend semantic design tokens
-3. **Accessibility Assessment**: Evaluate accessibility compliance
+3. **Design Consistency**: Evaluate design system compliance within Figma
 4. **Naming Convention Review**: Check layer naming consistency
 5. **Design System Integration**: Suggest improvements for scalability
 6. **MCP Server Compatibility**: Ensure component structure supports automated code generation
 
-**MCP Server Integration Focus:**
-- **Property Definitions**: Components need clearly defined props that map to code
-- **State Management**: Interactive components require all necessary states (hover, focus, disabled, etc.)
-- **Token Usage**: Hard-coded values should use design tokens for consistency
-- **Semantic Structure**: Layer names should be descriptive and follow conventions
-- **Variant Patterns**: Only recommend variants when they serve a logical purpose (size, style, or functional differences)
-- **Developer Handoff**: Metadata should include implementation guidance
+**Figma-Specific Focus Areas:**
+- **Component Structure**: How layers are organized and named
+- **Token Usage**: Replace hard-coded values with Figma variables/tokens
+- **Visual States**: Design states that should exist in Figma (hover, focus, disabled representations)
+- **Variant Organization**: When and how to use Figma component variants
+- **Design Handoff**: Information developers need to implement this design
 
-**Important: Variant Recommendations Guidelines:**
-- Do NOT recommend variants for components that are intentionally single-purpose (icons, badges, simple dividers)
+**Container Component Guidelines:**
+- If this appears to be a CONTAINER component (e.g., "tabs", "form", "card-group"), focus on layout and organization rather than interaction variants
+- Container components typically need fewer variants than individual interactive components
+- Only suggest variants for containers if they truly have different layout patterns (e.g., vertical vs horizontal orientation)
+
+**Variant Recommendations Guidelines:**
+- Do NOT recommend variants for components that are intentionally single-purpose (icons, badges, simple dividers, containers)
 - Only suggest variants when there's clear evidence the component should have multiple visual or functional states
-- Consider the component family: buttons typically need variants, simple graphics usually don't
-- Base variant suggestions on actual design system patterns, not theoretical possibilities
+- For CONTAINER components: Focus on layout variants (orientation, spacing) rather than interaction states
+- For INDIVIDUAL components: Consider interaction states, sizes, and visual styles
+- Base variant suggestions on actual design system patterns visible in the layer structure
 
 **Design Token Focus Areas:**
 - **Color Tokens**: Semantic color usage (primary, secondary, neutral, semantic colors)
@@ -146,19 +154,18 @@ ${componentContext.additionalContext ? `
       "required": true/false
     }
   ],
-  "states": ["IMPORTANT: Use the Additional Context section above to determine appropriate states. For avatars marked as interactive, include hover/focus states. Only list states that make sense based on the component's use case and interactivity"],
+  "states": ["IMPORTANT: Only include visual states that can be represented in Figma designs (hover, focus, disabled, loading, error). Do NOT include states that are purely functional/code-level."],
   "slots": ["slot descriptions for content areas"],
   "variants": {
     "size": ["small", "medium", "large"],
     "variant": ["primary", "secondary", "outline"],
-    "theme": ["light", "dark"]
+    "orientation": ["horizontal", "vertical"]
   },
-  "usage": "When and how to use this component",
+  "usage": "When and how to use this component in designs",
   "accessibility": {
-    "ariaLabels": ["required aria labels"],
-    "keyboardSupport": "keyboard interaction requirements",
-    "colorContrast": "contrast compliance status",
-    "focusManagement": "focus behavior description"
+    "designConsiderations": ["Design-focused accessibility considerations like color contrast, visual hierarchy, readable text sizes"],
+    "visualIndicators": ["Visual cues needed for accessibility (focus rings, state indicators, etc.)"],
+    "designGuidance": "How to design this component to be accessible"
   },
   "tokens": {
     "colors": [
@@ -208,37 +215,42 @@ ${componentContext.additionalContext ? `
     }
   ],
   "audit": {
-    "accessibilityIssues": ["List specific accessibility issues found"],
-    "namingIssues": ["List layer naming problems with suggestions"],
-    "consistencyIssues": ["List design consistency issues"],
-    "tokenOpportunities": ["Specific recommendations for design token implementation"]
+    "designIssues": ["Specific design consistency issues found in Figma"],
+    "namingIssues": ["Layer naming problems with suggestions for better organization"],
+    "tokenOpportunities": ["Specific recommendations for design token implementation in Figma"],
+    "structureIssues": ["Component structure improvements for better design system integration"]
   },
   "mcpReadiness": {
     "score": "0-100 readiness score for MCP server code generation",
     "strengths": [
       "REQUIRED: List 2-3 specific strengths this component already has for code generation",
-      "Examples: 'Clear component structure', 'Good naming conventions', 'Semantic layer hierarchy', 'Uses design tokens', 'Has defined states', 'Accessible markup structure'"
+      "Examples: 'Clear component structure', 'Good naming conventions', 'Semantic layer hierarchy', 'Uses design tokens', 'Has defined visual states', 'Well-organized component variants'"
     ],
     "gaps": [
       "REQUIRED: List 2-4 specific gaps that limit MCP code generation effectiveness",
-      "Examples: 'Missing interactive states', 'Hard-coded spacing values', 'Unclear component variants', 'No accessibility attributes', 'Inconsistent naming'"
+      "Examples: 'Missing visual states in Figma', 'Hard-coded spacing values', 'Unclear component variants', 'Inconsistent layer naming', 'No component properties defined'"
     ],
     "recommendations": [
-      "REQUIRED: List 2-4 specific, actionable recommendations to improve MCP readiness",
-      "Examples: 'Add hover and focus states', 'Replace hard-coded spacing with tokens', 'Define size variant properties', 'Add ARIA labels for accessibility', 'Standardize layer naming convention'"
+      "REQUIRED: List 2-4 specific, actionable DESIGN recommendations to improve MCP readiness",
+      "Examples: 'Add hover and focus state designs', 'Replace hard-coded spacing with Figma variables', 'Define component variant properties', 'Standardize layer naming convention', 'Create missing visual states'"
     ],
-    "implementationNotes": "Developer guidance for implementing this component in code"
+    "implementationNotes": "Design handoff guidance for developers implementing this component"
   }
 }
 
 **Analysis Guidelines:**
 
-1. **Be Specific**: Provide actionable, specific recommendations
-2. **Modern Practices**: Follow current design system best practices
-3. **Semantic Naming**: Use semantic token names that describe purpose, not appearance
-4. **Scalability**: Consider how tokens support design system growth
-5. **Accessibility**: Ensure recommendations support inclusive design
-6. **Consistency**: Identify patterns that can be systematized
+1. **Be Figma-Specific**: Focus on what can be improved within Figma designs
+2. **Design System Focus**: Consider how this fits into a broader design system
+3. **Visual Design**: Prioritize visual consistency, token usage, and design handoff
+4. **Component Architecture**: Evaluate how the component is structured in Figma
+5. **Practical Recommendations**: Suggest improvements that designers can actually implement
+
+**AVOID Development-Only Concerns:**
+- Do NOT suggest implementing ARIA attributes (this is code-level)
+- Do NOT suggest adding keyboard navigation (this is code-level)
+- Do NOT suggest functional programming patterns
+- Focus on VISUAL and DESIGN SYSTEM concerns only
 
 **Token Naming Convention:**
 - Colors: \`semantic-[purpose]-[variant]\` (e.g., "semantic-color-primary", "neutral-background-subtle")
@@ -247,7 +259,7 @@ ${componentContext.additionalContext ? `
 - Effects: \`[effect]-[intensity]-[purpose]\` (e.g., "shadow-md-default", "blur-backdrop-light")
 - Borders: \`radius-[size]-[value]\` (e.g., "radius-md-8px", "radius-full-999px")
 
-Focus on creating a comprehensive analysis that helps designers build scalable, consistent, and accessible design systems.`;
+Focus on creating a comprehensive DESIGN analysis that helps designers build scalable, consistent, and well-structured Figma components.`;
 }
 
 /**
