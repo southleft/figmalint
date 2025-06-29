@@ -1123,6 +1123,7 @@
     .tab-button:hover:not(.active) {
       color: var(--text-primary);
       background: var(--surface);
+      border-bottom-color: var(--primary);
     }
 
     .tab-button.active {
@@ -1177,7 +1178,7 @@
       border: 1px solid var(--primary);
       border-radius: var(--radius-md);
       padding: var(--space-sm);
-      margin: 0 0 var(--space-sm);
+      margin: var(--space-sm) 0;
     }
 
     .context-badge {
@@ -2675,7 +2676,7 @@
 
         if (hasOnlyDefaultState) {
           // Show positive message for non-interactive components
-          html += `
+          html += `.
             <div class="audit-item">
               <span class="audit-status pass">✅</span>
               <span class="audit-label">No interactive states needed for this component</span>
