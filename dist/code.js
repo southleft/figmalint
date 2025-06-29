@@ -622,6 +622,553 @@
     }
   }
 
+  // src/api/claude.ts
+  var ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+  var DEFAULT_MODEL = "claude-3-sonnet-20240229";
+  var MAX_TOKENS = 2048;
+  var DETERMINISTIC_CONFIG = {
+    temperature: 0.1,
+    // Low temperature for consistency
+    top_p: 0.1
+    // Low top_p for deterministic responses
+  };
+  async function fetchClaude(prompt, apiKey, model = DEFAULT_MODEL, isDeterministic = true) {
+    console.log("Making Claude API call with deterministic settings...");
+    const requestBody = __spreadValues({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: prompt.trim()
+        }
+      ],
+      max_tokens: MAX_TOKENS
+    }, isDeterministic ? DETERMINISTIC_CONFIG : {});
+    const headers = {
+      "content-type": "application/json",
+      "x-api-key": apiKey.trim(),
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    };
+    try {
+      console.log("Sending request to Claude API...");
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody)
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Claude API error response:", errorText);
+        throw new Error(`Claude API request failed: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      console.log("Claude API response:", data);
+      if (data.content && data.content[0] && data.content[0].text) {
+        return data.content[0].text.trim();
+      } else {
+        throw new Error("Invalid response format from Claude API");
+      }
+    } catch (error) {
+      console.error("Error calling Claude API:", error);
+      if (error instanceof Error) {
+        if (error.message.includes("Failed to fetch")) {
+          throw new Error("Failed to connect to Claude API. Please check your internet connection.");
+        } else if (error.message.includes("401")) {
+          throw new Error("Invalid API key. Please check your Claude API key.");
+        } else if (error.message.includes("429")) {
+          throw new Error("Rate limit exceeded. Please try again later.");
+        }
+      }
+      throw error;
+    }
+  }
+  function createEnhancedMetadataPrompt(componentContext) {
+    return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
+
+**Component Analysis Context:**
+- Component Name: ${componentContext.name}
+- Component Type: ${componentContext.type}
+- Layer Structure: ${JSON.stringify(componentContext.hierarchy, null, 2)}
+- Detected Colors: ${componentContext.colors && componentContext.colors.length > 0 ? componentContext.colors.join(", ") : "None detected"}
+- Detected Spacing: ${componentContext.spacing && componentContext.spacing.length > 0 ? componentContext.spacing.join(", ") : "None detected"}
+- Text Content: ${componentContext.textContent || "No text content"}
+
+**Additional Context & Considerations:**
+${componentContext.additionalContext ? `
+- Component Family: ${componentContext.additionalContext.componentFamily || "Generic"}
+- Possible Use Case: ${componentContext.additionalContext.possibleUseCase || "Unknown"}
+- Has Interactive Elements: ${componentContext.additionalContext.hasInteractiveElements ? "Yes" : "No"}
+- Design Patterns: ${componentContext.additionalContext.designPatterns.join(", ") || "None identified"}
+- Considerations: ${componentContext.additionalContext.suggestedConsiderations.join("; ") || "None"}
+` : "- No additional context available"}
+
+**IMPORTANT: This is a FIGMA DESIGN component analysis, not code implementation.**
+Focus on design system concerns that can be addressed in Figma, not development implementation details.
+
+**Analysis Requirements:**
+
+1. **Component Metadata**: Provide comprehensive component documentation for design handoff
+2. **Design Token Analysis**: Analyze and recommend semantic design tokens
+3. **Design Consistency**: Evaluate design system compliance within Figma
+4. **Naming Convention Review**: Check layer naming consistency
+5. **Design System Integration**: Suggest improvements for scalability
+6. **MCP Server Compatibility**: Ensure component structure supports automated code generation
+
+**Figma-Specific Focus Areas:**
+- **Component Structure**: How layers are organized and named
+- **Token Usage**: Replace hard-coded values with Figma variables/tokens
+- **Visual States**: Design states that should exist in Figma (hover, focus, disabled representations)
+- **Variant Organization**: When and how to use Figma component variants
+- **Design Handoff**: Information developers need to implement this design
+
+**Container Component Guidelines:**
+- If this appears to be a CONTAINER component (e.g., "tabs", "form", "card-group"), focus on layout and organization rather than interaction variants
+- Container components typically need fewer variants than individual interactive components
+- Only suggest variants for containers if they truly have different layout patterns (e.g., vertical vs horizontal orientation)
+
+**Variant Recommendations Guidelines:**
+- Do NOT recommend variants for components that are intentionally single-purpose (icons, badges, simple dividers, containers)
+- Only suggest variants when there's clear evidence the component should have multiple visual or functional states
+- For CONTAINER components: Focus on layout variants (orientation, spacing) rather than interaction states
+- For INDIVIDUAL components: Consider interaction states, sizes, and visual styles
+- Base variant suggestions on actual design system patterns visible in the layer structure
+
+**Design Token Focus Areas:**
+- **Color Tokens**: Semantic color usage (primary, secondary, neutral, semantic colors)
+- **Spacing Tokens**: Consistent spacing patterns (padding, margins, gaps)
+- **Typography Tokens**: Font sizes, weights, line heights, letter spacing
+- **Effect Tokens**: Shadows, blurs, and other visual effects
+- **Border Tokens**: Border radius, stroke weights
+- **Layout Tokens**: Grid systems, breakpoints, container sizes
+
+**Response Format (JSON only):**
+{
+  "component": "Component name and purpose",
+  "description": "Detailed component description and use cases",
+  "props": [
+    {
+      "name": "property name",
+      "type": "string|boolean|number|variant",
+      "description": "Property purpose and usage",
+      "defaultValue": "default value",
+      "required": true/false
+    }
+  ],
+  "states": ["IMPORTANT: Only include visual states that can be represented in Figma designs (hover, focus, disabled, loading, error). Do NOT include states that are purely functional/code-level."],
+  "slots": ["slot descriptions for content areas"],
+  "variants": {
+    "size": ["small", "medium", "large"],
+    "variant": ["primary", "secondary", "outline"],
+    "orientation": ["horizontal", "vertical"]
+  },
+  "usage": "When and how to use this component in designs",
+  "accessibility": {
+    "designConsiderations": ["Design-focused accessibility considerations like color contrast, visual hierarchy, readable text sizes"],
+    "visualIndicators": ["Visual cues needed for accessibility (focus rings, state indicators, etc.)"],
+    "designGuidance": "How to design this component to be accessible"
+  },
+  "tokens": {
+    "colors": [
+      "semantic-color-primary",
+      "semantic-color-secondary",
+      "neutral-background-default",
+      "neutral-text-primary",
+      "semantic-color-success",
+      "semantic-color-error",
+      "semantic-color-warning"
+    ],
+    "spacing": [
+      "spacing-xs-4px",
+      "spacing-sm-8px",
+      "spacing-md-16px",
+      "spacing-lg-24px",
+      "spacing-xl-32px"
+    ],
+    "typography": [
+      "text-size-sm-12px",
+      "text-size-base-14px",
+      "text-size-lg-16px",
+      "text-size-xl-18px",
+      "text-weight-normal-400",
+      "text-weight-medium-500",
+      "text-weight-semibold-600"
+    ],
+    "effects": [
+      "shadow-sm-subtle",
+      "shadow-md-default",
+      "shadow-lg-prominent",
+      "blur-backdrop-light"
+    ],
+    "borders": [
+      "radius-sm-4px",
+      "radius-md-8px",
+      "radius-lg-12px",
+      "radius-full-999px"
+    ]
+  },
+  "propertyCheatSheet": [
+    {
+      "name": "Property name",
+      "values": ["value1", "value2", "value3"],
+      "default": "default value",
+      "description": "What this property controls"
+    }
+  ],
+  "audit": {
+    "designIssues": ["Specific design consistency issues found in Figma"],
+    "namingIssues": ["Layer naming problems with suggestions for better organization"],
+    "tokenOpportunities": ["Specific recommendations for design token implementation in Figma"],
+    "structureIssues": ["Component structure improvements for better design system integration"]
+  },
+  "mcpReadiness": {
+    "score": "0-100 readiness score for MCP server code generation",
+    "strengths": [
+      "REQUIRED: List 2-3 specific DESIGN strengths this component already has for code generation",
+      "FIGMA-ONLY Examples: 'Clear visual hierarchy in layers', 'Consistent spacing patterns', 'Well-organized component variants', 'Uses Figma variables for colors', 'Semantic layer naming', 'Defined visual states in Figma'"
+    ],
+    "gaps": [
+      "REQUIRED: List 2-4 specific DESIGN gaps that limit MCP code generation effectiveness",
+      "FIGMA-ONLY Examples: 'Missing visual states in Figma designs', 'Hard-coded spacing values (not using Figma variables)', 'Unclear component variant organization', 'Inconsistent layer naming conventions', 'No component properties defined in Figma', 'Missing visual feedback states'"
+    ],
+    "recommendations": [
+      "REQUIRED: List 2-4 specific, actionable FIGMA DESIGN recommendations to improve MCP readiness",
+      "FIGMA-ONLY Examples: 'Add hover and focus state designs in Figma', 'Replace hard-coded spacing with Figma variables', 'Define component variant properties in Figma', 'Standardize layer naming convention', 'Create missing visual states in component variants', 'Organize color styles into semantic tokens'"
+    ],
+    "implementationNotes": "Design handoff guidance for developers implementing this component"
+  }
+}
+
+**Analysis Guidelines:**
+
+1. **Be Figma-Specific**: Focus on what can be improved within Figma designs
+2. **Design System Focus**: Consider how this fits into a broader design system
+3. **Visual Design**: Prioritize visual consistency, token usage, and design handoff
+4. **Component Architecture**: Evaluate how the component is structured in Figma
+5. **Practical Recommendations**: Suggest improvements that designers can actually implement
+
+**CRITICAL: AVOID ALL Development-Only Concerns:**
+- Do NOT suggest implementing ARIA attributes, accessibility APIs, or semantic HTML (this is code-level)
+- Do NOT suggest adding keyboard navigation, event handlers, or interactive behaviors (this is code-level)
+- Do NOT suggest functional programming patterns, state management, or controlled/uncontrolled components (this is code-level)
+- Do NOT suggest responsive breakpoint behaviors or CSS-specific implementations (this is code-level)
+- Do NOT suggest animation tokens, transition timing, or programmatic animations (this is code-level)
+- Do NOT suggest API integration, data binding, or dynamic content loading (this is code-level)
+- ONLY focus on VISUAL DESIGN and DESIGN SYSTEM concerns that can be addressed within Figma
+
+**Token Naming Convention:**
+- Colors: \`semantic-[purpose]-[variant]\` (e.g., "semantic-color-primary", "neutral-background-subtle")
+- Spacing: \`spacing-[size]-[value]\` (e.g., "spacing-md-16px", "spacing-lg-24px")
+- Typography: \`text-[property]-[variant]-[value]\` (e.g., "text-size-lg-18px", "text-weight-semibold-600")
+- Effects: \`[effect]-[intensity]-[purpose]\` (e.g., "shadow-md-default", "blur-backdrop-light")
+- Borders: \`radius-[size]-[value]\` (e.g., "radius-md-8px", "radius-full-999px")
+
+Focus on creating a comprehensive DESIGN analysis that helps designers build scalable, consistent, and well-structured Figma components.`;
+  }
+  function extractJSONFromResponse(response) {
+    try {
+      console.log("\u{1F50D} Starting JSON extraction from Claude response...");
+      console.log("\u{1F4DD} Response length:", response.length);
+      console.log("\u{1F4DD} Response preview (first 200 chars):", response.substring(0, 200));
+      try {
+        const parsed = JSON.parse(response.trim());
+        console.log("\u2705 Successfully parsed entire response as JSON");
+        return parsed;
+      } catch (fullParseError) {
+        console.log("\u26A0\uFE0F Full response is not valid JSON, trying to extract JSON block...");
+      }
+      const strategies = [
+        // Strategy 1: Look for complete JSON objects with balanced braces
+        () => extractBalancedJson(response),
+        // Strategy 2: Look for JSON between common delimiters
+        () => extractJsonBetweenDelimiters(response),
+        // Strategy 3: Find JSON in code blocks
+        () => extractJsonFromCodeBlocks(response),
+        // Strategy 4: Last resort - original regex approach
+        () => extractJsonWithRegex(response)
+      ];
+      for (let i = 0; i < strategies.length; i++) {
+        try {
+          console.log(`\u{1F50D} Trying extraction strategy ${i + 1}...`);
+          const result = strategies[i]();
+          if (result) {
+            console.log("\u2705 Successfully extracted JSON with strategy", i + 1);
+            return result;
+          }
+        } catch (strategyError) {
+          const errorMessage = strategyError instanceof Error ? strategyError.message : "Unknown error";
+          console.log(`\u26A0\uFE0F Strategy ${i + 1} failed:`, errorMessage);
+          continue;
+        }
+      }
+      throw new Error("No valid JSON found in response after trying all strategies");
+    } catch (error) {
+      console.error("\u274C Failed to parse JSON from Claude response:", error);
+      console.log("\u{1F4DD} Full response for debugging:", response);
+      throw new Error("Invalid JSON response from Claude API");
+    }
+  }
+  function extractBalancedJson(response) {
+    const firstBrace = response.indexOf("{");
+    if (firstBrace === -1) return null;
+    let braceCount = 0;
+    let inString = false;
+    let escapeNext = false;
+    for (let i = firstBrace; i < response.length; i++) {
+      const char = response[i];
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      if (char === "\\") {
+        escapeNext = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === "{") {
+          braceCount++;
+        } else if (char === "}") {
+          braceCount--;
+          if (braceCount === 0) {
+            const jsonStr = response.substring(firstBrace, i + 1);
+            try {
+              return JSON.parse(jsonStr);
+            } catch (parseError) {
+              console.log("\u26A0\uFE0F Balanced JSON extraction found malformed JSON:", parseError instanceof Error ? parseError.message : "Parse error");
+              return null;
+            }
+          }
+        }
+      }
+    }
+    console.log("\u26A0\uFE0F JSON appears to be truncated, attempting reconstruction...");
+    return reconstructTruncatedJson(response, firstBrace);
+  }
+  function reconstructTruncatedJson(response, startIndex) {
+    try {
+      const jsonStr = response.substring(startIndex);
+      const lines = jsonStr.split("\n");
+      let reconstructed = "";
+      let braceCount = 0;
+      let inString = false;
+      let escapeNext = false;
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex];
+        let shouldIncludeLine = true;
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          if (char === "\\") {
+            escapeNext = true;
+            continue;
+          }
+          if (char === '"') {
+            inString = !inString;
+            continue;
+          }
+          if (!inString) {
+            if (char === "{") {
+              braceCount++;
+            } else if (char === "}") {
+              braceCount--;
+            }
+          }
+        }
+        if (inString || line.trim().endsWith(",") === false && lineIndex < lines.length - 1) {
+          break;
+        }
+        reconstructed += line + "\n";
+      }
+      while (braceCount > 0) {
+        reconstructed += "}\n";
+        braceCount--;
+      }
+      const parsed = JSON.parse(reconstructed.trim());
+      console.log("\u2705 Successfully reconstructed truncated JSON");
+      return parsed;
+    } catch (error) {
+      console.log("\u26A0\uFE0F Failed to reconstruct truncated JSON:", error instanceof Error ? error.message : "Unknown error");
+      return extractBasicComponentInfo(response);
+    }
+  }
+  function extractBasicComponentInfo(response) {
+    try {
+      console.log("\u{1F504} Attempting to extract basic component info as fallback...");
+      const componentMatch = response.match(/"component":\s*"([^"]+)"/);
+      const descriptionMatch = response.match(/"description":\s*"([^"]+)"/);
+      if (componentMatch && descriptionMatch) {
+        const fallbackData = {
+          component: componentMatch[1],
+          description: descriptionMatch[1],
+          props: [],
+          states: ["default"],
+          variants: {},
+          tokens: { colors: [], spacing: [], typography: [] },
+          audit: {
+            designIssues: ["Complex JSON response was truncated"],
+            tokenOpportunities: ["Review and simplify component analysis"],
+            structureIssues: []
+          },
+          mcpReadiness: {
+            score: 60,
+            strengths: ["Component has basic structure"],
+            gaps: ["Analysis was incomplete due to response size"],
+            recommendations: ["Simplify component structure", "Use MCP-enhanced analysis for better results"]
+          },
+          propertyCheatSheet: []
+        };
+        console.log("\u2705 Extracted basic component info as fallback");
+        return fallbackData;
+      }
+      return null;
+    } catch (error) {
+      console.log("\u26A0\uFE0F Failed to extract basic component info:", error instanceof Error ? error.message : "Unknown error");
+      return null;
+    }
+  }
+  function extractJsonBetweenDelimiters(response) {
+    const delimiters = [
+      ["```json", "```"],
+      ["```", "```"],
+      ["JSON:", "\n\n"],
+      ["Response:", "\n\n"],
+      ["{", "}\n"]
+    ];
+    for (const [start, end] of delimiters) {
+      const startIndex = response.indexOf(start);
+      if (startIndex === -1) continue;
+      const jsonStart = startIndex + start.length;
+      let endIndex = response.indexOf(end, jsonStart);
+      if (endIndex === -1 && end === "\n\n") {
+        endIndex = response.length;
+      }
+      if (endIndex === -1) continue;
+      const jsonStr = response.substring(jsonStart, endIndex).trim();
+      try {
+        return JSON.parse(jsonStr);
+      } catch (parseError) {
+        if (jsonStr.startsWith("{")) {
+          try {
+            return extractBalancedJson(jsonStr);
+          } catch (balancedError) {
+            continue;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  function extractJsonFromCodeBlocks(response) {
+    const codeBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi;
+    let match;
+    while ((match = codeBlockRegex.exec(response)) !== null) {
+      try {
+        return JSON.parse(match[1]);
+      } catch (parseError) {
+        continue;
+      }
+    }
+    return null;
+  }
+  function extractJsonWithRegex(response) {
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    return null;
+  }
+  function filterDevelopmentRecommendations(data) {
+    if (!data || typeof data !== "object") return data;
+    const developmentKeywords = [
+      "aria",
+      "accessibility api",
+      "semantic html",
+      "keyboard navigation",
+      "event handler",
+      "interactive behavior",
+      "onclick",
+      "onchange",
+      "state management",
+      "controlled component",
+      "uncontrolled component",
+      "props",
+      "responsive breakpoint",
+      "css implementation",
+      "@media",
+      "animation token",
+      "transition timing",
+      "programmatic animation",
+      "keyframe",
+      "api integration",
+      "data binding",
+      "dynamic content",
+      "fetch",
+      "axios",
+      "implement",
+      "add handler",
+      "bind event",
+      "attach listener",
+      "programming pattern",
+      "functional pattern",
+      "react hook",
+      "usestate",
+      "useeffect"
+    ];
+    const isDevelopmentFocused = (text) => {
+      const lowerText = text.toLowerCase();
+      return developmentKeywords.some((keyword) => lowerText.includes(keyword));
+    };
+    const filterRecommendationArray = (arr) => {
+      if (!Array.isArray(arr)) return arr;
+      return arr.filter((item) => {
+        if (typeof item === "string") {
+          const filtered = !isDevelopmentFocused(item);
+          if (!filtered) {
+            console.log("\u{1F6AB} [FILTER] Removed development-focused recommendation:", item);
+          }
+          return filtered;
+        }
+        return true;
+      });
+    };
+    const filteredData = JSON.parse(JSON.stringify(data));
+    if (filteredData.mcpReadiness) {
+      if (filteredData.mcpReadiness.recommendations) {
+        filteredData.mcpReadiness.recommendations = filterRecommendationArray(filteredData.mcpReadiness.recommendations);
+      }
+      if (filteredData.mcpReadiness.gaps) {
+        filteredData.mcpReadiness.gaps = filterRecommendationArray(filteredData.mcpReadiness.gaps);
+      }
+    }
+    if (filteredData.audit) {
+      if (filteredData.audit.designIssues) {
+        filteredData.audit.designIssues = filterRecommendationArray(filteredData.audit.designIssues);
+      }
+      if (filteredData.audit.tokenOpportunities) {
+        filteredData.audit.tokenOpportunities = filterRecommendationArray(filteredData.audit.tokenOpportunities);
+      }
+      if (filteredData.audit.structureIssues) {
+        filteredData.audit.structureIssues = filterRecommendationArray(filteredData.audit.structureIssues);
+      }
+    }
+    if (filteredData.accessibility) {
+      if (filteredData.accessibility.designConsiderations) {
+        filteredData.accessibility.designConsiderations = filterRecommendationArray(filteredData.accessibility.designConsiderations);
+      }
+      if (filteredData.accessibility.visualIndicators) {
+        filteredData.accessibility.visualIndicators = filterRecommendationArray(filteredData.accessibility.visualIndicators);
+      }
+    }
+    return filteredData;
+  }
+
   // src/core/component-analyzer.ts
   function extractComponentContext(node) {
     const hierarchy = extractLayerHierarchy(node);
@@ -1186,17 +1733,69 @@
           console.warn("\u{1F50D} [WARN] Component set has errors, cannot access variantGroupProperties:", error);
         }
       }
+      if (actualProperties.length === 0 && componentSet.children.length > 0) {
+        console.log("\u{1F50D} [DEBUG] Analyzing variant structure to infer properties...");
+        const propertyPatterns = /* @__PURE__ */ new Map();
+        const layerVisibilityPatterns = /* @__PURE__ */ new Map();
+        componentSet.children.forEach((variant, index) => {
+          if (variant.type === "COMPONENT") {
+            const variantName = variant.name;
+            console.log(`\u{1F50D} [DEBUG] Analyzing variant ${index}: ${variantName}`);
+            const pairs = variantName.split(",").map((s) => s.trim());
+            pairs.forEach((pair) => {
+              const [key, value] = pair.split("=").map((s) => s.trim());
+              if (key && value) {
+                if (!propertyPatterns.has(key)) {
+                  propertyPatterns.set(key, /* @__PURE__ */ new Set());
+                }
+                propertyPatterns.get(key).add(value);
+              }
+            });
+            const checkLayerVisibility = (node2, path = "") => {
+              const fullPath = path ? `${path}/${node2.name}` : node2.name;
+              if (!layerVisibilityPatterns.has(fullPath)) {
+                layerVisibilityPatterns.set(fullPath, []);
+              }
+              layerVisibilityPatterns.get(fullPath).push(node2.visible);
+              if ("children" in node2) {
+                node2.children.forEach((child) => checkLayerVisibility(child, fullPath));
+              }
+            };
+            checkLayerVisibility(variant);
+          }
+        });
+        propertyPatterns.forEach((values, key) => {
+          if (!actualProperties.find((p) => p.name === key)) {
+            actualProperties.push({
+              name: key,
+              values: Array.from(values),
+              default: Array.from(values)[0] || "default"
+            });
+          }
+        });
+        layerVisibilityPatterns.forEach((visibilityArray, layerPath) => {
+          const hasTrue = visibilityArray.includes(true);
+          const hasFalse = visibilityArray.includes(false);
+          if (hasTrue && hasFalse) {
+            const layerName = layerPath.split("/").pop() || "";
+            const propertyName = layerName.replace(/\s*(layer|group|frame|icon|text)?\s*/gi, "").trim();
+            if (propertyName && !actualProperties.find((p) => p.name === propertyName)) {
+              actualProperties.push({
+                name: propertyName,
+                values: ["true", "false"],
+                default: "false"
+              });
+              console.log(`\u{1F50D} [DEBUG] Inferred boolean property from visibility: ${propertyName}`);
+            }
+          }
+        });
+        console.log(`\u{1F50D} [DEBUG] Inferred ${actualProperties.length} properties from variant analysis`);
+      }
       if (actualProperties.length === 0) {
         console.log("\u{1F50D} [DEBUG] All Figma APIs failed, using comprehensive structural analysis...");
         const structuralProperties = extractPropertiesFromStructuralAnalysis(componentSet);
         console.log("\u{1F50D} [DEBUG] Properties from structural analysis:", structuralProperties);
         actualProperties.push(...structuralProperties);
-      }
-      if (actualProperties.length === 0) {
-        console.log("\u{1F50D} [DEBUG] Final fallback: extracting from variant names");
-        const variantPropsFromNames = extractPropertiesFromVariantNames(componentSet);
-        console.log("\u{1F50D} [DEBUG] Properties from variant names:", variantPropsFromNames);
-        actualProperties.push(...variantPropsFromNames);
       }
     } else if (node.type === "COMPONENT") {
       const component = node;
@@ -1460,158 +2059,419 @@
     });
     return uniqueStates;
   }
-  async function processEnhancedAnalysis(claudeData, node, selectedNode) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
-    const tokens = await extractDesignTokensFromNode(node);
-    const context = extractAdditionalContext(node);
+  async function processEnhancedAnalysis(context, apiKey, model, options = {}) {
+    console.log("\u{1F3AF} Starting enhanced component analysis...");
+    const selectedNode = figma.currentPage.selection[0];
+    const node = options.node || selectedNode;
+    if (!node) {
+      throw new Error("No node selected");
+    }
     const actualProperties = extractActualComponentProperties(node, selectedNode);
     const actualStates = extractActualComponentStates(node);
-    let recommendations;
-    const shouldGenerateRecommendations = actualProperties.length <= 2;
-    if (shouldGenerateRecommendations) {
-      console.log("\u{1F50D} [DEBUG] Component has few properties, generating recommendations...");
-      recommendations = generatePropertyRecommendations(node.name, actualProperties);
-    }
-    const audit = {
-      states: [],
-      accessibility: [],
-      naming: [],
-      consistency: []
-    };
-    if (actualStates.length > 0) {
-      actualStates.forEach((state) => {
-        audit.states.push({
-          name: state,
-          found: true
-        });
+    const tokens = await extractDesignTokensFromNode(node);
+    console.log(`\u{1F4CA} [ANALYSIS] Extracted from Figma API:`);
+    console.log(`  Properties: ${actualProperties.length}`);
+    console.log(`  States: ${actualStates.length}`);
+    console.log(`  Tokens: ${Object.keys(tokens).length} categories`);
+    const mcpServerUrl = options.mcpServerUrl || "http://localhost:3000/mcp";
+    const useMCP = options.useMCP !== false && mcpServerUrl;
+    let analysisResult;
+    if (useMCP) {
+      console.log("\u{1F504} Using hybrid Claude + MCP approach...");
+      const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens);
+      const claudeResponse = await fetchClaude(claudePrompt, apiKey, model);
+      const claudeData = extractJSONFromResponse(claudeResponse);
+      if (!claudeData) {
+        throw new Error("Failed to extract JSON from Claude response");
+      }
+      let mcpEnhancements = null;
+      try {
+        mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, claudeData);
+        console.log("\u2705 MCP enhancements received");
+      } catch (mcpError) {
+        console.warn("\u26A0\uFE0F MCP enhancement failed, continuing with Claude data only:", mcpError);
+      }
+      analysisResult = mergClaudeAndMCPResults(claudeData, mcpEnhancements, {
+        node,
+        context,
+        actualProperties,
+        actualStates,
+        tokens
       });
     } else {
-      const shouldHaveStates = context.hasInteractiveElements && context.componentFamily !== "badge" && context.componentFamily !== "icon";
-      if (shouldHaveStates) {
-        const recommendedStates = ["default", "hover", "focus", "disabled"];
-        recommendedStates.forEach((state) => {
-          audit.states.push({
-            name: state,
-            found: false
-          });
-        });
-      } else {
-        audit.states.push({
-          name: "default",
-          found: true
-        });
+      console.log("\u{1F4DD} Using Claude-only analysis...");
+      const prompt = createEnhancedMetadataPrompt(context);
+      const response = await fetchClaude(prompt, apiKey, model);
+      analysisResult = extractJSONFromResponse(response);
+      if (!analysisResult) {
+        throw new Error("Failed to extract JSON from response");
       }
     }
-    if (claudeData.audit && Array.isArray(claudeData.audit.accessibilityIssues)) {
-      claudeData.audit.accessibilityIssues.forEach((issue) => {
-        if (typeof issue === "string" && issue.trim()) {
-          audit.accessibility.push({
-            check: issue,
-            status: "warning",
-            suggestion: "Review accessibility requirements"
-          });
+    const filteredData = filterDevelopmentRecommendations(analysisResult);
+    return await processAnalysisResult(filteredData, context, options);
+  }
+  function createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens) {
+    var _a;
+    const componentFamily = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+    return `Analyze this Figma component and extract its structure and patterns.
+
+**Component Details:**
+- Name: ${context.name}
+- Type: ${context.type}
+- Family: ${componentFamily}
+
+**Actual Figma Properties (${actualProperties.length} total):**
+${actualProperties.slice(0, 10).map((p) => `- ${p.name}: ${p.values.join(", ")} (default: ${p.default})`).join("\n")}
+${actualProperties.length > 10 ? `... and ${actualProperties.length - 10} more properties` : ""}
+
+**Detected States:** ${actualStates.join(", ")}
+
+**Token Analysis:**
+- Total token opportunities: ${tokens.summary.totalTokens}
+- Actual tokens used: ${tokens.summary.actualTokens}
+- Hard-coded values: ${tokens.summary.hardCodedValues}
+- AI suggestions: ${tokens.summary.aiSuggestions}
+
+**Component Structure:**
+${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
+
+**TASK:** Analyze this Figma component and provide:
+1. Component name and description based on actual structure
+2. All properties with their actual values from Figma
+3. All states detected in the component
+4. Token usage analysis
+5. Structural patterns and variants
+
+Return JSON in this exact format:
+{
+  "component": "Component name and type",
+  "description": "Clear description based on structure",
+  "props": [
+    {
+      "name": "property name from Figma",
+      "type": "type",
+      "description": "what this property controls",
+      "values": ["actual", "values", "from", "figma"],
+      "default": "default value"
+    }
+  ],
+  "states": ["actual", "states", "detected"],
+  "variants": {
+    "property": ["values"]
+  },
+  "tokens": {
+    "colors": ["actual tokens used"],
+    "spacing": ["actual tokens used"],
+    "typography": ["actual tokens used"]
+  },
+  "structure": {
+    "layers": ${context.hierarchy.length},
+    "hasSlots": ${context.detectedSlots.length > 0},
+    "complexity": "low|medium|high"
+  }
+}
+
+Focus ONLY on what's actually in the Figma component. Do not add theoretical properties or states.`;
+  }
+  async function getMCPBestPractices(context, mcpServerUrl, claudeData) {
+    var _a, _b;
+    const componentFamily = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || ((_b = claudeData.component) == null ? void 0 : _b.toLowerCase()) || "generic";
+    try {
+      const [bestPractices, tokenGuidance, scoringCriteria] = await Promise.all([
+        // Component best practices (small query)
+        queryMCPWithTimeout(mcpServerUrl, "search_design_knowledge", {
+          query: `${componentFamily} component essential properties states variants`,
+          category: "components",
+          limit: 2
+        }, 3e3),
+        // Token recommendations (small query)
+        queryMCPWithTimeout(mcpServerUrl, "search_design_knowledge", {
+          query: `design tokens ${componentFamily} semantic naming`,
+          category: "tokens",
+          limit: 2
+        }, 3e3),
+        // Scoring criteria (small query)
+        queryMCPWithTimeout(mcpServerUrl, "search_chunks", {
+          query: `component assessment scoring criteria ${componentFamily}`,
+          limit: 1
+        }, 3e3)
+      ]);
+      return {
+        bestPractices: (bestPractices == null ? void 0 : bestPractices.entries) || [],
+        tokenGuidance: (tokenGuidance == null ? void 0 : tokenGuidance.entries) || [],
+        scoringCriteria: (scoringCriteria == null ? void 0 : scoringCriteria.chunks) || [],
+        success: true
+      };
+    } catch (error) {
+      console.warn("\u26A0\uFE0F MCP queries failed:", error);
+      return {
+        bestPractices: [],
+        tokenGuidance: [],
+        scoringCriteria: [],
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      };
+    }
+  }
+  async function queryMCPWithTimeout(serverUrl, toolName, arguments_, timeoutMs = 5e3) {
+    var _a, _b;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const payload = {
+        jsonrpc: "2.0",
+        id: Math.floor(Math.random() * 1e3) + 100,
+        method: "tools/call",
+        params: {
+          name: `mcp_design-systems_${toolName}`,
+          arguments: arguments_
         }
+      };
+      const response = await fetch(serverUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        throw new Error(`MCP ${toolName} failed: ${response.status}`);
+      }
+      const result = await response.json();
+      return ((_b = (_a = result.result) == null ? void 0 : _a.content) == null ? void 0 : _b[0]) || {};
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`MCP ${toolName} timeout after ${timeoutMs}ms`);
+      }
+      throw error;
     }
-    if (claudeData.audit && Array.isArray(claudeData.audit.namingIssues) && claudeData.audit.namingIssues.length > 0) {
-      claudeData.audit.namingIssues.forEach((issue) => {
-        if (typeof issue === "string" && issue.trim() && issue.toLowerCase() !== "undefined") {
-          audit.naming.push({
-            layer: node.name,
-            issue,
-            suggestion: "Follow naming conventions"
-          });
-        }
-      });
-    }
-    if (audit.naming.length === 0) {
-      audit.naming.push({
-        layer: node.name,
-        issue: "Component naming follows conventions",
-        suggestion: "Good naming structure"
-      });
-    }
-    if (claudeData.audit && Array.isArray(claudeData.audit.consistencyIssues) && claudeData.audit.consistencyIssues.length > 0) {
-      claudeData.audit.consistencyIssues.forEach((issue) => {
-        if (typeof issue === "string" && issue.trim() && issue.toLowerCase() !== "undefined") {
-          audit.consistency.push({
-            property: "Design consistency",
-            issue,
-            suggestion: "Review design system standards"
-          });
-        }
-      });
-    }
-    if (audit.consistency.length === 0) {
-      audit.consistency.push({
-        property: "Design consistency",
-        issue: "Component follows design system patterns",
-        suggestion: "Consistent with design standards"
-      });
-    }
-    const cleanMetadata = {
-      component: claudeData.component || node.name,
-      description: claudeData.description || "Component analysis",
-      props: actualProperties.map((prop) => ({
-        name: prop.name,
-        type: prop.values.length > 1 ? "variant" : "string",
-        description: `Property with values: ${prop.values.join(", ")}`,
-        defaultValue: prop.default,
-        required: false
-      })),
-      propertyCheatSheet: actualProperties.map((prop) => ({
-        name: prop.name,
-        values: prop.values,
-        default: prop.default,
-        description: `Available values: ${prop.values.join(", ")}`
-      })),
-      states: actualStates.length > 0 ? actualStates : context.componentFamily === "badge" ? ["default"] : [],
-      slots: claudeData.slots || [],
-      variants: actualProperties.reduce((acc, prop) => {
-        acc[prop.name] = prop.values;
-        return acc;
-      }, {}),
-      usage: claudeData.usage || `This ${context.componentFamily || "component"} is used for ${context.possibleUseCase || "displaying content"}.`,
-      accessibility: {
-        ariaLabels: ((_a = claudeData.accessibility) == null ? void 0 : _a.ariaLabels) || [],
-        keyboardSupport: ((_b = claudeData.accessibility) == null ? void 0 : _b.keyboardSupport) || "Standard keyboard navigation",
-        colorContrast: ((_c = claudeData.accessibility) == null ? void 0 : _c.colorContrast) || "WCAG AA compliant",
-        focusManagement: ((_d = claudeData.accessibility) == null ? void 0 : _d.focusManagement) || "Proper focus indicators"
-      },
-      tokens: {
-        colors: ((_e = claudeData.tokens) == null ? void 0 : _e.colors) || [],
-        spacing: ((_f = claudeData.tokens) == null ? void 0 : _f.spacing) || [],
-        typography: ((_g = claudeData.tokens) == null ? void 0 : _g.typography) || [],
-        effects: ((_h = claudeData.tokens) == null ? void 0 : _h.effects) || [],
-        borders: ((_i = claudeData.tokens) == null ? void 0 : _i.borders) || []
-      },
-      audit: {
-        accessibilityIssues: ((_j = claudeData.audit) == null ? void 0 : _j.accessibilityIssues) || [],
-        namingIssues: ((_k = claudeData.audit) == null ? void 0 : _k.namingIssues) || [],
-        consistencyIssues: ((_l = claudeData.audit) == null ? void 0 : _l.consistencyIssues) || [],
-        tokenOpportunities: ((_m = claudeData.audit) == null ? void 0 : _m.tokenOpportunities) || []
-      },
-      mcpReadiness: claudeData.mcpReadiness ? enhanceMCPReadinessWithFallback(claudeData.mcpReadiness, {
-        node,
-        context,
-        actualProperties,
-        actualStates,
-        tokens
-      }) : generateFallbackMCPReadiness({
-        node,
-        context,
-        actualProperties,
-        actualStates,
-        tokens
-      })
+  }
+  function mergClaudeAndMCPResults(claudeData, mcpEnhancements, fallbackData) {
+    var _a;
+    const merged = __spreadValues({}, claudeData);
+    merged.propertyCheatSheet = generatePropertyCheatSheet(
+      fallbackData.actualProperties,
+      claudeData.component || fallbackData.context.name
+    );
+    merged.audit = {
+      designIssues: [],
+      tokenOpportunities: [],
+      structureIssues: []
     };
+    if (mcpEnhancements == null ? void 0 : mcpEnhancements.success) {
+      merged.mcpReadiness = generateMCPReadinessFromBestPractices(
+        mcpEnhancements,
+        claudeData,
+        fallbackData
+      );
+    } else {
+      merged.mcpReadiness = generateFallbackMCPReadiness(fallbackData);
+    }
+    merged.component = merged.component || fallbackData.context.name;
+    merged.description = merged.description || `${((_a = fallbackData.context.additionalContext) == null ? void 0 : _a.componentFamily) || "Component"} with ${fallbackData.actualProperties.length} properties`;
+    merged.props = merged.props || fallbackData.actualProperties.map((p) => ({
+      name: p.name,
+      type: "select",
+      description: `Controls ${p.name}`,
+      values: p.values,
+      default: p.default
+    }));
+    merged.states = merged.states || fallbackData.actualStates;
+    return merged;
+  }
+  function generateMCPReadinessFromBestPractices(mcpEnhancements, claudeData, fallbackData) {
+    var _a, _b;
+    const strengths = [];
+    const gaps = [];
+    const recommendations = [];
+    if (((_a = mcpEnhancements.bestPractices) == null ? void 0 : _a.length) > 0) {
+      mcpEnhancements.bestPractices.forEach((entry) => {
+        var _a2, _b2;
+        if (((_a2 = entry.title) == null ? void 0 : _a2.includes("best practice")) || ((_b2 = entry.title) == null ? void 0 : _b2.includes("pattern"))) {
+          recommendations.push(`Follow ${entry.title}`);
+        }
+      });
+    }
+    const hasAllStates = fallbackData.actualStates.length >= 3;
+    const hasSemanticTokens = fallbackData.tokens.summary && fallbackData.tokens.summary.actualTokens > fallbackData.tokens.summary.hardCodedValues;
+    const hasGoodStructure = ((_b = claudeData.structure) == null ? void 0 : _b.complexity) !== "high";
+    if (hasAllStates) strengths.push("Component has comprehensive states");
+    else gaps.push("Missing interactive states");
+    if (hasSemanticTokens) strengths.push("Good token usage");
+    else gaps.push("Improve token adoption");
+    if (hasGoodStructure) strengths.push("Well-structured component");
+    else gaps.push("Complex structure may need simplification");
+    const score = Math.round(
+      (hasAllStates ? 35 : 15) + (hasSemanticTokens ? 35 : 15) + (hasGoodStructure ? 30 : 20)
+    );
     return {
-      metadata: cleanMetadata,
-      tokens,
-      audit,
-      properties: actualProperties,
-      // This will be used by the UI for the property cheat sheet
-      recommendations
+      score,
+      strengths,
+      gaps,
+      recommendations: recommendations.slice(0, 3)
+      // Limit recommendations
+    };
+  }
+  function generatePropertyCheatSheet(properties, componentName) {
+    const cheatSheet = [];
+    const sizeProps = properties.filter(
+      (p) => p.name.toLowerCase().includes("size") || p.values.some((v) => ["small", "medium", "large"].includes(v.toLowerCase()))
+    );
+    const variantProps = properties.filter(
+      (p) => p.name.toLowerCase().includes("variant") || p.name.toLowerCase().includes("type")
+    );
+    const stateProps = properties.filter(
+      (p) => p.name.toLowerCase().includes("state") || p.values.some((v) => ["hover", "active", "disabled"].includes(v.toLowerCase()))
+    );
+    if (sizeProps.length > 0) {
+      cheatSheet.push(`\u{1F4CF} Sizes: ${sizeProps.map((p) => p.values.join("/")).join(", ")}`);
+    }
+    if (variantProps.length > 0) {
+      cheatSheet.push(`\u{1F3A8} Variants: ${variantProps.map((p) => `${p.name}(${p.values.length})`).join(", ")}`);
+    }
+    if (stateProps.length > 0) {
+      cheatSheet.push(`\u{1F504} States: ${stateProps.map((p) => p.values.join("/")).join(", ")}`);
+    }
+    const covered = new Set([...sizeProps, ...variantProps, ...stateProps].map((p) => p.name));
+    const remaining = properties.filter((p) => !covered.has(p.name)).slice(0, 3).map((p) => `${p.name}: ${p.values.slice(0, 3).join("/")}`);
+    if (remaining.length > 0) {
+      cheatSheet.push(`\u2699\uFE0F Other: ${remaining.join(", ")}`);
+    }
+    return cheatSheet.slice(0, 5);
+  }
+  async function processAnalysisResult(filteredData, context, options) {
+    var _a;
+    try {
+      console.log("\u{1F504} Processing analysis result...");
+      console.log("\u{1F4CA} Filtered data received:", JSON.stringify(filteredData, null, 2).substring(0, 500) + "...");
+      const selection = figma.currentPage.selection;
+      let node = null;
+      if (selection.length > 0) {
+        node = selection[0];
+      } else {
+        throw new Error("No component selected");
+      }
+      const actualProperties = extractActualComponentProperties(node);
+      const actualStates = extractActualComponentStates(node);
+      let tokens = {
+        colors: [],
+        spacing: [],
+        typography: [],
+        effects: [],
+        borders: [],
+        summary: {
+          totalTokens: 0,
+          actualTokens: 0,
+          hardCodedValues: 0,
+          aiSuggestions: 0,
+          byCategory: {}
+        }
+      };
+      if (options.includeTokenAnalysis !== false) {
+        tokens = await extractDesignTokensFromNode(node);
+      }
+      const metadata = {
+        component: filteredData.component || context.name || "Component",
+        description: filteredData.description || `A ${context.type} component with ${actualProperties.length} properties`,
+        // Use actual properties from Figma if Claude didn't provide them
+        props: filteredData.props && filteredData.props.length > 0 ? filteredData.props : actualProperties.map((p) => ({
+          name: p.name,
+          type: "select",
+          description: `Controls ${p.name}`,
+          values: p.values,
+          defaultValue: p.default,
+          required: false
+        })),
+        // Use actual states from Figma if Claude didn't provide them
+        states: filteredData.states && filteredData.states.length > 0 ? filteredData.states.map((s) => typeof s === "string" ? s : s.name) : actualStates.length > 0 ? actualStates : ["default"],
+        variants: filteredData.variants || {},
+        slots: filteredData.slots || [],
+        tokens: filteredData.tokens || {
+          colors: tokens.colors.filter((t) => t.isActualToken).map((t) => t.name),
+          spacing: tokens.spacing.filter((t) => t.isActualToken).map((t) => t.name),
+          typography: tokens.typography.filter((t) => t.isActualToken).map((t) => t.name)
+        },
+        usage: filteredData.usage || "General purpose component for design systems",
+        accessibility: filteredData.accessibility || {
+          keyboardNavigation: "Standard keyboard navigation support",
+          screenReader: "Screen reader accessible",
+          colorContrast: "WCAG compliant contrast ratios"
+        },
+        audit: filteredData.audit || {
+          accessibilityIssues: [],
+          namingIssues: [],
+          consistencyIssues: [],
+          tokenOpportunities: []
+        },
+        // Ensure propertyCheatSheet exists
+        propertyCheatSheet: filteredData.propertyCheatSheet || actualProperties.map((p) => ({
+          name: p.name,
+          values: p.values,
+          default: p.default,
+          description: `Property for ${p.name} configuration`
+        })),
+        // Ensure mcpReadiness exists
+        mcpReadiness: filteredData.mcpReadiness || generateFallbackMCPReadiness({
+          node,
+          context,
+          actualProperties,
+          actualStates,
+          tokens
+        })
+      };
+      console.log("\u{1F4E4} Sending to UI - metadata.props:", (_a = metadata.props) == null ? void 0 : _a.length);
+      console.log("\u{1F4E4} Sending to UI - metadata.states:", metadata.states);
+      console.log("\u{1F4E4} Sending to UI - metadata.mcpReadiness:", metadata.mcpReadiness);
+      const audit = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens);
+      const recommendations = generatePropertyRecommendations(context.name, actualProperties);
+      console.log("\u2705 Analysis result processed successfully");
+      return {
+        metadata,
+        tokens,
+        audit,
+        properties: actualProperties,
+        recommendations
+      };
+    } catch (error) {
+      console.error("Error processing analysis result:", error);
+      throw error;
+    }
+  }
+  function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens) {
+    return {
+      // Basic state checking
+      states: actualStates.map((state) => ({
+        name: state,
+        found: true
+      })),
+      // Basic accessibility audit
+      accessibility: [
+        {
+          check: "Component naming",
+          status: context.name && !context.name.toLowerCase().includes("untitled") ? "pass" : "warning",
+          suggestion: context.name && !context.name.toLowerCase().includes("untitled") ? "Component has descriptive naming" : "Consider using more descriptive component names"
+        },
+        {
+          check: "Property configuration",
+          status: actualProperties.length > 0 ? "pass" : "warning",
+          suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
+        }
+      ],
+      // Layer naming audit
+      naming: context.hierarchy.map((layer) => ({
+        layer: layer.name,
+        issue: layer.name && !layer.name.toLowerCase().includes("untitled") ? "" : "Generic layer name",
+        suggestion: layer.name && !layer.name.toLowerCase().includes("untitled") ? "Layer has descriptive naming" : "Consider using more descriptive layer names"
+      })),
+      // Consistency audit
+      consistency: [
+        {
+          property: "Token usage",
+          issue: tokens.summary.hardCodedValues > 0 ? "Hard-coded values found" : "",
+          suggestion: tokens.summary.hardCodedValues > 0 ? "Replace hard-coded values with design tokens" : "Good token usage consistency"
+        }
+      ]
     };
   }
   function generateFallbackMCPReadiness(data) {
@@ -1737,41 +2597,10 @@
     return {
       score,
       strengths,
-      gaps,
+      gaps: deduplicateRecommendations(gaps),
+      // Apply same deduplication to gaps
       recommendations: deduplicateRecommendations(recommendations),
       implementationNotes: `This ${family} component can be enhanced for better MCP code generation compatibility by addressing the identified gaps.`
-    };
-  }
-  function enhanceMCPReadinessWithFallback(mcpData, data) {
-    const score = parseInt(mcpData.score) || 0;
-    let strengths = Array.isArray(mcpData.strengths) ? mcpData.strengths.filter(
-      (s) => typeof s === "string" && s.trim() && !s.includes("REQUIRED") && !s.includes("Examples")
-    ) : [];
-    let gaps = Array.isArray(mcpData.gaps) ? mcpData.gaps.filter(
-      (g) => typeof g === "string" && g.trim() && !g.includes("REQUIRED") && !g.includes("Examples")
-    ) : [];
-    let recommendations = Array.isArray(mcpData.recommendations) ? mcpData.recommendations.filter(
-      (r) => typeof r === "string" && r.trim() && !r.includes("REQUIRED") && !r.includes("Examples")
-    ) : [];
-    if (strengths.length === 0 || gaps.length === 0 || recommendations.length === 0) {
-      console.log("\u{1F504} Enhancing MCP readiness with fallback content...");
-      const fallback = generateFallbackMCPReadiness(data);
-      if (strengths.length === 0) {
-        strengths = fallback.strengths;
-      }
-      if (gaps.length === 0) {
-        gaps = fallback.gaps;
-      }
-      if (recommendations.length === 0) {
-        recommendations = fallback.recommendations;
-      }
-    }
-    return {
-      score,
-      strengths,
-      gaps,
-      recommendations: deduplicateRecommendations(recommendations),
-      implementationNotes: mcpData.implementationNotes || `This component can be optimized for MCP code generation by addressing the identified improvements.`
     };
   }
   function generatePropertyRecommendations(componentName, existingProperties) {
@@ -2035,39 +2864,56 @@
     console.log("\u{1F50D} [RECOMMENDATIONS] Final recommendations:", filteredRecommendations.map((r) => r.name));
     return filteredRecommendations;
   }
-  function deduplicateRecommendations(recommendations) {
-    if (recommendations.length <= 1) return recommendations;
+  function deduplicateRecommendations(items) {
+    if (items.length <= 1) return items;
     const deduplicated = [];
     const seenPatterns = /* @__PURE__ */ new Set();
     const similarityPatterns = [
-      // Component properties patterns
+      // Component properties patterns (recommendations)
       {
         pattern: /add.*component.*propert/i,
         message: "Add component properties for customization and reuse"
       },
-      // State patterns
+      // State patterns (recommendations)
       {
         pattern: /add.*(hover|focus|disabled|interactive).*state/i,
         message: "Add hover, focus, and disabled states with clear visual feedback"
       },
-      // Token patterns
+      // Token patterns (recommendations)
       {
         pattern: /replace.*hard.coded.*(color|spacing|token)/i,
         message: "Replace remaining hard-coded colors and spacing with design tokens"
       },
-      // Variant patterns
+      // Variant patterns (recommendations)
       {
         pattern: /add.*(size|variant).*propert/i,
         message: "Add size and style variant properties for different use cases"
+      },
+      // Gap-specific patterns
+      {
+        pattern: /no.*configurable.*propert.*(cannot|lacks|limited)/i,
+        message: "No configurable properties - component lacks flexibility for different use cases"
+      },
+      {
+        pattern: /(missing|no).*(interactive|hover|focus).*state/i,
+        message: "Missing interactive states - reduces accessibility and user feedback"
+      },
+      {
+        pattern: /found.*hard.coded.*value.*(inconsistent|design.*system)/i,
+        message: "Found hard-coded values - inconsistent with design system"
+      },
+      {
+        pattern: /(minimal|simple).*layer.*structure.*(lack|semantic|organization)/i,
+        message: "Minimal layer structure - may lack semantic organization for complex use cases"
       }
     ];
-    recommendations.forEach((rec) => {
-      const normalizedRec = rec.trim();
-      if (!normalizedRec) return;
+    items.forEach((item) => {
+      const normalizedItem = item.trim();
+      if (!normalizedItem) return;
       let shouldAdd = true;
-      let patternMessage = normalizedRec;
+      let patternMessage = normalizedItem;
       for (const { pattern, message } of similarityPatterns) {
-        if (pattern.test(normalizedRec)) {
+        if (pattern.test(normalizedItem)) {
           if (seenPatterns.has(pattern.source)) {
             shouldAdd = false;
             break;
@@ -2078,18 +2924,18 @@
           }
         }
       }
-      const lowerRec = normalizedRec.toLowerCase();
+      const lowerItem = normalizedItem.toLowerCase();
       const isDuplicate = deduplicated.some(
-        (existing) => existing.toLowerCase() === lowerRec || // Check for very similar messages (80% similarity)
-        calculateSimilarity(existing.toLowerCase(), lowerRec) > 0.8
+        (existing) => existing.toLowerCase() === lowerItem || // Check for very similar messages (80% similarity)
+        calculateSimilarity(existing.toLowerCase(), lowerItem) > 0.8
       );
       if (shouldAdd && !isDuplicate) {
         deduplicated.push(patternMessage);
       }
     });
-    console.log(`\u{1F50D} [DEDUP] Reduced ${recommendations.length} recommendations to ${deduplicated.length}`);
-    if (recommendations.length !== deduplicated.length) {
-      console.log(`\u{1F50D} [DEDUP] Original:`, recommendations);
+    console.log(`\u{1F50D} [DEDUP] Reduced ${items.length} items to ${deduplicated.length}`);
+    if (items.length !== deduplicated.length) {
+      console.log(`\u{1F50D} [DEDUP] Original:`, items);
       console.log(`\u{1F50D} [DEDUP] Deduplicated:`, deduplicated);
     }
     return deduplicated;
@@ -2126,201 +2972,6 @@
       }
     }
     return matrix[str2.length][str1.length];
-  }
-
-  // src/api/claude.ts
-  var ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-  var DEFAULT_MODEL = "claude-3-sonnet-20240229";
-  var MAX_TOKENS = 2048;
-  var DETERMINISTIC_CONFIG = {
-    temperature: 0.1,
-    // Low temperature for consistency
-    top_p: 0.1
-    // Low top_p for deterministic responses
-  };
-  async function fetchClaude(prompt, apiKey, model = DEFAULT_MODEL, isDeterministic = true) {
-    console.log("Making Claude API call with deterministic settings...");
-    const requestBody = __spreadValues({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: prompt.trim()
-        }
-      ],
-      max_tokens: MAX_TOKENS
-    }, isDeterministic ? DETERMINISTIC_CONFIG : {});
-    const headers = {
-      "content-type": "application/json",
-      "x-api-key": apiKey.trim(),
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    };
-    try {
-      console.log("Sending request to Claude API...");
-      const response = await fetch(ANTHROPIC_API_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody)
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Claude API error response:", errorText);
-        throw new Error(`Claude API request failed: ${response.status} ${response.statusText}`);
-      }
-      const data = await response.json();
-      console.log("Claude API response:", data);
-      if (data.content && data.content[0] && data.content[0].text) {
-        return data.content[0].text.trim();
-      } else {
-        throw new Error("Invalid response format from Claude API");
-      }
-    } catch (error) {
-      console.error("Error calling Claude API:", error);
-      if (error instanceof Error) {
-        if (error.message.includes("Failed to fetch")) {
-          throw new Error("Failed to connect to Claude API. Please check your internet connection.");
-        } else if (error.message.includes("401")) {
-          throw new Error("Invalid API key. Please check your Claude API key.");
-        } else if (error.message.includes("429")) {
-          throw new Error("Rate limit exceeded. Please try again later.");
-        }
-      }
-      throw error;
-    }
-  }
-  function extractJSONFromResponse(response) {
-    try {
-      console.log("\u{1F50D} Starting JSON extraction from Claude response...");
-      console.log("\u{1F4DD} Response length:", response.length);
-      console.log("\u{1F4DD} Response preview (first 200 chars):", response.substring(0, 200));
-      try {
-        const parsed = JSON.parse(response.trim());
-        console.log("\u2705 Successfully parsed entire response as JSON");
-        return parsed;
-      } catch (fullParseError) {
-        console.log("\u26A0\uFE0F Full response is not valid JSON, trying to extract JSON block...");
-      }
-      const strategies = [
-        // Strategy 1: Look for complete JSON objects with balanced braces
-        () => extractBalancedJson(response),
-        // Strategy 2: Look for JSON between common delimiters
-        () => extractJsonBetweenDelimiters(response),
-        // Strategy 3: Find JSON in code blocks
-        () => extractJsonFromCodeBlocks(response),
-        // Strategy 4: Last resort - original regex approach
-        () => extractJsonWithRegex(response)
-      ];
-      for (let i = 0; i < strategies.length; i++) {
-        try {
-          console.log(`\u{1F50D} Trying extraction strategy ${i + 1}...`);
-          const result = strategies[i]();
-          if (result) {
-            console.log("\u2705 Successfully extracted JSON with strategy", i + 1);
-            return result;
-          }
-        } catch (strategyError) {
-          const errorMessage = strategyError instanceof Error ? strategyError.message : "Unknown error";
-          console.log(`\u26A0\uFE0F Strategy ${i + 1} failed:`, errorMessage);
-          continue;
-        }
-      }
-      throw new Error("No valid JSON found in response after trying all strategies");
-    } catch (error) {
-      console.error("\u274C Failed to parse JSON from Claude response:", error);
-      console.log("\u{1F4DD} Full response for debugging:", response);
-      throw new Error("Invalid JSON response from Claude API");
-    }
-  }
-  function extractBalancedJson(response) {
-    const firstBrace = response.indexOf("{");
-    if (firstBrace === -1) return null;
-    let braceCount = 0;
-    let inString = false;
-    let escapeNext = false;
-    for (let i = firstBrace; i < response.length; i++) {
-      const char = response[i];
-      if (escapeNext) {
-        escapeNext = false;
-        continue;
-      }
-      if (char === "\\") {
-        escapeNext = true;
-        continue;
-      }
-      if (char === '"') {
-        inString = !inString;
-        continue;
-      }
-      if (!inString) {
-        if (char === "{") {
-          braceCount++;
-        } else if (char === "}") {
-          braceCount--;
-          if (braceCount === 0) {
-            const jsonStr = response.substring(firstBrace, i + 1);
-            try {
-              return JSON.parse(jsonStr);
-            } catch (parseError) {
-              console.log("\u26A0\uFE0F Balanced JSON extraction found malformed JSON:", parseError instanceof Error ? parseError.message : "Parse error");
-              return null;
-            }
-          }
-        }
-      }
-    }
-    return null;
-  }
-  function extractJsonBetweenDelimiters(response) {
-    const delimiters = [
-      ["```json", "```"],
-      ["```", "```"],
-      ["JSON:", "\n\n"],
-      ["Response:", "\n\n"],
-      ["{", "}\n"]
-    ];
-    for (const [start, end] of delimiters) {
-      const startIndex = response.indexOf(start);
-      if (startIndex === -1) continue;
-      const jsonStart = startIndex + start.length;
-      let endIndex = response.indexOf(end, jsonStart);
-      if (endIndex === -1 && end === "\n\n") {
-        endIndex = response.length;
-      }
-      if (endIndex === -1) continue;
-      const jsonStr = response.substring(jsonStart, endIndex).trim();
-      try {
-        return JSON.parse(jsonStr);
-      } catch (parseError) {
-        if (jsonStr.startsWith("{")) {
-          try {
-            return extractBalancedJson(jsonStr);
-          } catch (balancedError) {
-            continue;
-          }
-        }
-      }
-    }
-    return null;
-  }
-  function extractJsonFromCodeBlocks(response) {
-    const codeBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi;
-    let match;
-    while ((match = codeBlockRegex.exec(response)) !== null) {
-      try {
-        return JSON.parse(match[1]);
-      } catch (parseError) {
-        continue;
-      }
-    }
-    return null;
-  }
-  function extractJsonWithRegex(response) {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-    return null;
   }
 
   // src/core/consistency-engine.ts
@@ -3013,41 +3664,25 @@ ${scoringCriteria}
       }
       await consistencyEngine.loadDesignSystemsKnowledge();
       const componentContext = extractComponentContext(selectedNode);
-      const tokenAnalysis = await extractDesignTokensFromNode(selectedNode);
-      const allTokens = [
-        ...tokenAnalysis.colors,
-        ...tokenAnalysis.spacing,
-        ...tokenAnalysis.typography,
-        ...tokenAnalysis.effects,
-        ...tokenAnalysis.borders
-      ];
-      const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens);
-      console.log("\u{1F50D} Component hash generated:", componentHash);
-      const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
-      if (cachedAnalysis) {
-        console.log("\u2705 Using cached analysis for consistent results");
-        figma.notify("Using cached analysis for consistent results", { timeout: 2e3 });
-        globalThis.lastAnalyzedMetadata = cachedAnalysis.result.metadata;
-        globalThis.lastAnalyzedNode = selectedNode;
-        sendMessageToUI("enhanced-analysis-result", cachedAnalysis.result);
-        return;
-      }
-      const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
+      const enhancedOptions = __spreadValues({
+        enableMCPEnhancement: true,
+        // Enable MCP enhancement by default
+        batchMode: options.batchMode || false,
+        enableAudit: options.enableAudit !== false,
+        // Enable by default
+        includeTokenAnalysis: options.includeTokenAnalysis !== false
+      }, options);
       figma.notify("Performing enhanced analysis with design systems knowledge...", { timeout: 3e3 });
-      const analysis = await fetchClaude(deterministicPrompt, storedApiKey, selectedModel, true);
-      const enhancedData = extractJSONFromResponse(analysis);
-      let result = await processEnhancedAnalysis(enhancedData, selectedNode, originalSelectedNode);
-      const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
-      if (!isConsistent) {
-        console.log("\u26A0\uFE0F Applying consistency corrections...");
-        result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
-        figma.notify("Applied consistency corrections to analysis", { timeout: 2e3 });
-      }
-      consistencyEngine.cacheAnalysis(componentHash, result);
+      const result = await processEnhancedAnalysis(
+        componentContext,
+        storedApiKey,
+        selectedModel,
+        enhancedOptions
+      );
       globalThis.lastAnalyzedMetadata = result.metadata;
       globalThis.lastAnalyzedNode = selectedNode;
       sendMessageToUI("enhanced-analysis-result", result);
-      figma.notify("Enhanced analysis complete! Results cached for consistency.", { timeout: 3e3 });
+      figma.notify("Enhanced analysis complete! Check the results panel.", { timeout: 3e3 });
     } catch (error) {
       console.error("Error during enhanced analysis:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -3087,7 +3722,8 @@ ${scoringCriteria}
           }
           const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
           const analysis = await fetchClaude(deterministicPrompt, storedApiKey, selectedModel, true);
-          const enhancedData = extractJSONFromResponse(analysis);
+          const rawEnhancedData = extractJSONFromResponse(analysis);
+          const enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
           let result = await processEnhancedAnalysis(enhancedData, node, node);
           const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
           if (!isConsistent) {

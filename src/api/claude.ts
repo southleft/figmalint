@@ -223,16 +223,16 @@ Focus on design system concerns that can be addressed in Figma, not development 
   "mcpReadiness": {
     "score": "0-100 readiness score for MCP server code generation",
     "strengths": [
-      "REQUIRED: List 2-3 specific strengths this component already has for code generation",
-      "Examples: 'Clear component structure', 'Good naming conventions', 'Semantic layer hierarchy', 'Uses design tokens', 'Has defined visual states', 'Well-organized component variants'"
+      "REQUIRED: List 2-3 specific DESIGN strengths this component already has for code generation",
+      "FIGMA-ONLY Examples: 'Clear visual hierarchy in layers', 'Consistent spacing patterns', 'Well-organized component variants', 'Uses Figma variables for colors', 'Semantic layer naming', 'Defined visual states in Figma'"
     ],
     "gaps": [
-      "REQUIRED: List 2-4 specific gaps that limit MCP code generation effectiveness",
-      "Examples: 'Missing visual states in Figma', 'Hard-coded spacing values', 'Unclear component variants', 'Inconsistent layer naming', 'No component properties defined'"
+      "REQUIRED: List 2-4 specific DESIGN gaps that limit MCP code generation effectiveness",
+      "FIGMA-ONLY Examples: 'Missing visual states in Figma designs', 'Hard-coded spacing values (not using Figma variables)', 'Unclear component variant organization', 'Inconsistent layer naming conventions', 'No component properties defined in Figma', 'Missing visual feedback states'"
     ],
     "recommendations": [
-      "REQUIRED: List 2-4 specific, actionable DESIGN recommendations to improve MCP readiness",
-      "Examples: 'Add hover and focus state designs', 'Replace hard-coded spacing with Figma variables', 'Define component variant properties', 'Standardize layer naming convention', 'Create missing visual states'"
+      "REQUIRED: List 2-4 specific, actionable FIGMA DESIGN recommendations to improve MCP readiness",
+      "FIGMA-ONLY Examples: 'Add hover and focus state designs in Figma', 'Replace hard-coded spacing with Figma variables', 'Define component variant properties in Figma', 'Standardize layer naming convention', 'Create missing visual states in component variants', 'Organize color styles into semantic tokens'"
     ],
     "implementationNotes": "Design handoff guidance for developers implementing this component"
   }
@@ -246,11 +246,14 @@ Focus on design system concerns that can be addressed in Figma, not development 
 4. **Component Architecture**: Evaluate how the component is structured in Figma
 5. **Practical Recommendations**: Suggest improvements that designers can actually implement
 
-**AVOID Development-Only Concerns:**
-- Do NOT suggest implementing ARIA attributes (this is code-level)
-- Do NOT suggest adding keyboard navigation (this is code-level)
-- Do NOT suggest functional programming patterns
-- Focus on VISUAL and DESIGN SYSTEM concerns only
+**CRITICAL: AVOID ALL Development-Only Concerns:**
+- Do NOT suggest implementing ARIA attributes, accessibility APIs, or semantic HTML (this is code-level)
+- Do NOT suggest adding keyboard navigation, event handlers, or interactive behaviors (this is code-level)
+- Do NOT suggest functional programming patterns, state management, or controlled/uncontrolled components (this is code-level)
+- Do NOT suggest responsive breakpoint behaviors or CSS-specific implementations (this is code-level)
+- Do NOT suggest animation tokens, transition timing, or programmatic animations (this is code-level)
+- Do NOT suggest API integration, data binding, or dynamic content loading (this is code-level)
+- ONLY focus on VISUAL DESIGN and DESIGN SYSTEM concerns that can be addressed within Figma
 
 **Token Naming Convention:**
 - Colors: \`semantic-[purpose]-[variant]\` (e.g., "semantic-color-primary", "neutral-background-subtle")
@@ -387,7 +390,128 @@ function extractBalancedJson(response: string): any | null {
     }
   }
 
-  return null;
+  // If we reach here, the JSON is likely truncated
+  // Try to reconstruct a valid JSON by finding a reasonable truncation point
+  console.log('⚠️ JSON appears to be truncated, attempting reconstruction...');
+  return reconstructTruncatedJson(response, firstBrace);
+}
+
+/**
+ * Attempt to reconstruct a valid JSON from a truncated response
+ */
+function reconstructTruncatedJson(response: string, startIndex: number): any | null {
+  try {
+    const jsonStr = response.substring(startIndex);
+
+    // Find the last complete property before truncation
+    const lines = jsonStr.split('\n');
+    let reconstructed = '';
+    let braceCount = 0;
+    let inString = false;
+    let escapeNext = false;
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
+      let shouldIncludeLine = true;
+
+      // Check if this line would make the JSON invalid
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+
+        if (char === '\\') {
+          escapeNext = true;
+          continue;
+        }
+
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+
+        if (!inString) {
+          if (char === '{') {
+            braceCount++;
+          } else if (char === '}') {
+            braceCount--;
+          }
+        }
+      }
+
+      // If this line seems incomplete or would break JSON, stop here
+      if (inString || line.trim().endsWith(',') === false && lineIndex < lines.length - 1) {
+        // This line might be incomplete, try without it
+        break;
+      }
+
+      reconstructed += line + '\n';
+    }
+
+    // Close any open braces
+    while (braceCount > 0) {
+      reconstructed += '}\n';
+      braceCount--;
+    }
+
+    // Try to parse the reconstructed JSON
+    const parsed = JSON.parse(reconstructed.trim());
+    console.log('✅ Successfully reconstructed truncated JSON');
+    return parsed;
+
+  } catch (error) {
+    console.log('⚠️ Failed to reconstruct truncated JSON:', error instanceof Error ? error.message : 'Unknown error');
+
+    // Last resort: try to extract just the basic component info
+    return extractBasicComponentInfo(response);
+  }
+}
+
+/**
+ * Extract basic component information as a fallback for failed JSON parsing
+ */
+function extractBasicComponentInfo(response: string): any | null {
+  try {
+    console.log('🔄 Attempting to extract basic component info as fallback...');
+
+    // Look for component name and description
+    const componentMatch = response.match(/"component":\s*"([^"]+)"/);
+    const descriptionMatch = response.match(/"description":\s*"([^"]+)"/);
+
+    if (componentMatch && descriptionMatch) {
+      const fallbackData = {
+        component: componentMatch[1],
+        description: descriptionMatch[1],
+        props: [],
+        states: ['default'],
+        variants: {},
+        tokens: { colors: [], spacing: [], typography: [] },
+        audit: {
+          designIssues: ['Complex JSON response was truncated'],
+          tokenOpportunities: ['Review and simplify component analysis'],
+          structureIssues: []
+        },
+        mcpReadiness: {
+          score: 60,
+          strengths: ['Component has basic structure'],
+          gaps: ['Analysis was incomplete due to response size'],
+          recommendations: ['Simplify component structure', 'Use MCP-enhanced analysis for better results']
+        },
+        propertyCheatSheet: []
+      };
+
+      console.log('✅ Extracted basic component info as fallback');
+      return fallbackData;
+    }
+
+    return null;
+  } catch (error) {
+    console.log('⚠️ Failed to extract basic component info:', error instanceof Error ? error.message : 'Unknown error');
+    return null;
+  }
 }
 
 /**
@@ -463,4 +587,316 @@ function extractJsonWithRegex(response: string): any | null {
     return JSON.parse(jsonMatch[0]);
   }
   return null;
+}
+
+/**
+ * Filter out development-focused recommendations that shouldn't be in Figma analysis
+ */
+export function filterDevelopmentRecommendations(data: any): any {
+  if (!data || typeof data !== 'object') return data;
+
+  // Development-focused keywords to filter out
+  const developmentKeywords = [
+    'aria', 'accessibility api', 'semantic html',
+    'keyboard navigation', 'event handler', 'interactive behavior', 'onclick', 'onchange',
+    'state management', 'controlled component', 'uncontrolled component', 'props',
+    'responsive breakpoint', 'css implementation', '@media',
+    'animation token', 'transition timing', 'programmatic animation', 'keyframe',
+    'api integration', 'data binding', 'dynamic content', 'fetch', 'axios',
+    'implement', 'add handler', 'bind event', 'attach listener',
+    'programming pattern', 'functional pattern', 'react hook', 'usestate', 'useeffect'
+  ];
+
+  // Function to check if a recommendation contains development keywords
+  const isDevelopmentFocused = (text: string): boolean => {
+    const lowerText = text.toLowerCase();
+    return developmentKeywords.some(keyword => lowerText.includes(keyword));
+  };
+
+  // Function to recursively filter arrays of recommendations
+  const filterRecommendationArray = (arr: any[]): any[] => {
+    if (!Array.isArray(arr)) return arr;
+    return arr.filter(item => {
+      if (typeof item === 'string') {
+        const filtered = !isDevelopmentFocused(item);
+        if (!filtered) {
+          console.log('🚫 [FILTER] Removed development-focused recommendation:', item);
+        }
+        return filtered;
+      }
+      return true;
+    });
+  };
+
+  // Create a deep copy to avoid mutations
+  const filteredData = JSON.parse(JSON.stringify(data));
+
+  // Filter various recommendation arrays
+  if (filteredData.mcpReadiness) {
+    if (filteredData.mcpReadiness.recommendations) {
+      filteredData.mcpReadiness.recommendations = filterRecommendationArray(filteredData.mcpReadiness.recommendations);
+    }
+    if (filteredData.mcpReadiness.gaps) {
+      filteredData.mcpReadiness.gaps = filterRecommendationArray(filteredData.mcpReadiness.gaps);
+    }
+  }
+
+  if (filteredData.audit) {
+    if (filteredData.audit.designIssues) {
+      filteredData.audit.designIssues = filterRecommendationArray(filteredData.audit.designIssues);
+    }
+    if (filteredData.audit.tokenOpportunities) {
+      filteredData.audit.tokenOpportunities = filterRecommendationArray(filteredData.audit.tokenOpportunities);
+    }
+    if (filteredData.audit.structureIssues) {
+      filteredData.audit.structureIssues = filterRecommendationArray(filteredData.audit.structureIssues);
+    }
+  }
+
+  // Filter accessibility recommendations to focus on design concerns only
+  if (filteredData.accessibility) {
+    if (filteredData.accessibility.designConsiderations) {
+      filteredData.accessibility.designConsiderations = filterRecommendationArray(filteredData.accessibility.designConsiderations);
+    }
+    if (filteredData.accessibility.visualIndicators) {
+      filteredData.accessibility.visualIndicators = filterRecommendationArray(filteredData.accessibility.visualIndicators);
+    }
+  }
+
+  return filteredData;
+}
+
+/**
+ * Enhanced MCP-based component analysis that leverages the upgraded MCP server processing
+ * This shifts most analysis work to the MCP server and uses Claude for final refinement only
+ */
+export async function createMCPEnhancedAnalysis(
+  componentContext: ComponentContext,
+  mcpServerUrl: string
+): Promise<any> {
+  try {
+    console.log('🚀 Starting MCP-enhanced component analysis...');
+
+    // Step 1: Send component context to MCP for structured analysis
+    const structuredAnalysis = await performMCPStructuredAnalysis(componentContext, mcpServerUrl);
+
+    // Step 2: Get specific recommendations from MCP based on component type
+    const mcpRecommendations = await getMCPComponentRecommendations(componentContext, mcpServerUrl);
+
+    // Step 3: Get scoring methodology from MCP
+    const mcpScoring = await getMCPComponentScoring(componentContext, mcpServerUrl);
+
+    // Step 4: Use Claude only for final refinement and natural language output
+    const refinedAnalysis = await refineMCPAnalysisWithClaude(
+      structuredAnalysis,
+      mcpRecommendations,
+      mcpScoring,
+      componentContext
+    );
+
+    console.log('✅ MCP-enhanced analysis complete');
+    return refinedAnalysis;
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.warn('⚠️ MCP-enhanced analysis failed, falling back to standard Claude analysis:', errorMessage);
+    // Fallback to existing Claude-heavy approach
+    return null;
+  }
+}
+
+/**
+ * Step 1: Send component structure to MCP for analysis
+ */
+async function performMCPStructuredAnalysis(
+  componentContext: ComponentContext,
+  mcpServerUrl: string
+): Promise<any> {
+  const componentQuery = `
+    Analyze this ${componentContext.type} component:
+    - Name: ${componentContext.name}
+    - Has ${componentContext.hierarchy.length} layers
+    - Colors: ${componentContext.colors?.join(', ') || 'none'}
+    - Text: ${componentContext.textContent || 'none'}
+    - Interactive: ${componentContext.additionalContext?.hasInteractiveElements ? 'yes' : 'no'}
+
+    Provide structured analysis for component properties, states, and architecture.
+  `;
+
+  return await queryMCPWithFallback(mcpServerUrl, 'search_design_knowledge', {
+    query: componentQuery,
+    category: 'components',
+    limit: 5
+  });
+}
+
+/**
+ * Step 2: Get specific recommendations based on component family
+ */
+async function getMCPComponentRecommendations(
+  componentContext: ComponentContext,
+  mcpServerUrl: string
+): Promise<any> {
+  const componentFamily = componentContext.additionalContext?.componentFamily || 'generic';
+
+  // Use multiple MCP searches for comprehensive recommendations
+  const searches = await Promise.allSettled([
+    // Component-specific best practices
+    queryMCPWithFallback(mcpServerUrl, 'search_design_knowledge', {
+      query: `${componentFamily} component best practices properties variants states`,
+      category: 'components',
+      limit: 3
+    }),
+
+    // Token recommendations
+    queryMCPWithFallback(mcpServerUrl, 'search_design_knowledge', {
+      query: `design tokens ${componentFamily} semantic naming conventions`,
+      category: 'tokens',
+      limit: 3
+    }),
+
+    // Accessibility requirements
+    queryMCPWithFallback(mcpServerUrl, 'search_design_knowledge', {
+      query: `${componentFamily} accessibility requirements WCAG patterns`,
+      category: 'accessibility',
+      limit: 2
+    })
+  ]);
+
+  return {
+    componentPractices: searches[0].status === 'fulfilled' ? searches[0].value : null,
+    tokenRecommendations: searches[1].status === 'fulfilled' ? searches[1].value : null,
+    accessibilityGuidance: searches[2].status === 'fulfilled' ? searches[2].value : null
+  };
+}
+
+/**
+ * Step 3: Get MCP-based scoring methodology
+ */
+async function getMCPComponentScoring(
+  componentContext: ComponentContext,
+  mcpServerUrl: string
+): Promise<any> {
+  const componentFamily = componentContext.additionalContext?.componentFamily || 'generic';
+
+  return await queryMCPWithFallback(mcpServerUrl, 'search_chunks', {
+    query: `${componentFamily} component scoring methodology evaluation criteria assessment framework`,
+    limit: 3
+  });
+}
+
+/**
+ * Step 4: Use Claude for final refinement (much smaller prompt)
+ */
+async function refineMCPAnalysisWithClaude(
+  structuredAnalysis: any,
+  recommendations: any,
+  scoring: any,
+  componentContext: ComponentContext
+): Promise<string> {
+  // Much smaller, focused prompt since MCP did the heavy lifting
+  const refinementPrompt = `
+Based on comprehensive design systems analysis from MCP server, refine this component analysis into final JSON format:
+
+**Component Context:**
+- Name: ${componentContext.name}
+- Type: ${componentContext.type}
+- Family: ${componentContext.additionalContext?.componentFamily || 'generic'}
+
+**MCP Structured Analysis:**
+${JSON.stringify(structuredAnalysis, null, 2)}
+
+**MCP Recommendations:**
+${JSON.stringify(recommendations, null, 2)}
+
+**MCP Scoring Framework:**
+${JSON.stringify(scoring, null, 2)}
+
+**TASK:** Synthesize the MCP analysis into the final component metadata JSON format.
+Focus on:
+1. Converting MCP insights into proper JSON structure
+2. Ensuring semantic design token recommendations
+3. Creating actionable property cheat sheet
+4. Calculating final MCP readiness score based on MCP scoring framework
+
+**Required JSON Format:**
+{
+  "component": "Component name and purpose",
+  "description": "Based on MCP analysis",
+  "props": [/* Based on MCP component practices */],
+  "states": [/* Based on MCP best practices */],
+  "variants": {/* Based on MCP recommendations */},
+  "tokens": {/* Based on MCP token recommendations */},
+  "propertyCheatSheet": [/* Based on MCP analysis */],
+  "audit": {/* Based on MCP evaluation */},
+  "mcpReadiness": {
+    "score": /* Based on MCP scoring framework */,
+    "strengths": [/* Based on MCP analysis */],
+    "gaps": [/* Based on MCP evaluation */],
+    "recommendations": [/* Based on MCP recommendations */]
+  }
+}
+
+Return only valid JSON, no additional text.
+  `;
+
+  // This prompt is much smaller (~50 lines vs 250+ lines)
+  return refinementPrompt;
+}
+
+/**
+ * Utility function for MCP queries with fallback
+ */
+async function queryMCPWithFallback(
+  serverUrl: string,
+  toolName: string,
+  arguments_: any
+): Promise<any> {
+  try {
+    const payload = {
+      jsonrpc: "2.0",
+      id: Math.floor(Math.random() * 1000) + 100,
+      method: "tools/call",
+      params: {
+        name: toolName,
+        arguments: arguments_
+      }
+    };
+
+    const response = await fetch(serverUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`MCP ${toolName} failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result.result?.content || [];
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.warn(`⚠️ MCP ${toolName} query failed:`, errorMessage);
+    return { fallback: true, error: errorMessage };
+  }
+}
+
+/**
+ * Create a simplified prompt that leverages MCP server processing
+ * This replaces the massive createEnhancedMetadataPrompt for MCP-enhanced mode
+ */
+export function createMCPAugmentedPrompt(
+  componentContext: ComponentContext,
+  mcpAnalysis: any
+): string {
+  return `Refine this MCP-generated component analysis into final JSON format:
+
+**Component:** ${componentContext.name} (${componentContext.type})
+
+**MCP Analysis Results:**
+${JSON.stringify(mcpAnalysis, null, 2)}
+
+Convert MCP insights into the required JSON structure with proper design token recommendations and component metadata. Return only valid JSON.`;
 }

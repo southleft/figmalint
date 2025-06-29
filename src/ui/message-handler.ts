@@ -4,7 +4,7 @@ import { PluginMessage, UIMessageType, EnhancedAnalysisOptions, ChatMessage, Cha
 import { sendMessageToUI, isValidApiKeyFormat, isValidNodeForAnalysis } from '../utils/figma-helpers';
 import { processEnhancedAnalysis, extractComponentContext } from '../core/component-analyzer';
 import { extractDesignTokensFromNode } from '../core/token-analyzer';
-import { fetchClaude, extractJSONFromResponse, createEnhancedMetadataPrompt } from '../api/claude';
+import { fetchClaude, extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations } from '../api/claude';
 import ComponentConsistencyEngine from '../core/consistency-engine';
 
 // Plugin state
@@ -191,61 +191,28 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     // Load design systems knowledge if not already loaded
     await consistencyEngine.loadDesignSystemsKnowledge();
 
-    // Extract component context and tokens for hashing
+    // Extract component context
     const componentContext = extractComponentContext(selectedNode);
-    const tokenAnalysis = await extractDesignTokensFromNode(selectedNode);
-    const allTokens = [
-      ...tokenAnalysis.colors,
-      ...tokenAnalysis.spacing,
-      ...tokenAnalysis.typography,
-      ...tokenAnalysis.effects,
-      ...tokenAnalysis.borders
-    ];
 
-    // Generate component hash for consistency checking
-    const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens);
-    console.log('🔍 Component hash generated:', componentHash);
-
-    // Check for cached analysis first
-    const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
-    if (cachedAnalysis) {
-      console.log('✅ Using cached analysis for consistent results');
-      figma.notify('Using cached analysis for consistent results', { timeout: 2000 });
-
-      // Store for later use
-      (globalThis as any).lastAnalyzedMetadata = cachedAnalysis.result.metadata;
-      (globalThis as any).lastAnalyzedNode = selectedNode;
-
-      // Send cached results to UI
-      sendMessageToUI('enhanced-analysis-result', cachedAnalysis.result);
-      return;
-    }
-
-    // Create deterministic prompt using consistency engine
-    const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
+    // Set up enhanced analysis options with MCP enabled by default
+    const enhancedOptions: EnhancedAnalysisOptions = {
+      enableMCPEnhancement: true, // Enable MCP enhancement by default
+      batchMode: options.batchMode || false,
+      enableAudit: options.enableAudit !== false, // Enable by default
+      includeTokenAnalysis: options.includeTokenAnalysis !== false, // Enable by default
+      ...options // Override with any user-specified options
+    };
 
     // Show loading notification
     figma.notify('Performing enhanced analysis with design systems knowledge...', { timeout: 3000 });
 
-    // Call Claude API with deterministic settings
-    const analysis = await fetchClaude(deterministicPrompt, storedApiKey, selectedModel, true);
-
-    // Parse JSON response
-    const enhancedData = extractJSONFromResponse(analysis);
-
-    // Process the enhanced data with the original selected node for property extraction
-    let result = await processEnhancedAnalysis(enhancedData, selectedNode, originalSelectedNode);
-
-    // Validate and apply consistency corrections
-    const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
-    if (!isConsistent) {
-      console.log('⚠️ Applying consistency corrections...');
-      result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
-      figma.notify('Applied consistency corrections to analysis', { timeout: 2000 });
-    }
-
-    // Cache the result for future consistency
-    consistencyEngine.cacheAnalysis(componentHash, result);
+    // Use the new MCP-enhanced analysis flow
+    const result = await processEnhancedAnalysis(
+      componentContext,
+      storedApiKey,
+      selectedModel,
+      enhancedOptions
+    );
 
     // Store for later use
     (globalThis as any).lastAnalyzedMetadata = result.metadata;
@@ -253,7 +220,7 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
 
     // Send results to UI
     sendMessageToUI('enhanced-analysis-result', result);
-    figma.notify('Enhanced analysis complete! Results cached for consistency.', { timeout: 3000 });
+    figma.notify('Enhanced analysis complete! Check the results panel.', { timeout: 3000 });
 
   } catch (error) {
     console.error('Error during enhanced analysis:', error);
@@ -313,7 +280,10 @@ async function handleBatchAnalysis(nodes: readonly SceneNode[], _options: Enhanc
         // Create deterministic prompt
         const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
         const analysis = await fetchClaude(deterministicPrompt, storedApiKey!, selectedModel, true);
-        const enhancedData = extractJSONFromResponse(analysis);
+        const rawEnhancedData = extractJSONFromResponse(analysis);
+
+        // Filter out development-focused recommendations
+        const enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
 
         // Process and validate the result
         let result = await processEnhancedAnalysis(enhancedData, node, node);

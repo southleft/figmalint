@@ -194,9 +194,12 @@ export type UIMessageType =
 // Enhanced Analysis Types
 export interface EnhancedAnalysisOptions {
   batchMode?: boolean;
-  includeAccessibility?: boolean;
-  includeNaming?: boolean;
-  includeTokens?: boolean;
+  enableAudit?: boolean;
+  includeTokenAnalysis?: boolean;
+  enableMCPEnhancement?: boolean;
+  node?: SceneNode;
+  mcpServerUrl?: string;
+  useMCP?: boolean;
 }
 
 export interface DetailedAuditResults {

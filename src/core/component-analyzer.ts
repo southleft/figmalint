@@ -1,8 +1,9 @@
 /// <reference types="@figma/plugin-typings" />
 
-import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult } from '../types';
+import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
 import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
+import { fetchClaude, extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
 
 /**
  * Extract comprehensive component context for analysis
@@ -744,20 +745,93 @@ function extractActualComponentProperties(node: SceneNode, selectedNode?: SceneN
       }
     }
 
+      // Method 2.5: Try to extract properties by analyzing variant differences
+  if (actualProperties.length === 0 && componentSet.children.length > 0) {
+    console.log('🔍 [DEBUG] Analyzing variant structure to infer properties...');
+
+    // Collect all unique layer structures and naming patterns
+    const propertyPatterns = new Map<string, Set<string>>();
+    const layerVisibilityPatterns = new Map<string, boolean[]>();
+
+    // Analyze each variant to find property patterns
+    componentSet.children.forEach((variant, index) => {
+      if (variant.type === 'COMPONENT') {
+        const variantName = variant.name;
+        console.log(`🔍 [DEBUG] Analyzing variant ${index}: ${variantName}`);
+
+        // Parse variant name for property-value pairs
+        const pairs = variantName.split(',').map(s => s.trim());
+        pairs.forEach(pair => {
+          const [key, value] = pair.split('=').map(s => s.trim());
+          if (key && value) {
+            if (!propertyPatterns.has(key)) {
+              propertyPatterns.set(key, new Set());
+            }
+            propertyPatterns.get(key)!.add(value);
+          }
+        });
+
+        // Analyze layer visibility patterns for boolean properties
+        const checkLayerVisibility = (node: SceneNode, path: string = '') => {
+          const fullPath = path ? `${path}/${node.name}` : node.name;
+
+          if (!layerVisibilityPatterns.has(fullPath)) {
+            layerVisibilityPatterns.set(fullPath, []);
+          }
+          layerVisibilityPatterns.get(fullPath)!.push(node.visible);
+
+          if ('children' in node) {
+            node.children.forEach(child => checkLayerVisibility(child, fullPath));
+          }
+        };
+
+        checkLayerVisibility(variant);
+      }
+    });
+
+    // Convert property patterns to actual properties
+    propertyPatterns.forEach((values, key) => {
+      if (!actualProperties.find(p => p.name === key)) {
+        actualProperties.push({
+          name: key,
+          values: Array.from(values),
+          default: Array.from(values)[0] || 'default'
+        });
+      }
+    });
+
+    // Infer boolean properties from visibility patterns
+    layerVisibilityPatterns.forEach((visibilityArray, layerPath) => {
+      // If a layer has different visibility states across variants, it's likely a boolean property
+      const hasTrue = visibilityArray.includes(true);
+      const hasFalse = visibilityArray.includes(false);
+
+      if (hasTrue && hasFalse) {
+        const layerName = layerPath.split('/').pop() || '';
+        const propertyName = layerName
+          .replace(/\s*(layer|group|frame|icon|text)?\s*/gi, '')
+          .trim();
+
+        if (propertyName && !actualProperties.find(p => p.name === propertyName)) {
+          actualProperties.push({
+            name: propertyName,
+            values: ['true', 'false'],
+            default: 'false'
+          });
+          console.log(`🔍 [DEBUG] Inferred boolean property from visibility: ${propertyName}`);
+        }
+      }
+    });
+
+    console.log(`🔍 [DEBUG] Inferred ${actualProperties.length} properties from variant analysis`);
+  }
+
     // Method 3: Enhanced structural analysis when APIs fail
     if (actualProperties.length === 0) {
       console.log('🔍 [DEBUG] All Figma APIs failed, using comprehensive structural analysis...');
       const structuralProperties = extractPropertiesFromStructuralAnalysis(componentSet);
       console.log('🔍 [DEBUG] Properties from structural analysis:', structuralProperties);
       actualProperties.push(...structuralProperties);
-    }
-
-    // Method 4: Final fallback - extract from variant names
-    if (actualProperties.length === 0) {
-      console.log('🔍 [DEBUG] Final fallback: extracting from variant names');
-      const variantPropsFromNames = extractPropertiesFromVariantNames(componentSet);
-      console.log('🔍 [DEBUG] Properties from variant names:', variantPropsFromNames);
-      actualProperties.push(...variantPropsFromNames);
     }
 
   } else if (node.type === 'COMPONENT') {
@@ -1092,195 +1166,610 @@ function extractActualComponentStates(node: SceneNode): string[] {
 }
 
 /**
- * Process enhanced analysis data into structured result
+ * Process enhanced analysis with improved MCP integration
+ * Now leverages the upgraded MCP server processing capabilities
  */
 export async function processEnhancedAnalysis(
-  claudeData: any,
-  node: SceneNode,
-  selectedNode?: SceneNode
+  context: ComponentContext,
+  apiKey: string,
+  model: string,
+  options: EnhancedAnalysisOptions = {}
 ): Promise<EnhancedAnalysisResult> {
-  // Extract tokens from the actual node
-  const tokens = await extractDesignTokensFromNode(node);
+  console.log('🎯 Starting enhanced component analysis...');
 
-  // Get component context for analysis
-  const context = extractAdditionalContext(node);
-
-  // EXTRACT ACTUAL FIGMA DATA (source of truth) with selected node for instance properties
-  const actualProperties = extractActualComponentProperties(node, selectedNode);
-  const actualStates = extractActualComponentStates(node);
-
-  // Generate property recommendations if component has few or no properties
-  let recommendations: Array<{ name: string; type: string; description: string; examples: string[] }> | undefined;
-
-  const shouldGenerateRecommendations = actualProperties.length <= 2; // Threshold for generating recommendations
-  if (shouldGenerateRecommendations) {
-    console.log('🔍 [DEBUG] Component has few properties, generating recommendations...');
-    recommendations = generatePropertyRecommendations(node.name, actualProperties);
+  const selectedNode = figma.currentPage.selection[0];
+  const node = options.node || selectedNode;
+  if (!node) {
+    throw new Error('No node selected');
   }
 
-  // Build audit results with proper separation of facts vs recommendations
-  const audit = {
-    states: [] as Array<{ name: string; found: boolean }>,
-    accessibility: [] as Array<{ check: string; status: 'pass' | 'fail' | 'warning'; suggestion: string }>,
-    naming: [] as Array<{ layer: string; issue: string; suggestion: string }>,
-    consistency: [] as Array<{ property: string; issue: string; suggestion: string }>
-  };
+  // Extract actual component data from Figma API
+  const actualProperties = extractActualComponentProperties(node, selectedNode);
+  const actualStates = extractActualComponentStates(node);
+  const tokens = await extractDesignTokensFromNode(node);
 
-  // STATES AUDIT: Show actual states first, then recommendations
-  if (actualStates.length > 0) {
-    // Component has actual states - show them as found
-    actualStates.forEach(state => {
-      audit.states.push({
-        name: state,
-        found: true
-      });
+  // Log extracted data for debugging
+  console.log(`📊 [ANALYSIS] Extracted from Figma API:`);
+  console.log(`  Properties: ${actualProperties.length}`);
+  console.log(`  States: ${actualStates.length}`);
+  console.log(`  Tokens: ${Object.keys(tokens).length} categories`);
+
+  // Check if MCP server is available
+  const mcpServerUrl = options.mcpServerUrl || 'http://localhost:3000/mcp';
+  const useMCP = options.useMCP !== false && mcpServerUrl;
+
+  let analysisResult: any;
+
+  if (useMCP) {
+    console.log('🔄 Using hybrid Claude + MCP approach...');
+
+    // Step 1: Use Claude for direct Figma data extraction and analysis
+    const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens);
+    const claudeResponse = await fetchClaude(claudePrompt, apiKey, model);
+    const claudeData = extractJSONFromResponse(claudeResponse);
+
+    if (!claudeData) {
+      throw new Error('Failed to extract JSON from Claude response');
+    }
+
+    // Step 2: Use MCP for best practices and recommendations (lightweight queries)
+    let mcpEnhancements = null;
+    try {
+      mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, claudeData);
+      console.log('✅ MCP enhancements received');
+    } catch (mcpError) {
+      console.warn('⚠️ MCP enhancement failed, continuing with Claude data only:', mcpError);
+    }
+
+    // Step 3: Merge Claude data with MCP enhancements
+    analysisResult = mergClaudeAndMCPResults(claudeData, mcpEnhancements, {
+      node,
+      context,
+      actualProperties,
+      actualStates,
+      tokens
     });
-  } else {
-    // No actual states found
-    const shouldHaveStates = context.hasInteractiveElements &&
-                            context.componentFamily !== 'badge' &&
-                            context.componentFamily !== 'icon';
 
-    if (shouldHaveStates) {
-      // Show recommended states as missing for interactive components
-      const recommendedStates = ['default', 'hover', 'focus', 'disabled'];
-      recommendedStates.forEach(state => {
-        audit.states.push({
-          name: state,
-          found: false
-        });
-      });
-    } else {
-      // For non-interactive components, show positive message
-      audit.states.push({
-        name: 'default',
-        found: true
-      });
+  } else {
+    // Fallback to Claude-only analysis
+    console.log('📝 Using Claude-only analysis...');
+    const prompt = createEnhancedMetadataPrompt(context);
+    const response = await fetchClaude(prompt, apiKey, model);
+    analysisResult = extractJSONFromResponse(response);
+
+    if (!analysisResult) {
+      throw new Error('Failed to extract JSON from response');
     }
   }
 
-  // ACCESSIBILITY AUDIT: Process Claude's suggestions safely
-  if (claudeData.audit && Array.isArray(claudeData.audit.accessibilityIssues)) {
-    claudeData.audit.accessibilityIssues.forEach((issue: any) => {
-      if (typeof issue === 'string' && issue.trim()) {
-        audit.accessibility.push({
-          check: issue,
-          status: 'warning',
-          suggestion: 'Review accessibility requirements'
-        });
+  // Filter and process the result
+  const filteredData = filterDevelopmentRecommendations(analysisResult);
+  return await processAnalysisResult(filteredData, context, options);
+}
+
+/**
+ * Create a focused prompt for Claude to extract Figma-specific data
+ */
+function createFigmaDataExtractionPrompt(
+  context: ComponentContext,
+  actualProperties: Array<{ name: string; values: string[]; default: string }>,
+  actualStates: string[],
+  tokens: TokenAnalysis
+): string {
+  const componentFamily = context.additionalContext?.componentFamily || 'generic';
+
+  return `Analyze this Figma component and extract its structure and patterns.
+
+**Component Details:**
+- Name: ${context.name}
+- Type: ${context.type}
+- Family: ${componentFamily}
+
+**Actual Figma Properties (${actualProperties.length} total):**
+${actualProperties.slice(0, 10).map(p => `- ${p.name}: ${p.values.join(', ')} (default: ${p.default})`).join('\n')}
+${actualProperties.length > 10 ? `... and ${actualProperties.length - 10} more properties` : ''}
+
+**Detected States:** ${actualStates.join(', ')}
+
+**Token Analysis:**
+- Total token opportunities: ${tokens.summary.totalTokens}
+- Actual tokens used: ${tokens.summary.actualTokens}
+- Hard-coded values: ${tokens.summary.hardCodedValues}
+- AI suggestions: ${tokens.summary.aiSuggestions}
+
+**Component Structure:**
+${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
+
+**TASK:** Analyze this Figma component and provide:
+1. Component name and description based on actual structure
+2. All properties with their actual values from Figma
+3. All states detected in the component
+4. Token usage analysis
+5. Structural patterns and variants
+
+Return JSON in this exact format:
+{
+  "component": "Component name and type",
+  "description": "Clear description based on structure",
+  "props": [
+    {
+      "name": "property name from Figma",
+      "type": "type",
+      "description": "what this property controls",
+      "values": ["actual", "values", "from", "figma"],
+      "default": "default value"
+    }
+  ],
+  "states": ["actual", "states", "detected"],
+  "variants": {
+    "property": ["values"]
+  },
+  "tokens": {
+    "colors": ["actual tokens used"],
+    "spacing": ["actual tokens used"],
+    "typography": ["actual tokens used"]
+  },
+  "structure": {
+    "layers": ${context.hierarchy.length},
+    "hasSlots": ${context.detectedSlots.length > 0},
+    "complexity": "low|medium|high"
+  }
+}
+
+Focus ONLY on what's actually in the Figma component. Do not add theoretical properties or states.`;
+}
+
+/**
+ * Get best practices from MCP with lightweight, focused queries
+ */
+async function getMCPBestPractices(
+  context: ComponentContext,
+  mcpServerUrl: string,
+  claudeData: any
+): Promise<any> {
+  const componentFamily = context.additionalContext?.componentFamily || claudeData.component?.toLowerCase() || 'generic';
+
+  try {
+    // Make parallel but focused MCP queries
+    const [bestPractices, tokenGuidance, scoringCriteria] = await Promise.all([
+      // Component best practices (small query)
+      queryMCPWithTimeout(mcpServerUrl, 'search_design_knowledge', {
+        query: `${componentFamily} component essential properties states variants`,
+        category: 'components',
+        limit: 2
+      }, 3000),
+
+      // Token recommendations (small query)
+      queryMCPWithTimeout(mcpServerUrl, 'search_design_knowledge', {
+        query: `design tokens ${componentFamily} semantic naming`,
+        category: 'tokens',
+        limit: 2
+      }, 3000),
+
+      // Scoring criteria (small query)
+      queryMCPWithTimeout(mcpServerUrl, 'search_chunks', {
+        query: `component assessment scoring criteria ${componentFamily}`,
+        limit: 1
+      }, 3000)
+    ]);
+
+    return {
+      bestPractices: bestPractices?.entries || [],
+      tokenGuidance: tokenGuidance?.entries || [],
+      scoringCriteria: scoringCriteria?.chunks || [],
+      success: true
+    };
+
+  } catch (error) {
+    console.warn('⚠️ MCP queries failed:', error);
+    return {
+      bestPractices: [],
+      tokenGuidance: [],
+      scoringCriteria: [],
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Query MCP with timeout to prevent hanging on large components
+ */
+async function queryMCPWithTimeout(
+  serverUrl: string,
+  toolName: string,
+  arguments_: any,
+  timeoutMs: number = 5000
+): Promise<any> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const payload = {
+      jsonrpc: "2.0",
+      id: Math.floor(Math.random() * 1000) + 100,
+      method: "tools/call",
+      params: {
+        name: `mcp_design-systems_${toolName}`,
+        arguments: arguments_
+      }
+    };
+
+    const response = await fetch(serverUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`MCP ${toolName} failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result.result?.content?.[0] || {};
+
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`MCP ${toolName} timeout after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Merge Claude's Figma analysis with MCP best practices
+ */
+function mergClaudeAndMCPResults(
+  claudeData: any,
+  mcpEnhancements: any,
+  fallbackData: {
+    node: SceneNode;
+    context: ComponentContext;
+    actualProperties: Array<{ name: string; values: string[]; default: string }>;
+    actualStates: string[];
+    tokens: TokenAnalysis;
+  }
+): any {
+  // Start with Claude's extracted data
+  const merged = { ...claudeData };
+
+  // Add property cheat sheet based on actual properties
+  merged.propertyCheatSheet = generatePropertyCheatSheet(
+    fallbackData.actualProperties,
+    claudeData.component || fallbackData.context.name
+  );
+
+  // Create audit results
+  merged.audit = {
+    designIssues: [],
+    tokenOpportunities: [],
+    structureIssues: []
+  };
+
+  // Add MCP-enhanced readiness score if available
+  if (mcpEnhancements?.success) {
+    merged.mcpReadiness = generateMCPReadinessFromBestPractices(
+      mcpEnhancements,
+      claudeData,
+      fallbackData
+    );
+  } else {
+    // Fallback MCP readiness
+    merged.mcpReadiness = generateFallbackMCPReadiness(fallbackData);
+  }
+
+  // Ensure we have all required fields
+  merged.component = merged.component || fallbackData.context.name;
+  merged.description = merged.description || `${fallbackData.context.additionalContext?.componentFamily || 'Component'} with ${fallbackData.actualProperties.length} properties`;
+  merged.props = merged.props || fallbackData.actualProperties.map(p => ({
+    name: p.name,
+    type: 'select',
+    description: `Controls ${p.name}`,
+    values: p.values,
+    default: p.default
+  }));
+  merged.states = merged.states || fallbackData.actualStates;
+
+  return merged;
+}
+
+/**
+ * Generate MCP readiness score from best practices
+ */
+function generateMCPReadinessFromBestPractices(
+  mcpEnhancements: any,
+  claudeData: any,
+  fallbackData: any
+): any {
+  const strengths: string[] = [];
+  const gaps: string[] = [];
+  const recommendations: string[] = [];
+
+  // Analyze based on MCP best practices
+  if (mcpEnhancements.bestPractices?.length > 0) {
+    // Extract insights from MCP responses
+    mcpEnhancements.bestPractices.forEach((entry: any) => {
+      if (entry.title?.includes('best practice') || entry.title?.includes('pattern')) {
+        recommendations.push(`Follow ${entry.title}`);
       }
     });
   }
 
-  // NAMING AUDIT: Process Claude's suggestions safely
-  if (claudeData.audit && Array.isArray(claudeData.audit.namingIssues) && claudeData.audit.namingIssues.length > 0) {
-    claudeData.audit.namingIssues.forEach((issue: any) => {
-      if (typeof issue === 'string' && issue.trim() && issue.toLowerCase() !== 'undefined') {
-        audit.naming.push({
-          layer: node.name,
-          issue: issue,
-          suggestion: 'Follow naming conventions'
-        });
+  // Calculate score based on actual component analysis
+  const hasAllStates = fallbackData.actualStates.length >= 3;
+  const hasSemanticTokens = fallbackData.tokens.summary &&
+    fallbackData.tokens.summary.actualTokens > fallbackData.tokens.summary.hardCodedValues;
+  const hasGoodStructure = claudeData.structure?.complexity !== 'high';
+
+  if (hasAllStates) strengths.push('Component has comprehensive states');
+  else gaps.push('Missing interactive states');
+
+  if (hasSemanticTokens) strengths.push('Good token usage');
+  else gaps.push('Improve token adoption');
+
+  if (hasGoodStructure) strengths.push('Well-structured component');
+  else gaps.push('Complex structure may need simplification');
+
+  const score = Math.round(
+    ((hasAllStates ? 35 : 15) +
+     (hasSemanticTokens ? 35 : 15) +
+     (hasGoodStructure ? 30 : 20))
+  );
+
+  return {
+    score,
+    strengths,
+    gaps,
+    recommendations: recommendations.slice(0, 3) // Limit recommendations
+  };
+}
+
+/**
+ * Generate a concise property cheat sheet
+ */
+function generatePropertyCheatSheet(
+  properties: Array<{ name: string; values: string[]; default: string }>,
+  componentName: string
+): string[] {
+  const cheatSheet: string[] = [];
+
+  // Group properties by common patterns
+  const sizeProps = properties.filter(p =>
+    p.name.toLowerCase().includes('size') ||
+    p.values.some(v => ['small', 'medium', 'large'].includes(v.toLowerCase()))
+  );
+
+  const variantProps = properties.filter(p =>
+    p.name.toLowerCase().includes('variant') ||
+    p.name.toLowerCase().includes('type')
+  );
+
+  const stateProps = properties.filter(p =>
+    p.name.toLowerCase().includes('state') ||
+    p.values.some(v => ['hover', 'active', 'disabled'].includes(v.toLowerCase()))
+  );
+
+  // Add grouped summaries
+  if (sizeProps.length > 0) {
+    cheatSheet.push(`📏 Sizes: ${sizeProps.map(p => p.values.join('/')).join(', ')}`);
+  }
+
+  if (variantProps.length > 0) {
+    cheatSheet.push(`🎨 Variants: ${variantProps.map(p => `${p.name}(${p.values.length})`).join(', ')}`);
+  }
+
+  if (stateProps.length > 0) {
+    cheatSheet.push(`🔄 States: ${stateProps.map(p => p.values.join('/')).join(', ')}`);
+  }
+
+  // Add remaining important properties
+  const covered = new Set([...sizeProps, ...variantProps, ...stateProps].map(p => p.name));
+  const remaining = properties
+    .filter(p => !covered.has(p.name))
+    .slice(0, 3)
+    .map(p => `${p.name}: ${p.values.slice(0, 3).join('/')}`);
+
+  if (remaining.length > 0) {
+    cheatSheet.push(`⚙️ Other: ${remaining.join(', ')}`);
+  }
+
+  return cheatSheet.slice(0, 5); // Limit to 5 entries
+}
+
+/**
+ * Process analysis result from Claude and convert to EnhancedAnalysisResult
+ */
+async function processAnalysisResult(
+  filteredData: any,
+  context: ComponentContext,
+  options: EnhancedAnalysisOptions
+): Promise<EnhancedAnalysisResult> {
+  try {
+    console.log('🔄 Processing analysis result...');
+    console.log('📊 Filtered data received:', JSON.stringify(filteredData, null, 2).substring(0, 500) + '...');
+
+    // We need to get the node from somewhere - let's get it from the current selection
+    const selection = figma.currentPage.selection;
+    let node: SceneNode | null = null;
+
+    if (selection.length > 0) {
+      node = selection[0];
+    } else {
+      throw new Error('No component selected');
+    }
+
+    // Extract actual properties from the Figma component
+    const actualProperties = extractActualComponentProperties(node);
+
+    // Extract actual states
+    const actualStates = extractActualComponentStates(node);
+
+    // Extract design tokens if enabled
+    let tokens: TokenAnalysis = {
+      colors: [],
+      spacing: [],
+      typography: [],
+      effects: [],
+      borders: [],
+      summary: {
+        totalTokens: 0,
+        actualTokens: 0,
+        hardCodedValues: 0,
+        aiSuggestions: 0,
+        byCategory: {}
       }
-    });
-  }
+    };
 
-  // If no issues were found or processed, show positive result
-  if (audit.naming.length === 0) {
-    audit.naming.push({
-      layer: node.name,
-      issue: 'Component naming follows conventions',
-      suggestion: 'Good naming structure'
-    });
-  }
+    if (options.includeTokenAnalysis !== false) {
+      tokens = await extractDesignTokensFromNode(node);
+    }
 
-  // CONSISTENCY AUDIT: Process Claude's suggestions safely
-  if (claudeData.audit && Array.isArray(claudeData.audit.consistencyIssues) && claudeData.audit.consistencyIssues.length > 0) {
-    claudeData.audit.consistencyIssues.forEach((issue: any) => {
-      if (typeof issue === 'string' && issue.trim() && issue.toLowerCase() !== 'undefined') {
-        audit.consistency.push({
-          property: 'Design consistency',
-          issue: issue,
-          suggestion: 'Review design system standards'
-        });
-      }
-    });
-  }
+    // Ensure we have complete metadata even if some parts failed
+    const metadata: ComponentMetadata = {
+      component: filteredData.component || context.name || 'Component',
+      description: filteredData.description || `A ${context.type} component with ${actualProperties.length} properties`,
 
-  // If no issues were found or processed, show positive result
-  if (audit.consistency.length === 0) {
-    audit.consistency.push({
-      property: 'Design consistency',
-      issue: 'Component follows design system patterns',
-      suggestion: 'Consistent with design standards'
-    });
-  }
+      // Use actual properties from Figma if Claude didn't provide them
+      props: filteredData.props && filteredData.props.length > 0
+        ? filteredData.props
+        : actualProperties.map(p => ({
+            name: p.name,
+            type: 'select',
+            description: `Controls ${p.name}`,
+            values: p.values,
+            defaultValue: p.default,
+            required: false
+          })),
 
-  // Clean and validate metadata from Claude
-  const cleanMetadata: ComponentMetadata = {
-    component: claudeData.component || node.name,
-    description: claudeData.description || 'Component analysis',
-    props: actualProperties.map(prop => ({
-      name: prop.name,
-      type: prop.values.length > 1 ? 'variant' : 'string',
-      description: `Property with values: ${prop.values.join(', ')}`,
-      defaultValue: prop.default,
-      required: false
-    })),
-    propertyCheatSheet: actualProperties.map(prop => ({
-      name: prop.name,
-      values: prop.values,
-      default: prop.default,
-      description: `Available values: ${prop.values.join(', ')}`
-    })),
-    states: actualStates.length > 0 ? actualStates : (context.componentFamily === 'badge' ? ['default'] : []),
-    slots: claudeData.slots || [],
-    variants: actualProperties.reduce((acc, prop) => {
-      acc[prop.name] = prop.values;
-      return acc;
-    }, {} as Record<string, string[]>),
-    usage: claudeData.usage || `This ${context.componentFamily || 'component'} is used for ${context.possibleUseCase || 'displaying content'}.`,
-    accessibility: {
-      ariaLabels: claudeData.accessibility?.ariaLabels || [],
-      keyboardSupport: claudeData.accessibility?.keyboardSupport || 'Standard keyboard navigation',
-      colorContrast: claudeData.accessibility?.colorContrast || 'WCAG AA compliant',
-      focusManagement: claudeData.accessibility?.focusManagement || 'Proper focus indicators'
-    },
-    tokens: {
-      colors: claudeData.tokens?.colors || [],
-      spacing: claudeData.tokens?.spacing || [],
-      typography: claudeData.tokens?.typography || [],
-      effects: claudeData.tokens?.effects || [],
-      borders: claudeData.tokens?.borders || []
-    },
-    audit: {
-      accessibilityIssues: claudeData.audit?.accessibilityIssues || [],
-      namingIssues: claudeData.audit?.namingIssues || [],
-      consistencyIssues: claudeData.audit?.consistencyIssues || [],
-      tokenOpportunities: claudeData.audit?.tokenOpportunities || []
-    },
-    mcpReadiness: claudeData.mcpReadiness ?
-      enhanceMCPReadinessWithFallback(claudeData.mcpReadiness, {
-        node,
-        context,
-        actualProperties,
-        actualStates,
-        tokens
-      }) : generateFallbackMCPReadiness({
+      // Use actual states from Figma if Claude didn't provide them
+      states: filteredData.states && filteredData.states.length > 0
+        ? filteredData.states.map((s: any) => typeof s === 'string' ? s : s.name)
+        : actualStates.length > 0 ? actualStates : ['default'],
+
+      variants: filteredData.variants || {},
+      slots: filteredData.slots || [],
+
+      tokens: filteredData.tokens || {
+        colors: tokens.colors.filter((t: DesignToken) => t.isActualToken).map((t: DesignToken) => t.name),
+        spacing: tokens.spacing.filter((t: DesignToken) => t.isActualToken).map((t: DesignToken) => t.name),
+        typography: tokens.typography.filter((t: DesignToken) => t.isActualToken).map((t: DesignToken) => t.name)
+      },
+
+      usage: filteredData.usage || 'General purpose component for design systems',
+
+      accessibility: filteredData.accessibility || {
+        keyboardNavigation: 'Standard keyboard navigation support',
+        screenReader: 'Screen reader accessible',
+        colorContrast: 'WCAG compliant contrast ratios'
+      },
+
+      audit: filteredData.audit || {
+        accessibilityIssues: [],
+        namingIssues: [],
+        consistencyIssues: [],
+        tokenOpportunities: []
+      },
+
+      // Ensure propertyCheatSheet exists
+      propertyCheatSheet: filteredData.propertyCheatSheet || actualProperties.map(p => ({
+        name: p.name,
+        values: p.values,
+        default: p.default,
+        description: `Property for ${p.name} configuration`
+      })),
+
+      // Ensure mcpReadiness exists
+      mcpReadiness: filteredData.mcpReadiness || generateFallbackMCPReadiness({
         node,
         context,
         actualProperties,
         actualStates,
         tokens
       })
-  };
+    };
 
+    // Log what we're sending to UI
+    console.log('📤 Sending to UI - metadata.props:', metadata.props?.length);
+    console.log('📤 Sending to UI - metadata.states:', metadata.states);
+    console.log('📤 Sending to UI - metadata.mcpReadiness:', metadata.mcpReadiness);
+
+    // Create audit results
+    const audit: DetailedAuditResults = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens);
+
+    // Generate property recommendations if the component has few properties
+    const recommendations = generatePropertyRecommendations(context.name, actualProperties);
+
+    console.log('✅ Analysis result processed successfully');
+
+    return {
+      metadata,
+      tokens,
+      audit,
+      properties: actualProperties,
+      recommendations
+    };
+  } catch (error) {
+    console.error('Error processing analysis result:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create audit results from Claude analysis data
+ */
+function createAuditResults(
+  filteredData: any,
+  context: ComponentContext,
+  node: SceneNode,
+  actualProperties: Array<{ name: string; values: string[]; default: string }>,
+  actualStates: string[],
+  tokens: TokenAnalysis
+): DetailedAuditResults {
   return {
-    metadata: cleanMetadata,
-    tokens,
-    audit,
-    properties: actualProperties, // This will be used by the UI for the property cheat sheet
-    recommendations
+    // Basic state checking
+    states: actualStates.map(state => ({
+      name: state,
+      found: true
+    })),
+    // Basic accessibility audit
+    accessibility: [
+      {
+        check: 'Component naming',
+        status: context.name && !context.name.toLowerCase().includes('untitled') ? 'pass' : 'warning',
+        suggestion: context.name && !context.name.toLowerCase().includes('untitled')
+          ? 'Component has descriptive naming'
+          : 'Consider using more descriptive component names'
+      },
+      {
+        check: 'Property configuration',
+        status: actualProperties.length > 0 ? 'pass' : 'warning',
+        suggestion: actualProperties.length > 0
+          ? 'Component has configurable properties'
+          : 'Consider adding properties for component customization'
+      }
+    ],
+    // Layer naming audit
+    naming: context.hierarchy.map(layer => ({
+      layer: layer.name,
+      issue: layer.name && !layer.name.toLowerCase().includes('untitled') ? '' : 'Generic layer name',
+      suggestion: layer.name && !layer.name.toLowerCase().includes('untitled')
+        ? 'Layer has descriptive naming'
+        : 'Consider using more descriptive layer names'
+    })),
+    // Consistency audit
+    consistency: [
+      {
+        property: 'Token usage',
+        issue: tokens.summary.hardCodedValues > 0 ? 'Hard-coded values found' : '',
+        suggestion: tokens.summary.hardCodedValues > 0
+          ? 'Replace hard-coded values with design tokens'
+          : 'Good token usage consistency'
+      }
+    ]
   };
 }
 
@@ -1451,7 +1940,7 @@ function generateFallbackMCPReadiness(data: {
   return {
     score,
     strengths,
-    gaps,
+    gaps: deduplicateRecommendations(gaps), // Apply same deduplication to gaps
     recommendations: deduplicateRecommendations(recommendations),
     implementationNotes: `This ${family} component can be enhanced for better MCP code generation compatibility by addressing the identified gaps.`
   };
@@ -1497,7 +1986,7 @@ function enhanceMCPReadinessWithFallback(mcpData: any, data: {
   return {
     score,
     strengths,
-    gaps,
+    gaps: deduplicateRecommendations(gaps), // Apply same deduplication to gaps
     recommendations: deduplicateRecommendations(recommendations),
     implementationNotes: mcpData.implementationNotes ||
       `This component can be optimized for MCP code generation by addressing the identified improvements.`
@@ -1831,50 +2320,67 @@ function generatePropertyRecommendations(componentName: string, existingProperti
 }
 
 /**
- * Deduplicate similar recommendations to avoid redundancy
+ * Deduplicate similar items (recommendations, gaps, etc.) to avoid redundancy
  */
-function deduplicateRecommendations(recommendations: string[]): string[] {
-  if (recommendations.length <= 1) return recommendations;
+function deduplicateRecommendations(items: string[]): string[] {
+  if (items.length <= 1) return items;
 
   const deduplicated: string[] = [];
   const seenPatterns = new Set<string>();
 
-  // Define similarity patterns - if two recommendations match these patterns, keep only one
+    // Define similarity patterns - if two items match these patterns, keep only one
   const similarityPatterns = [
-    // Component properties patterns
+    // Component properties patterns (recommendations)
     {
       pattern: /add.*component.*propert/i,
       message: 'Add component properties for customization and reuse'
     },
-    // State patterns
+    // State patterns (recommendations)
     {
       pattern: /add.*(hover|focus|disabled|interactive).*state/i,
       message: 'Add hover, focus, and disabled states with clear visual feedback'
     },
-    // Token patterns
+    // Token patterns (recommendations)
     {
       pattern: /replace.*hard.coded.*(color|spacing|token)/i,
       message: 'Replace remaining hard-coded colors and spacing with design tokens'
     },
-    // Variant patterns
+    // Variant patterns (recommendations)
     {
       pattern: /add.*(size|variant).*propert/i,
       message: 'Add size and style variant properties for different use cases'
+    },
+    // Gap-specific patterns
+    {
+      pattern: /no.*configurable.*propert.*(cannot|lacks|limited)/i,
+      message: 'No configurable properties - component lacks flexibility for different use cases'
+    },
+    {
+      pattern: /(missing|no).*(interactive|hover|focus).*state/i,
+      message: 'Missing interactive states - reduces accessibility and user feedback'
+    },
+    {
+      pattern: /found.*hard.coded.*value.*(inconsistent|design.*system)/i,
+      message: 'Found hard-coded values - inconsistent with design system'
+    },
+    {
+      pattern: /(minimal|simple).*layer.*structure.*(lack|semantic|organization)/i,
+      message: 'Minimal layer structure - may lack semantic organization for complex use cases'
     }
   ];
 
-  recommendations.forEach(rec => {
-    const normalizedRec = rec.trim();
-    if (!normalizedRec) return;
+  items.forEach(item => {
+    const normalizedItem = item.trim();
+    if (!normalizedItem) return;
 
-    // Check if this recommendation matches any existing pattern
+    // Check if this item matches any existing pattern
     let shouldAdd = true;
-    let patternMessage = normalizedRec;
+    let patternMessage = normalizedItem;
 
     for (const { pattern, message } of similarityPatterns) {
-      if (pattern.test(normalizedRec)) {
+      if (pattern.test(normalizedItem)) {
         if (seenPatterns.has(pattern.source)) {
-          // We've already seen a recommendation matching this pattern
+          // We've already seen an item matching this pattern
           shouldAdd = false;
           break;
         } else {
@@ -1887,11 +2393,11 @@ function deduplicateRecommendations(recommendations: string[]): string[] {
     }
 
     // Also check for exact duplicates (case insensitive)
-    const lowerRec = normalizedRec.toLowerCase();
+    const lowerItem = normalizedItem.toLowerCase();
     const isDuplicate = deduplicated.some(existing =>
-      existing.toLowerCase() === lowerRec ||
+      existing.toLowerCase() === lowerItem ||
       // Check for very similar messages (80% similarity)
-      calculateSimilarity(existing.toLowerCase(), lowerRec) > 0.8
+      calculateSimilarity(existing.toLowerCase(), lowerItem) > 0.8
     );
 
     if (shouldAdd && !isDuplicate) {
@@ -1899,9 +2405,9 @@ function deduplicateRecommendations(recommendations: string[]): string[] {
     }
   });
 
-  console.log(`🔍 [DEDUP] Reduced ${recommendations.length} recommendations to ${deduplicated.length}`);
-  if (recommendations.length !== deduplicated.length) {
-    console.log(`🔍 [DEDUP] Original:`, recommendations);
+  console.log(`🔍 [DEDUP] Reduced ${items.length} items to ${deduplicated.length}`);
+  if (items.length !== deduplicated.length) {
+    console.log(`🔍 [DEDUP] Original:`, items);
     console.log(`🔍 [DEDUP] Deduplicated:`, deduplicated);
   }
 
