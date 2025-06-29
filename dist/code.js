@@ -801,21 +801,63 @@
   function detectSlots(node) {
     const slots = [];
     const allNodes = getAllChildNodes(node);
+    const componentName = node.name.toLowerCase();
+    const structuralTerms = [
+      "radiobutton",
+      "checkbox",
+      "icon",
+      "button",
+      "input",
+      "focusring",
+      "focus",
+      "indicator",
+      "background",
+      "border",
+      "outline",
+      "shadow",
+      "ring",
+      "control",
+      "handle",
+      "thumb",
+      "track",
+      "progress",
+      "slider",
+      "arrow",
+      "chevron",
+      "close",
+      "minimize",
+      "maximize"
+    ];
     const textNodes = allNodes.filter((child) => child.type === "TEXT");
     textNodes.forEach((textNode) => {
       const name = textNode.name.toLowerCase();
-      if (name.includes("title") || name.includes("label") || name.includes("text") || name.includes("content")) {
+      if (structuralTerms.some((term) => name.includes(term))) {
+        return;
+      }
+      if (componentName.includes(name) || name.includes(componentName.split(" ")[0])) {
+        return;
+      }
+      if ((name.includes("title") || name.includes("label") || name.includes("text") || name.includes("content")) && name.length > 2) {
         slots.push(textNode.name);
       }
     });
     const frameNodes = allNodes.filter((child) => child.type === "FRAME");
     frameNodes.forEach((frameNode) => {
       const name = frameNode.name.toLowerCase();
-      if (name.includes("content") || name.includes("slot") || name.includes("container")) {
+      if (structuralTerms.some((term) => name.includes(term))) {
+        return;
+      }
+      if (name.includes("content") && !name.includes("background") || name.includes("slot") || name.includes("container") && !name.includes("main")) {
         slots.push(frameNode.name);
       }
     });
-    return slots;
+    const filteredSlots = [...new Set(slots)].filter((slot) => {
+      const lowerSlot = slot.toLowerCase();
+      return lowerSlot.length > 2 && !["text", "label", "content"].includes(lowerSlot) && // Too generic
+      !structuralTerms.some((term) => lowerSlot.includes(term));
+    });
+    console.log(`\u{1F50D} [SLOTS] Detected ${filteredSlots.length} legitimate content slots from ${slots.length} candidates:`, filteredSlots);
+    return filteredSlots;
   }
   function hasFillsInNode(node) {
     if ("fills" in node && Array.isArray(node.fills) && node.fills.length > 0) {

@@ -220,30 +220,72 @@ function detectVariantPatterns(node: SceneNode): { isComponentSet: boolean; pote
 
 /**
  * Detect potential slots for content areas
+ * Only detect legitimate content slots, not component structure elements
  */
 function detectSlots(node: SceneNode): string[] {
   const slots: string[] = [];
   const allNodes = getAllChildNodes(node);
+  const componentName = node.name.toLowerCase();
 
-  // Look for text nodes that might be content slots
+  // List of terms that indicate component structure, not content slots
+  const structuralTerms = [
+    'radiobutton', 'checkbox', 'icon', 'button', 'input', 'focusring', 'focus',
+    'indicator', 'background', 'border', 'outline', 'shadow', 'ring',
+    'control', 'handle', 'thumb', 'track', 'progress', 'slider',
+    'arrow', 'chevron', 'close', 'minimize', 'maximize'
+  ];
+
+  // Look for text nodes that might be content slots (but exclude structural elements)
   const textNodes = allNodes.filter(child => child.type === 'TEXT');
   textNodes.forEach(textNode => {
     const name = textNode.name.toLowerCase();
-    if (name.includes('title') || name.includes('label') || name.includes('text') || name.includes('content')) {
+
+    // Skip if this looks like a structural element
+    if (structuralTerms.some(term => name.includes(term))) {
+      return;
+    }
+
+    // Skip if the name is too similar to the component name (likely not a slot)
+    if (componentName.includes(name) || name.includes(componentName.split(' ')[0])) {
+      return;
+    }
+
+    // Only include if it looks like actual content
+    if ((name.includes('title') || name.includes('label') || name.includes('text') || name.includes('content')) &&
+        name.length > 2) { // Avoid single letters or very short names
       slots.push(textNode.name);
     }
   });
 
-  // Look for frame nodes that might be content containers
+  // Look for frame nodes that might be content containers (be more selective)
   const frameNodes = allNodes.filter(child => child.type === 'FRAME');
   frameNodes.forEach(frameNode => {
     const name = frameNode.name.toLowerCase();
-    if (name.includes('content') || name.includes('slot') || name.includes('container')) {
+
+    // Skip structural elements
+    if (structuralTerms.some(term => name.includes(term))) {
+      return;
+    }
+
+    // Only include frames that are clearly content containers
+    if ((name.includes('content') && !name.includes('background')) ||
+        name.includes('slot') ||
+        (name.includes('container') && !name.includes('main'))) {
       slots.push(frameNode.name);
     }
   });
 
-  return slots;
+  // Deduplicate and filter out very generic names
+  const filteredSlots = [...new Set(slots)].filter(slot => {
+    const lowerSlot = slot.toLowerCase();
+    return lowerSlot.length > 2 &&
+           !['text', 'label', 'content'].includes(lowerSlot) && // Too generic
+           !structuralTerms.some(term => lowerSlot.includes(term));
+  });
+
+  console.log(`🔍 [SLOTS] Detected ${filteredSlots.length} legitimate content slots from ${slots.length} candidates:`, filteredSlots);
+
+  return filteredSlots;
 }
 
 /**

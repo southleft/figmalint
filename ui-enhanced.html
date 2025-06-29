@@ -2032,23 +2032,27 @@
       };
     }
 
-    // Heuristic to detect wrapper/boundary elements
+        // Heuristic to detect wrapper/boundary elements
     function isLikelyWrapperElement(token) {
-      const context = token.context || '';
+      const context = token.context || {};
       const value = token.value || '';
 
+      // Handle context as object (which it actually is)
+      const contextStr = typeof context === 'string' ? context :
+        `${context.nodeType || ''} ${context.nodeName || ''} ${context.property || ''}`.toLowerCase();
+
       // Check for dashed/dotted borders (common wrapper pattern)
-      if (context.includes('stroke') && (context.includes('dashed') || context.includes('dotted'))) {
+      if (contextStr.includes('stroke') && (contextStr.includes('dashed') || contextStr.includes('dotted'))) {
         return true;
       }
 
       // Check for arbitrary border radius on outer containers
-      if (context.includes('radius') && context.includes('corner') && !token.isActualToken) {
+      if (contextStr.includes('radius') && contextStr.includes('corner') && !token.isActualToken) {
         return true;
       }
 
       // Check for specific color values that suggest organizational use
-      if (context.includes('stroke') || context.includes('border')) {
+      if (contextStr.includes('stroke') || contextStr.includes('border')) {
         // Common wrapper colors: grays, light colors, transparency
         const colorValue = value.toLowerCase();
         if (colorValue.includes('gray') || colorValue.includes('#f0f0f0') || colorValue.includes('#e0e0e0') ||
@@ -3165,33 +3169,57 @@
       // Combine regular recommendations with slots from metadata
       let allRecommendations = recommendations ? [...recommendations] : [];
 
-      // Add slots as property recommendations if available from metadata
+      // Add legitimate content slots as slot recommendations (not structural elements)
       if (currentMetadata && currentMetadata.slots && currentMetadata.slots.length > 0) {
-        console.log('🔧 Adding slots as property recommendations:', currentMetadata.slots);
+        console.log('🔧 Filtering slots for recommendations:', currentMetadata.slots);
 
-        currentMetadata.slots.forEach(slot => {
+        // Filter out slots that are clearly structural elements
+        const legitimateSlots = currentMetadata.slots.filter(slot => {
+          const slotName = (typeof slot === 'string' ? slot : (slot.name || '')).toLowerCase();
+
+          // Skip structural terms that shouldn't be content slots
+          const structuralTerms = [
+            'radiobutton', 'checkbox', 'icon', 'button', 'focusring', 'focus',
+            'indicator', 'background', 'border', 'outline', 'shadow', 'ring'
+          ];
+
+          // Skip if it matches structural patterns
+          if (structuralTerms.some(term => slotName.includes(term))) {
+            console.log(`🚫 Skipping structural element as slot: ${slotName}`);
+            return false;
+          }
+
+          // Skip very short or generic names
+          if (slotName.length <= 2 || ['text', 'label'].includes(slotName)) {
+            console.log(`🚫 Skipping generic slot name: ${slotName}`);
+            return false;
+          }
+
+          return true;
+        });
+
+        console.log(`🔧 Adding ${legitimateSlots.length} legitimate slots as recommendations:`, legitimateSlots);
+
+        legitimateSlots.forEach(slot => {
           const originalName = typeof slot === 'string' ? slot : (slot.name || 'Unnamed Slot');
-
-          // Make slot names more descriptive to avoid confusion with properties
           let slotName = originalName;
           const lowerName = originalName.toLowerCase();
 
-          if (lowerName.includes('label') || lowerName.includes('text')) {
-            slotName = 'Label Content';
-          } else if (lowerName.includes('title')) {
+          // Make slot names more descriptive for legitimate content slots
+          if (lowerName.includes('title')) {
             slotName = 'Title Content';
-          } else if (lowerName.includes('content')) {
+          } else if (lowerName.includes('content') && !lowerName.includes('title')) {
             slotName = 'Content';
           } else if (lowerName.includes('children')) {
             slotName = 'Children';
           } else {
-            // Convert to title case for consistency
-            slotName = toTitleCase(originalName);
+            // For actual content slots, add descriptive suffix
+            slotName = toTitleCase(originalName) + ' Content';
           }
 
           const slotDescription = typeof slot === 'object' && slot.description ?
             slot.description :
-            `Content slot for customizable ${lowerName.includes('label') || lowerName.includes('text') ? 'text' : 'elements'}`;
+            `Content slot for customizable ${lowerName.includes('title') ? 'title text' : 'content'}`;
 
           allRecommendations.push({
             name: slotName,
