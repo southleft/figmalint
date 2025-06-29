@@ -3221,12 +3221,15 @@
 
       // Display token summary if available
       if (currentTokenSummary) {
+        // Use the same filtering logic as the component audit section for consistency
+        const filteredTokenSummary = filterWrapperElements(currentTokenSummary);
+
         html += '<div class="token-summary" style="background: var(--surface-secondary); border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; margin-top: 0;">📊 Token Analysis Summary</h4>';
         html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px;">';
-        html += `<div><strong>Total Items:</strong> ${currentTokenSummary.totalTokens}</div>`;
+        html += `<div><strong>Total Items:</strong> ${filteredTokenSummary.totalTokens}</div>`;
         html += `<div><strong>Design Tokens:</strong> <span style="color: var(--success)">${currentTokenSummary.actualTokens}</span></div>`;
-        html += `<div><strong>Hard-coded:</strong> <span style="color: var(--warning)">${currentTokenSummary.hardCodedValues}</span></div>`;
+        html += `<div><strong>Hard-coded:</strong> <span style="color: var(--warning)">${filteredTokenSummary.hardCodedValues}</span></div>`;
         html += `<div><strong>AI Suggestions:</strong> <span style="color: var(--primary)">${currentTokenSummary.aiSuggestions}</span></div>`;
         html += '</div>';
 
@@ -3241,6 +3244,13 @@
             }
           });
           html += '</div>';
+          html += '</div>';
+        }
+
+        // Add note about wrapper filtering if any elements were filtered
+        if (filteredTokenSummary.wrapperElementsFiltered > 0) {
+          html += '<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text-tertiary);">';
+          html += `<div>💡 Filtered out ${filteredTokenSummary.wrapperElementsFiltered} wrapper element${filteredTokenSummary.wrapperElementsFiltered > 1 ? 's' : ''} to focus on content styling</div>`;
           html += '</div>';
         }
 
