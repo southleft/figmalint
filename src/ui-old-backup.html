@@ -552,7 +552,6 @@
       align-items: flex-end;
     }
 
-    .chat-input-wrapper textarea,
     #chat-input {
       flex: 1;
       min-height: 36px;
@@ -565,17 +564,13 @@
       border-radius: var(--radius-md);
       background: var(--background);
       transition: all var(--transition-fast);
-      font-family: inherit;
     }
 
-    .chat-input-wrapper textarea:focus,
     #chat-input:focus {
-      outline: none;
       border-color: var(--primary);
       box-shadow: 0 0 0 3px var(--primary-light);
     }
 
-    .chat-input-wrapper textarea:disabled,
     #chat-input:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -626,67 +621,6 @@
       border-top-color: transparent;
       border-radius: 50%;
       animation: spin 1s linear infinite;
-    }
-
-    /* Standard Article/Prose Styling for Chat Content */
-    .chat-article {
-      line-height: 1.5;
-    }
-
-    .chat-article h2 {
-      font-size: 14px;
-      font-weight: 600;
-      margin: 0.4em 0 0.2em 0;
-      color: var(--text-primary);
-    }
-
-    .chat-article h3 {
-      font-size: 13px;
-      font-weight: 600;
-      margin: 0.3em 0 0.15em 0;
-      color: var(--text-primary);
-    }
-
-    .chat-article h4 {
-      font-size: 12px;
-      font-weight: 600;
-      margin: 0.25em 0 0.1em 0;
-      color: var(--text-primary);
-    }
-
-    .chat-article ul,
-    .chat-article ol {
-      margin: 0.2em 0;
-      padding-left: 1.8em;
-    }
-
-    .chat-article li {
-      margin-bottom: 0.1em;
-    }
-
-    .chat-article code {
-      background: rgba(0, 0, 0, 0.08);
-      padding: 0.1em 0.3em;
-      border-radius: 2px;
-      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-      font-size: 0.9em;
-    }
-
-    .chat-article strong {
-      font-weight: 600;
-    }
-
-    .chat-article p {
-      margin: 0.2em 0;
-    }
-
-    /* Remove top margin from first element and bottom margin from last element */
-    .chat-article > *:first-child {
-      margin-top: 0;
-    }
-
-    .chat-article > *:last-child {
-      margin-bottom: 0;
     }
 
     .chat-suggestion {

@@ -185,7 +185,9 @@ export type UIMessageType =
   | 'update-model'
   | 'analyze'
   | 'analyze-enhanced'
-  | 'clear-api-key';
+  | 'clear-api-key'
+  | 'chat-message'
+  | 'chat-clear-history';
 
 // Enhanced Analysis Types
 export interface EnhancedAnalysisOptions {
@@ -267,3 +269,26 @@ export interface BatchAnalysisResult {
 // Export utility types
 export type ValidNodeType = 'FRAME' | 'COMPONENT' | 'COMPONENT_SET' | 'INSTANCE' | 'GROUP';
 export type TokenCategory = 'colors' | 'spacing' | 'typography' | 'effects' | 'borders';
+
+// Chat Types
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  isLoading?: boolean;
+}
+
+export interface ChatHistory {
+  messages: ChatMessage[];
+  sessionId: string;
+}
+
+export interface ChatResponse {
+  message: string;
+  sources?: Array<{
+    title: string;
+    content: string;
+    category: string;
+  }>;
+}

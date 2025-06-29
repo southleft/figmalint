@@ -2468,6 +2468,12 @@ ${scoringCriteria}
         case "clear-api-key":
           await handleClearApiKey();
           break;
+        case "chat-message":
+          await handleChatMessage(data);
+          break;
+        case "chat-clear-history":
+          await handleClearChatHistory();
+          break;
         default:
           console.warn("Unknown message type:", type);
       }
@@ -2673,6 +2679,222 @@ ${scoringCriteria}
     } catch (error) {
       console.error("Error clearing API key:", error);
     }
+  }
+  async function handleChatMessage(data) {
+    try {
+      console.log("Processing chat message:", data.message);
+      if (!storedApiKey) {
+        throw new Error("API key not found. Please save your Claude API key first.");
+      }
+      sendMessageToUI("chat-response-loading", { isLoading: true });
+      const componentContext = getCurrentComponentContext();
+      const mcpResponse = await queryDesignSystemsMCP(data.message);
+      const enhancedPrompt = createChatPromptWithContext(data.message, mcpResponse, data.history, componentContext);
+      const response = await fetchClaude(enhancedPrompt, storedApiKey, selectedModel, false);
+      const chatResponse = {
+        message: response,
+        sources: mcpResponse.sources || []
+      };
+      sendMessageToUI("chat-response", { response: chatResponse });
+    } catch (error) {
+      console.error("Error handling chat message:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("chat-error", { error: errorMessage });
+    }
+  }
+  async function handleClearChatHistory() {
+    try {
+      sendMessageToUI("chat-history-cleared", { success: true });
+      figma.notify("Chat history cleared", { timeout: 2e3 });
+    } catch (error) {
+      console.error("Error clearing chat history:", error);
+    }
+  }
+  async function queryDesignSystemsMCP(query) {
+    var _a;
+    try {
+      console.log("\u{1F50D} Querying MCP for chat:", query);
+      const mcpServerUrl = ((_a = consistencyEngine["config"]) == null ? void 0 : _a.mcpServerUrl) || "https://design-systems-mcp.southleft-llc.workers.dev/mcp";
+      const searchPromises = [
+        // General design knowledge search
+        searchMCPKnowledge(mcpServerUrl, query, { category: "general", limit: 3 }),
+        // Component-specific search if the query mentions components
+        query.toLowerCase().includes("component") ? searchMCPKnowledge(mcpServerUrl, query, { category: "components", limit: 2 }) : Promise.resolve({ results: [] }),
+        // Token-specific search if the query mentions tokens/design tokens
+        query.toLowerCase().includes("token") || query.toLowerCase().includes("design token") ? searchMCPKnowledge(mcpServerUrl, query, { category: "tokens", limit: 2 }) : Promise.resolve({ results: [] })
+      ];
+      const results = await Promise.allSettled(searchPromises);
+      const allSources = [];
+      results.forEach((result) => {
+        if (result.status === "fulfilled" && result.value.results) {
+          allSources.push(...result.value.results);
+        }
+      });
+      console.log(`\u2705 Found ${allSources.length} relevant sources for chat query`);
+      return { sources: allSources.slice(0, 5) };
+    } catch (error) {
+      console.warn("\u26A0\uFE0F MCP query failed for chat:", error);
+      return { sources: [] };
+    }
+  }
+  async function searchMCPKnowledge(serverUrl, query, options = {}) {
+    const searchPayload = {
+      jsonrpc: "2.0",
+      id: Math.floor(Math.random() * 1e3) + 100,
+      method: "tools/call",
+      params: {
+        name: "search_design_knowledge",
+        arguments: __spreadValues({
+          query,
+          limit: options.limit || 5
+        }, options.category && { category: options.category })
+      }
+    };
+    const response = await fetch(serverUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(searchPayload)
+    });
+    if (!response.ok) {
+      throw new Error(`MCP search failed: ${response.status}`);
+    }
+    const result = await response.json();
+    if (result.result && result.result.content) {
+      return {
+        results: result.result.content.map((item) => ({
+          title: item.title || "Design System Knowledge",
+          content: item.content || item.description || "",
+          category: item.category || "general"
+        }))
+      };
+    }
+    return { results: [] };
+  }
+  function getCurrentComponentContext() {
+    try {
+      const lastMetadata = globalThis.lastAnalyzedMetadata;
+      const lastNode = globalThis.lastAnalyzedNode;
+      if (!lastMetadata && !lastNode) {
+        return null;
+      }
+      const context = {
+        hasCurrentComponent: true,
+        timestamp: Date.now()
+      };
+      if (lastNode) {
+        context.component = {
+          name: lastNode.name,
+          type: lastNode.type,
+          id: lastNode.id
+        };
+        const selection = figma.currentPage.selection;
+        if (selection.length > 0) {
+          context.selection = {
+            count: selection.length,
+            types: selection.map((node) => node.type),
+            names: selection.map((node) => node.name)
+          };
+        }
+      }
+      if (lastMetadata) {
+        context.analysis = {
+          component: lastMetadata.component,
+          description: lastMetadata.description,
+          props: lastMetadata.props || [],
+          states: lastMetadata.states || [],
+          accessibility: lastMetadata.accessibility,
+          audit: lastMetadata.audit,
+          mcpReadiness: lastMetadata.mcpReadiness
+        };
+      }
+      return context;
+    } catch (error) {
+      console.warn("Failed to get component context:", error);
+      return null;
+    }
+  }
+  function createChatPromptWithContext(userMessage, mcpResponse, history, componentContext) {
+    let conversationContext = "";
+    if (history.length > 0) {
+      conversationContext = "\n**Previous Conversation:**\n";
+      const recentMessages = history.slice(-6);
+      recentMessages.forEach((msg) => {
+        conversationContext += `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}
+`;
+      });
+      conversationContext += "\n";
+    }
+    let currentComponentContext = "";
+    if (componentContext && componentContext.hasCurrentComponent) {
+      currentComponentContext = "\n**Current Component Context:**\n";
+      if (componentContext.component) {
+        currentComponentContext += `- Currently analyzing: ${componentContext.component.name} (${componentContext.component.type})
+`;
+      }
+      if (componentContext.selection) {
+        currentComponentContext += `- Selected: ${componentContext.selection.count} item(s) - ${componentContext.selection.names.join(", ")}
+`;
+      }
+      if (componentContext.analysis) {
+        currentComponentContext += `- Component: ${componentContext.analysis.component}
+`;
+        currentComponentContext += `- Description: ${componentContext.analysis.description}
+`;
+        if (componentContext.analysis.props && componentContext.analysis.props.length > 0) {
+          currentComponentContext += `- Properties: ${componentContext.analysis.props.map((p) => typeof p === "string" ? p : p.name).join(", ")}
+`;
+        }
+        if (componentContext.analysis.states && componentContext.analysis.states.length > 0) {
+          currentComponentContext += `- States: ${componentContext.analysis.states.join(", ")}
+`;
+        }
+        if (componentContext.analysis.audit) {
+          const issues = [
+            ...componentContext.analysis.audit.accessibilityIssues || [],
+            ...componentContext.analysis.audit.namingIssues || [],
+            ...componentContext.analysis.audit.consistencyIssues || []
+          ];
+          if (issues.length > 0) {
+            currentComponentContext += `- Current Issues: ${issues.slice(0, 3).join("; ")}${issues.length > 3 ? "..." : ""}
+`;
+          }
+        }
+        if (componentContext.analysis.mcpReadiness) {
+          currentComponentContext += `- MCP Readiness Score: ${componentContext.analysis.mcpReadiness.score || "Not scored"}
+`;
+        }
+      }
+      currentComponentContext += "\n";
+    }
+    let knowledgeContext = "";
+    if (mcpResponse.sources && mcpResponse.sources.length > 0) {
+      knowledgeContext = "\n**Relevant Design Systems Knowledge:**\n";
+      mcpResponse.sources.forEach((source, index) => {
+        knowledgeContext += `
+${index + 1}. **${source.title}** (${source.category})
+${source.content}
+`;
+      });
+      knowledgeContext += "\n";
+    }
+    const hasComponentContext = componentContext && componentContext.hasCurrentComponent;
+    return `You are a specialized design systems assistant with access to comprehensive design systems knowledge. You're helping a user with their Figma plugin for design system analysis.
+
+${conversationContext}**Current User Question:** ${userMessage}
+
+${currentComponentContext}${knowledgeContext}**Instructions:**
+1. ${hasComponentContext ? "The user is currently working on a specific component in Figma. Use the component context above to provide specific, actionable advice about their current work." : "Provide helpful, accurate answers based on the design systems knowledge provided"}
+2. ${hasComponentContext ? 'If they ask about "this component" or "my component", refer to the current component context provided above' : "If you need context about a specific component, suggest they select and analyze a component first"}
+3. Be conversational and practical in your responses
+4. When discussing components, tokens, or patterns, provide specific guidance
+5. If referencing the knowledge sources, mention them naturally in your response
+6. Keep responses focused and actionable
+7. If the user is asking about Figma-specific functionality, provide relevant plugin or design workflow advice
+8. ${hasComponentContext ? "Help them improve their current component by addressing any issues mentioned in the analysis context" : "Provide general design systems guidance"}
+
+${hasComponentContext ? "Since you have context about their current component, prioritize advice that directly applies to what they're working on." : "If the user wants component-specific advice, suggest they select and analyze a component in Figma first."}
+
+Respond naturally and helpfully to the user's question.`;
   }
   async function initializePlugin() {
     try {

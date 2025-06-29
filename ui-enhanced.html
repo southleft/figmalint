@@ -71,12 +71,13 @@
 
     /* Header Section */
     .header {
-      padding: var(--space-md);
+      padding: var(--space-md) var(--space-md) var(--space-sm);
       background: var(--background);
       border-bottom: 1px solid var(--border);
       min-height: 60px;
       position: relative;
       z-index: 10;
+      margin-bottom: var(--space-sm);
     }
 
     /* Ensure header bottom padding is maintained */
@@ -350,12 +351,12 @@
     .button-ghost {
       background: transparent;
       color: var(--primary);
-      border: 1px solid transparent;
+      border: 1px solid var(--surface-hover);
     }
 
     .button-ghost:hover:not(:disabled) {
       background: var(--primary-light);
-      border-color: var(--primary-light);
+      border-color: var(--surface-hover);
     }
 
     .button:disabled {
@@ -423,7 +424,6 @@
 
     .audit-item {
       display: flex;
-      align-items: center;
       padding: var(--space-sm);
       background: var(--surface);
       border-radius: var(--radius-sm);
@@ -578,7 +578,6 @@
     /* Compact Token Display */
     .token-item-compact {
       display: flex;
-      align-items: center;
       padding: 8px;
       background: var(--background);
       border: 1px solid var(--border);
@@ -683,7 +682,6 @@
     /* Compact Token Layout */
     .token-item-compact {
       display: flex;
-      align-items: center;
       padding: var(--space-sm);
       background: var(--surface);
       border-radius: var(--radius-sm);
@@ -1096,6 +1094,507 @@
     .quick-actions-bar .button-ghost {
       flex: 0 0 auto;
     }
+
+    /* Tabs Navigation */
+    .tabs-navigation {
+      display: flex;
+      padding: 0 var(--space-md) 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--background);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .tab-button {
+      padding: var(--space-sm) var(--space-md) calc(var(--space-sm) + 1px);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      position: relative;
+      margin-bottom: -1px;
+    }
+
+    .tab-button:hover:not(.active) {
+      color: var(--text-primary);
+      background: var(--surface);
+    }
+
+    .tab-button.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    .tab-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Tab Content */
+    .tab-content {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Chat Interface Styles - Cleaner Layout */
+    .chat-wrapper {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 200px);
+      max-height: 600px;
+    }
+
+    .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 0 var(--space-sm);
+      border-bottom: 1px solid var(--border);
+      background: var(--background);
+      min-height: 40px;
+    }
+
+    .chat-title h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text-primary);
+    }
+
+    .component-context {
+      background: var(--primary-light);
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm);
+      margin: 0 0 var(--space-sm);
+    }
+
+    .context-badge {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: var(--space-xs);
+    }
+
+    .context-info {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .chat-empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-md);
+    }
+
+    .chat-empty-content {
+      text-align: center;
+      max-width: 350px;
+    }
+
+    .chat-empty-icon {
+      font-size: 36px;
+      opacity: 0.2;
+      display: block;
+      margin-bottom: var(--space-sm);
+    }
+
+    .chat-empty-text h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 var(--space-xs) 0;
+      color: var(--text-primary);
+    }
+
+    .chat-empty-text p {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin: 0 0 var(--space-md) 0;
+      line-height: 1.4;
+    }
+
+    .chat-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+      justify-content: center;
+    }
+
+    .chat-suggestion {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-xs) var(--space-sm);
+      font-size: 11px;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .chat-suggestion:hover {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--space-md) 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .chat-message {
+      display: flex;
+      flex-direction: column;
+      max-width: 85%;
+      animation: fadeInUp 0.3s ease;
+    }
+
+    .chat-message.user {
+      align-self: flex-end;
+    }
+
+    .chat-message.assistant {
+      align-self: flex-start;
+    }
+
+    .chat-message-content {
+      padding: var(--space-sm) var(--space-md);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      line-height: 1.5;
+      word-wrap: break-word;
+    }
+
+    .chat-message.user .chat-message-content {
+      background: var(--primary);
+      color: white;
+      border-bottom-right-radius: var(--radius-sm);
+    }
+
+    .chat-message.assistant .chat-message-content {
+      background: var(--surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: var(--radius-sm);
+    }
+
+    .chat-message-meta {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: var(--space-xs);
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .chat-message.user .chat-message-meta {
+      justify-content: flex-end;
+    }
+
+    .chat-message.assistant .chat-message-meta {
+      justify-content: flex-start;
+    }
+
+    .chat-sources {
+      margin-top: var(--space-sm);
+      padding: var(--space-sm);
+      background: var(--primary-light);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+    }
+
+    .chat-sources-title {
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: var(--space-xs);
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .chat-source {
+      padding: var(--space-xs);
+      margin-bottom: var(--space-xs);
+      background: white;
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--primary);
+    }
+
+    .chat-source:last-child {
+      margin-bottom: 0;
+    }
+
+    .chat-source-title {
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+      font-size: 11px;
+    }
+
+    .chat-source-content {
+      color: var(--text-secondary);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .chat-input-container {
+      border-top: 2px solid var(--border);
+      padding: var(--space-md) 0 0;
+    }
+
+    .chat-input-wrapper {
+      display: flex;
+      gap: var(--space-sm);
+      align-items: flex-end;
+    }
+
+    .chat-input-wrapper textarea {
+      flex: 1;
+      min-height: 36px;
+      max-height: 120px;
+      resize: none;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--background);
+      transition: all var(--transition-fast);
+      font-family: inherit;
+    }
+
+    .chat-input-wrapper textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
+
+    .chat-input-wrapper textarea:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .chat-send-button {
+      padding: 8px;
+      min-width: 36px;
+      height: 36px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .chat-send-button:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .chat-send-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .chat-status {
+      margin-top: var(--space-sm);
+      padding: var(--space-xs) var(--space-sm);
+      background: var(--primary-light);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .chat-status::before {
+      content: '';
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--primary);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    /* Standard Article/Prose Styling for Chat Content */
+    .chat-article {
+      line-height: 1.5;
+    }
+
+    .chat-article h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0.9em 0 0.65em 0;
+      color: var(--text-primary);
+    }
+
+    .chat-article h3 {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0.85em 0 0.6em 0;
+      color: var(--text-primary);
+    }
+
+    .chat-article h4 {
+      font-size: 12px;
+      font-weight: 600;
+      margin: 0.6em 0 0.3em 0;
+      color: var(--text-primary);
+    }
+
+    .chat-article ul,
+    .chat-article ol {
+      margin: 0.2em 0;
+      padding-left: 1.8em;
+    }
+
+    .chat-article li {
+      margin-bottom: 0.1em;
+    }
+
+    .chat-article code {
+      background: rgba(0, 0, 0, 0.08);
+      padding: 0.1em 0.3em;
+      border-radius: 2px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      font-size: 0.9em;
+    }
+
+    .chat-article strong {
+      font-weight: 600;
+    }
+
+    .chat-article p {
+      margin: 0.4em 0 0.6em;
+    }
+
+    /* Remove top margin from first element and bottom margin from last element */
+    .chat-article > *:first-child {
+      margin-top: 0;
+    }
+
+    .chat-article > *:last-child {
+      margin-bottom: 0;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes dots {
+      0%, 20% { opacity: 0; }
+      50% { opacity: 1; }
+      80%, 100% { opacity: 0; }
+    }
+
+    @keyframes chatLoadingDot {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      40% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .loading-dots {
+      display: inline-flex;
+      gap: 2px;
+    }
+
+    .loading-dots span {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--text-tertiary);
+      animation: dots 1.4s infinite ease-in-out;
+    }
+
+    .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0s; }
+
+    /* Chat suggestion and loading styles */
+    .chat-suggestion {
+      padding: var(--space-xs) var(--space-sm);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 11px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .chat-suggestion:hover {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .chat-loading {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      padding: var(--space-sm) var(--space-md);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      border-bottom-left-radius: var(--radius-sm);
+    }
+
+    .chat-loading-dots {
+      display: flex;
+      gap: 3px;
+    }
+
+    .chat-loading-dot {
+      width: 4px;
+      height: 4px;
+      background: var(--text-tertiary);
+      border-radius: 50%;
+      animation: chatLoadingDot 1.4s ease-in-out infinite both;
+    }
+
+    .chat-loading-dot:nth-child(1) { animation-delay: -0.32s; }
+    .chat-loading-dot:nth-child(2) { animation-delay: -0.16s; }
   </style>
 </head>
 <body>
@@ -1106,12 +1605,21 @@
         <div class="plugin-icon">FL</div>
         <h1 class="plugin-name">FigmaLint</h1>
       </div>
-      <p class="plugin-description">Component linting for MCP compatibility.</p>
+      <p class="plugin-description">AI-powered component analysis and design systems chat.</p>
     </div>
 
+    <!-- Tab Navigation -->
+    <div class="tabs-navigation">
+      <button class="tab-button active" id="tab-analyze" onclick="switchTab('analyze')">
+        Analyze
+      </button>
+      <button class="tab-button" id="tab-chat" onclick="switchTab('chat')">
+        Chat
+      </button>
+    </div>
 
-    <!-- Main Content -->
-    <div class="content-main" id="content-main">
+        <!-- Tab Content: Analyze -->
+    <div class="tab-content active" id="content-analyze">
       <div class="content">
         <!-- Quick Actions Bar (shown when API key is saved) -->
         <div class="quick-actions-bar" id="quick-actions" style="display: none;">
@@ -1219,6 +1727,8 @@
               <div class="skeleton" style="width: 60%;"></div>
             </div>
           </div>
+
+
 
           <!-- Property Cheat Sheet -->
           <div class="collapsible">
@@ -1334,6 +1844,76 @@
       </div>
     </div>
 
+    <!-- Tab Content: Chat -->
+    <div class="tab-content" id="content-chat">
+      <div class="content">
+        <div class="chat-wrapper">
+          <!-- Chat Header -->
+          <div class="chat-header">
+            <div class="chat-title">
+              <h2>Design Systems Chat</h2>
+            </div>
+            <button class="button button-ghost" id="clear-chat" title="Clear chat history">
+              🗑️ Clear
+            </button>
+          </div>
+
+          <!-- Component Context (if available) -->
+          <div id="component-context-indicator" class="hidden component-context">
+            <div class="context-badge">
+              🎯 Component Context Available
+            </div>
+            <div id="current-component-info" class="context-info">
+              <!-- Component info will be injected here -->
+            </div>
+          </div>
+
+          <!-- Chat Empty State -->
+          <div id="chat-empty" class="chat-empty">
+            <div class="chat-empty-content">
+              <span class="chat-empty-icon">💬</span>
+              <div class="chat-empty-text">
+                <h3>Ask me about design systems!</h3>
+                <p>I have access to comprehensive design systems knowledge and can help with components, tokens, patterns, and best practices.</p>
+              </div>
+
+              <!-- Simplified Suggestions -->
+              <div id="chat-suggestions" class="chat-suggestions">
+                <!-- Suggestions will be populated by JavaScript -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Messages Container -->
+          <div id="chat-container" class="chat-container hidden">
+            <div id="chat-messages" class="chat-messages">
+              <!-- Chat messages will be added here -->
+            </div>
+          </div>
+
+          <!-- Chat Input -->
+          <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+              <textarea
+                id="chat-input"
+                placeholder="Ask about design systems, components, tokens, or best practices..."
+                rows="1"
+                disabled
+              ></textarea>
+              <button id="send-chat" class="chat-send-button" disabled title="Send message">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22,2 15,22 11,13 2,9"></polygon>
+                </svg>
+              </button>
+            </div>
+            <div id="chat-status" class="chat-status hidden">
+              <span class="chat-status-text">Thinking...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Footer -->
     <div class="footer-links">
@@ -1356,6 +1936,11 @@
 
     // Track the current analysis data for scoring purposes
     let currentAnalysisData = null;
+
+    // Chat State Management
+    let chatHistory = [];
+    let chatSessionId = 'session-' + Date.now();
+    let isWaitingForResponse = false;
 
     // DOM Elements
     const apiKeyInput = document.getElementById('api-key');
@@ -1404,6 +1989,15 @@
     const docsPreview = document.getElementById('docs-preview');
     const collabNotes = document.getElementById('collab-notes');
     // Note: export-format element is created dynamically, so we get it in the handler function
+
+    // Chat Elements
+    const chatEmpty = document.getElementById('chat-empty');
+    const chatContainer = document.getElementById('chat-container');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+    const sendChatButton = document.getElementById('send-chat');
+    const clearChatButton = document.getElementById('clear-chat');
+    const chatStatus = document.getElementById('chat-status');
 
 
     // Status Icons
@@ -1465,6 +2059,18 @@
       }
       if (saveNotesButton) {
         saveNotesButton.addEventListener('click', handleSaveNotes);
+      }
+
+      // Chat Event Listeners
+      if (sendChatButton) {
+        sendChatButton.addEventListener('click', handleSendChat);
+      }
+      if (clearChatButton) {
+        clearChatButton.addEventListener('click', handleClearChat);
+      }
+      if (chatInput) {
+        chatInput.addEventListener('keydown', handleChatKeydown);
+        chatInput.addEventListener('input', handleChatInputChange);
       }
 
       // Listen for messages from plugin
@@ -1573,10 +2179,9 @@
       currentTab = tabName;
 
       // Update tab-specific UI
-      if (tabName === 'playground' && currentMetadata) {
-        updatePlaygroundTab();
-      } else if (tabName === 'documentation' && currentMetadata) {
-        updateDocumentationTab();
+      if (tabName === 'chat') {
+        updateChatInputState();
+        updateChatComponentContext();
       }
     }
 
@@ -1814,6 +2419,18 @@
             updateStatus(`Failed to rename layer: ${data.error}`, 'error');
           }
           break;
+        case 'chat-response':
+          handleChatResponse(data.response);
+          break;
+        case 'chat-response-loading':
+          handleChatLoading(data.isLoading);
+          break;
+        case 'chat-error':
+          handleChatError(data.error);
+          break;
+        case 'chat-history-cleared':
+          handleChatHistoryCleared();
+          break;
         default:
           console.log('Unknown message type:', type);
       }
@@ -1834,6 +2451,9 @@
         apiKeyCard.style.display = 'none';
         quickActions.style.display = 'flex';
         hideConfigButton.style.display = 'inline-flex';
+
+        // Update chat input state
+        updateChatInputState();
       } else {
         updateStatus('Failed to save API key', 'error');
       }
@@ -1852,6 +2472,12 @@
         apiKeyCard.style.display = 'none';
         quickActions.style.display = 'flex';
         hideConfigButton.style.display = 'inline-flex';
+
+        // Enable chat tab
+        const chatTabButton = document.getElementById('tab-chat');
+        if (chatTabButton) {
+          chatTabButton.disabled = false;
+        }
       } else {
         updateStatus('Enter API key to get started', 'info');
         updateAnalyzeButtonState(false);
@@ -1860,7 +2486,19 @@
         // Show config and hide quick actions
         apiKeyCard.style.display = 'block';
         quickActions.style.display = 'none';
+
+        // Disable chat tab and switch back to analyze if currently on chat
+        const chatTabButton = document.getElementById('tab-chat');
+        if (chatTabButton) {
+          chatTabButton.disabled = true;
+          if (currentTab === 'chat') {
+            switchTab('analyze');
+          }
+        }
       }
+
+      // Update chat input state
+      updateChatInputState();
     }
 
     // Handle Enhanced Analysis Result
@@ -1969,6 +2607,9 @@
       // Enable relevant buttons
       updateUIButtonStates();
 
+      // Update chat component context if we're on chat tab or switching to it
+      updateChatComponentContext();
+
       updateStatus('Analysis complete!', 'success');
     }
 
@@ -2037,7 +2678,7 @@
           html += `
             <div class="audit-item">
               <span class="audit-status pass">✅</span>
-              <span class="audit-label">No interactive states needed for this component type</span>
+              <span class="audit-label">No interactive states needed for this component</span>
             </div>
           `;
           totalCount++;
@@ -3259,6 +3900,288 @@
         console.error('Failed to send message to plugin:', error);
       }
     }
+
+    // ==================== CHAT FUNCTIONALITY ====================
+
+    // Chat Event Handlers
+    function handleSendChat() {
+      if (isWaitingForResponse) return;
+
+      const message = chatInput.value.trim();
+      if (!message) return;
+
+      // Check API key
+      if (!apiKeySaved) {
+        updateStatus('Please save your Claude API key first', 'error');
+        return;
+      }
+
+      // Add user message to chat
+      addChatMessage('user', message);
+
+      // Clear input and disable
+      chatInput.value = '';
+      chatInput.disabled = true;
+      sendChatButton.disabled = true;
+      isWaitingForResponse = true;
+
+      // Show container and hide empty state
+      chatContainer.classList.remove('hidden');
+      chatEmpty.classList.add('hidden');
+
+      // Show loading state
+      showChatLoading(true);
+
+      // Send to plugin
+      sendMessageToPlugin('chat-message', {
+        message: message,
+        history: chatHistory
+      });
+    }
+
+    function handleClearChat() {
+      if (confirm('Clear chat history?')) {
+        sendMessageToPlugin('chat-clear-history', {});
+      }
+    }
+
+    function handleChatKeydown(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        handleSendChat();
+      }
+    }
+
+    function handleChatInputChange() {
+      // Auto-resize textarea
+      chatInput.style.height = 'auto';
+      chatInput.style.height = chatInput.scrollHeight + 'px';
+    }
+
+    // Chat Message Handlers
+    function handleChatResponse(response) {
+      showChatLoading(false);
+
+      if (response && response.message) {
+        addChatMessage('assistant', response.message, response.sources);
+      }
+
+      // Re-enable input
+      chatInput.disabled = false;
+      sendChatButton.disabled = false;
+      isWaitingForResponse = false;
+      chatInput.focus();
+    }
+
+    function handleChatLoading(isLoading) {
+      showChatLoading(isLoading);
+    }
+
+    function handleChatError(error) {
+      showChatLoading(false);
+
+      addChatMessage('assistant', `Sorry, I encountered an error: ${error}`);
+
+      // Re-enable input
+      chatInput.disabled = false;
+      sendChatButton.disabled = false;
+      isWaitingForResponse = false;
+      chatInput.focus();
+    }
+
+    function handleChatHistoryCleared() {
+      chatHistory = [];
+      chatMessages.innerHTML = '';
+      chatContainer.classList.add('hidden');
+      chatEmpty.classList.remove('hidden');
+      updateChatComponentContext();
+      updateStatus('Chat history cleared', 'success');
+    }
+
+    // Chat UI Functions
+    function addChatMessage(role, content, sources = null) {
+      const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+      const message = {
+        id: messageId,
+        role: role,
+        content: content,
+        timestamp: Date.now(),
+        sources: sources
+      };
+
+      chatHistory.push(message);
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chat-message ${role}`;
+      messageDiv.dataset.messageId = messageId;
+
+      let messageHTML = `
+        <div class="chat-message-content">${formatChatContent(content)}</div>
+        <div class="chat-message-meta">
+          <span>${formatTimestamp(message.timestamp)}</span>
+        </div>
+      `;
+
+      // Add sources if available
+      if (sources && sources.length > 0) {
+        // Filter out empty or duplicate sources
+        const validSources = sources.filter(source =>
+          source &&
+          source.title &&
+          source.content &&
+          source.title.trim() !== '' &&
+          source.content.trim() !== ''
+        );
+
+        // Remove duplicates based on title
+        const uniqueSources = validSources.filter((source, index, arr) =>
+          arr.findIndex(s => s.title === source.title) === index
+        );
+
+        if (uniqueSources.length > 0) {
+          messageHTML += `
+            <div class="chat-sources">
+              <div class="chat-sources-title">
+                📚 Sources
+              </div>
+              ${uniqueSources.map(source => `
+                <div class="chat-source">
+                  <div class="chat-source-title">${source.title}</div>
+                  <div class="chat-source-content">${source.content.substring(0, 150)}${source.content.length > 150 ? '...' : ''}</div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+      }
+
+      messageDiv.innerHTML = messageHTML;
+      chatMessages.appendChild(messageDiv);
+
+      // Scroll to bottom
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function showChatLoading(isLoading) {
+      // Always remove existing loading indicator first
+      const existingLoading = document.getElementById('chat-loading');
+      if (existingLoading) {
+        existingLoading.remove();
+      }
+
+      if (isLoading) {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'chat-message assistant';
+        loadingDiv.id = 'chat-loading';
+        loadingDiv.innerHTML = `
+          <div class="chat-message-content">
+            <div class="loading-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        `;
+        chatMessages.appendChild(loadingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }
+
+    function formatChatContent(content) {
+      // Wrap content in article-style container and apply standard formatting
+      const formatted = content
+        // Convert headers with standard article spacing
+        .replace(/^### (.*$)/gm, '<h4>$1</h4>')
+        .replace(/^## (.*$)/gm, '<h3>$1</h3>')
+        .replace(/^# (.*$)/gm, '<h2>$1</h2>')
+        // Convert bullet lists
+        .replace(/^- (.*$)/gm, '<li>$1</li>')
+        // Wrap consecutive <li> elements in <ul>
+        .replace(/(<li[^>]*>.*?<\/li>)(\s*<li[^>]*>.*?<\/li>)*/g, function(match) {
+          return '<ul>' + match + '</ul>';
+        })
+        // Bold and italic
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        // Inline code
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+        // Convert double line breaks to paragraphs, single line breaks to spaces
+        .replace(/\n\n+/g, '</p><p>')
+        .replace(/\n/g, ' ');
+
+      // Wrap in paragraphs if not already structured
+      let finalFormatted = formatted;
+      if (!finalFormatted.includes('<p>') && !finalFormatted.includes('<h') && !finalFormatted.includes('<ul>')) {
+        finalFormatted = '<p>' + finalFormatted + '</p>';
+      } else if (finalFormatted.includes('</p><p>')) {
+        finalFormatted = '<p>' + finalFormatted + '</p>';
+      }
+
+      return '<div class="chat-article">' + finalFormatted + '</div>';
+    }
+
+    function formatTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Update chat input state based on API key
+    function updateChatInputState() {
+      if (chatInput && sendChatButton) {
+        chatInput.disabled = !apiKeySaved;
+        sendChatButton.disabled = !apiKeySaved;
+
+        if (apiKeySaved) {
+          chatInput.placeholder = "Ask about design systems, components, tokens, or best practices...";
+        } else {
+          chatInput.placeholder = "Save your Claude API key first to start chatting...";
+        }
+      }
+    }
+
+    // Update chat component context display
+    function updateChatComponentContext() {
+      const contextIndicator = document.getElementById('component-context-indicator');
+      const componentInfo = document.getElementById('current-component-info');
+      const chatSuggestions = document.getElementById('chat-suggestions');
+
+      if (!contextIndicator || !componentInfo || !chatSuggestions) return;
+
+      // Check if we have current component metadata
+      const hasComponent = currentMetadata !== null;
+
+      if (hasComponent && currentMetadata) {
+        // Show component context
+        contextIndicator.classList.remove('hidden');
+        componentInfo.innerHTML = `Currently analyzing: <strong>${currentMetadata.component}</strong>`;
+
+        // Update suggestions for component-specific questions
+        chatSuggestions.innerHTML = `
+          <button class="chat-suggestion" onclick="sendChatSuggestion('What issues does this component have?')">Issues</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('How can I improve this component?')">Improvements</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('What design tokens should I use?')">Tokens</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('Is this component accessible?')">Accessibility</button>
+        `;
+      } else {
+        // Hide component context and show general suggestions
+        contextIndicator.classList.add('hidden');
+        chatSuggestions.innerHTML = `
+          <button class="chat-suggestion" onclick="sendChatSuggestion('What are design system best practices?')">Best Practices</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('How do I organize design tokens?')">Tokens</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('What makes a good component API?')">Components</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('How do I ensure accessibility?')">Accessibility</button>
+        `;
+      }
+    }
+
+    // Send chat suggestion
+    window.sendChatSuggestion = function(suggestion) {
+      if (chatInput) {
+        chatInput.value = suggestion;
+        handleSendChat();
+      }
+    };
 
     // Initialize when DOM is loaded
     if (document.readyState === 'loading') {
