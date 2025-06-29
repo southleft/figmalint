@@ -1973,6 +1973,16 @@
   <script>
     console.log('Enhanced UI JavaScript loading...');
 
+    // Shared utility functions
+    function toTitleCase(str) {
+      return str
+        .replace(/([A-Z])/g, ' $1') // Add space before capital letters
+        .split(/[\s_-]+/) // Split on spaces, underscores, or hyphens
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+        .trim();
+    }
+
     // UI State Management
     let currentTab = 'analyze';
     let apiKeySaved = false;
@@ -2948,7 +2958,7 @@
 
         properties.forEach(prop => {
           html += '<tr>';
-          html += `<td>${prop.name}</td>`;
+          html += `<td>${toTitleCase(prop.name)}</td>`;
           html += '<td>';
           prop.values.forEach(value => {
             html += `<span class="property-value">${value}</span>`;
@@ -2984,8 +2994,8 @@
           } else if (lowerName.includes('children')) {
             slotName = 'Children';
           } else {
-            // Keep original slot name - don't add "Content" by default
-            slotName = originalName;
+            // Convert to title case for consistency
+            slotName = toTitleCase(originalName);
           }
 
           const slotDescription = typeof slot === 'object' && slot.description ?
@@ -3536,11 +3546,13 @@
       if (metadata.props && metadata.props.length > 0) {
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Properties</h4>';
-        html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+                html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+
         metadata.props.forEach(prop => {
           // Handle both object format and string format
           const propName = typeof prop === 'string' ? prop : (prop.name || prop);
-          html += `<span class="property-value">${propName}</span>`;
+          const formattedPropName = toTitleCase(propName);
+          html += `<span class="property-value">${formattedPropName}</span>`;
         });
         html += '</div></div>';
       }
