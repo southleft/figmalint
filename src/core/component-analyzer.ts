@@ -63,7 +63,7 @@ function extractAdditionalContext(node: SceneNode): any {
 
   const nodeName = node.name.toLowerCase();
 
-  // Expanded container component detection
+  // Expanded container component detection patterns
   const containerPatterns = [
     'tabs', 'tab-group', 'tabset',
     'nav', 'navbar', 'navigation', 'menu', 'menubar', 'dropdown',
@@ -74,8 +74,19 @@ function extractAdditionalContext(node: SceneNode): any {
     'card-group', 'button-group', 'radio-group', 'checkbox-group'
   ];
 
-  // Check if this is a container component
-  const isContainer = containerPatterns.some(pattern => nodeName.includes(pattern));
+  // Name-based container detection
+  const isContainerByName = containerPatterns.some(pattern => nodeName.includes(pattern));
+
+  // Structural container detection by analyzing nested instances
+  const isContainerByStructure = analyzeContainerStructure(node);
+
+  // Combine both approaches
+  const isContainer = isContainerByName || isContainerByStructure;
+
+  console.log(`🔍 [CONTAINER DETECTION] ${node.name}:`);
+  console.log(`  Name-based: ${isContainerByName}`);
+  console.log(`  Structure-based: ${isContainerByStructure}`);
+  console.log(`  Final result: ${isContainer}`);
 
   // Detect component family/type
   if (nodeName.includes('avatar') || nodeName.includes('profile')) {
@@ -144,6 +155,90 @@ function extractAdditionalContext(node: SceneNode): any {
   }
 
   return context;
+}
+
+/**
+ * Analyze component structure to determine if it's a container
+ * Based on nested instances and their patterns
+ */
+function analyzeContainerStructure(node: SceneNode): boolean {
+  if (!('children' in node) || !node.children || node.children.length === 0) {
+    return false;
+  }
+
+  // Get all direct child instances (not nested deeper)
+  const childInstances = node.children.filter(child => child.type === 'INSTANCE') as InstanceNode[];
+
+  if (childInstances.length === 0) {
+    console.log(`🔍 [STRUCTURE] No child instances found in ${node.name}`);
+    return false;
+  }
+
+  console.log(`🔍 [STRUCTURE] Analyzing ${node.name} with ${childInstances.length} child instances`);
+
+  // Group instances by their main component name
+  const instanceGroups = new Map<string, InstanceNode[]>();
+
+  childInstances.forEach(instance => {
+    try {
+      const mainComponent = instance.mainComponent;
+      if (mainComponent) {
+        const componentName = mainComponent.name;
+        if (!instanceGroups.has(componentName)) {
+          instanceGroups.set(componentName, []);
+        }
+        instanceGroups.get(componentName)!.push(instance);
+      }
+    } catch (error) {
+      // Ignore instances with inaccessible main components
+      console.log(`⚠️ [STRUCTURE] Could not access main component for instance:`, error);
+    }
+  });
+
+  console.log(`🔍 [STRUCTURE] Instance groups:`, Array.from(instanceGroups.entries()).map(([name, instances]) => `${name}: ${instances.length}`));
+
+  // Container indicators:
+
+  // 1. Multiple instances of the same component type (like multiple tabs)
+  const hasRepeatedComponents = Array.from(instanceGroups.values()).some(group => group.length > 1);
+
+  // 2. Component names suggest organizational/container patterns
+  const hasOrganizationalComponents = Array.from(instanceGroups.keys()).some(name => {
+    const lowerName = name.toLowerCase();
+    return lowerName.includes('item') ||
+           lowerName.includes('panel') ||
+           lowerName.includes('content') ||
+           lowerName.includes('section') ||
+           lowerName.includes('group') ||
+           lowerName.includes('wrapper') ||
+           // Tab-specific patterns
+           (lowerName.includes('tab') && !lowerName.includes('button')) ||
+           // Navigation patterns
+           lowerName.includes('nav-item') ||
+           lowerName.includes('menu-item') ||
+           // List patterns
+           lowerName.includes('list-item') ||
+           // Card patterns
+           lowerName.includes('card-item');
+  });
+
+  // 3. High ratio of instances to total children (suggests this is primarily organizing components)
+  const instanceRatio = childInstances.length / node.children.length;
+  const isInstanceHeavy = instanceRatio > 0.6; // More than 60% of children are component instances
+
+  // 4. Has components that suggest they're managed as a collection
+  const hasCollectionPattern = instanceGroups.size >= 2 && hasRepeatedComponents;
+
+  console.log(`🔍 [STRUCTURE] Analysis for ${node.name}:`);
+  console.log(`  Repeated components: ${hasRepeatedComponents}`);
+  console.log(`  Organizational components: ${hasOrganizationalComponents}`);
+  console.log(`  Instance ratio: ${instanceRatio.toFixed(2)} (${isInstanceHeavy ? 'high' : 'low'})`);
+  console.log(`  Collection pattern: ${hasCollectionPattern}`);
+
+  // A component is likely a container if it has any of these strong indicators:
+  const isContainer = hasRepeatedComponents || hasOrganizationalComponents || (isInstanceHeavy && instanceGroups.size >= 2);
+
+  return isContainer;
 }
 
 /**

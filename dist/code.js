@@ -695,7 +695,13 @@
       "radio-group",
       "checkbox-group"
     ];
-    const isContainer = containerPatterns.some((pattern) => nodeName.includes(pattern));
+    const isContainerByName = containerPatterns.some((pattern) => nodeName.includes(pattern));
+    const isContainerByStructure = analyzeContainerStructure(node);
+    const isContainer = isContainerByName || isContainerByStructure;
+    console.log(`\u{1F50D} [CONTAINER DETECTION] ${node.name}:`);
+    console.log(`  Name-based: ${isContainerByName}`);
+    console.log(`  Structure-based: ${isContainerByStructure}`);
+    console.log(`  Final result: ${isContainer}`);
     if (nodeName.includes("avatar") || nodeName.includes("profile")) {
       context.componentFamily = "avatar";
       context.possibleUseCase = "User representation, often clickable for profile access or dropdown menus";
@@ -754,6 +760,52 @@
       context.suggestedConsiderations.push("Part of a button component - needs interactive states");
     }
     return context;
+  }
+  function analyzeContainerStructure(node) {
+    if (!("children" in node) || !node.children || node.children.length === 0) {
+      return false;
+    }
+    const childInstances = node.children.filter((child) => child.type === "INSTANCE");
+    if (childInstances.length === 0) {
+      console.log(`\u{1F50D} [STRUCTURE] No child instances found in ${node.name}`);
+      return false;
+    }
+    console.log(`\u{1F50D} [STRUCTURE] Analyzing ${node.name} with ${childInstances.length} child instances`);
+    const instanceGroups = /* @__PURE__ */ new Map();
+    childInstances.forEach((instance) => {
+      try {
+        const mainComponent = instance.mainComponent;
+        if (mainComponent) {
+          const componentName = mainComponent.name;
+          if (!instanceGroups.has(componentName)) {
+            instanceGroups.set(componentName, []);
+          }
+          instanceGroups.get(componentName).push(instance);
+        }
+      } catch (error) {
+        console.log(`\u26A0\uFE0F [STRUCTURE] Could not access main component for instance:`, error);
+      }
+    });
+    console.log(`\u{1F50D} [STRUCTURE] Instance groups:`, Array.from(instanceGroups.entries()).map(([name, instances]) => `${name}: ${instances.length}`));
+    const hasRepeatedComponents = Array.from(instanceGroups.values()).some((group) => group.length > 1);
+    const hasOrganizationalComponents = Array.from(instanceGroups.keys()).some((name) => {
+      const lowerName = name.toLowerCase();
+      return lowerName.includes("item") || lowerName.includes("panel") || lowerName.includes("content") || lowerName.includes("section") || lowerName.includes("group") || lowerName.includes("wrapper") || // Tab-specific patterns
+      lowerName.includes("tab") && !lowerName.includes("button") || // Navigation patterns
+      lowerName.includes("nav-item") || lowerName.includes("menu-item") || // List patterns
+      lowerName.includes("list-item") || // Card patterns
+      lowerName.includes("card-item");
+    });
+    const instanceRatio = childInstances.length / node.children.length;
+    const isInstanceHeavy = instanceRatio > 0.6;
+    const hasCollectionPattern = instanceGroups.size >= 2 && hasRepeatedComponents;
+    console.log(`\u{1F50D} [STRUCTURE] Analysis for ${node.name}:`);
+    console.log(`  Repeated components: ${hasRepeatedComponents}`);
+    console.log(`  Organizational components: ${hasOrganizationalComponents}`);
+    console.log(`  Instance ratio: ${instanceRatio.toFixed(2)} (${isInstanceHeavy ? "high" : "low"})`);
+    console.log(`  Collection pattern: ${hasCollectionPattern}`);
+    const isContainer = hasRepeatedComponents || hasOrganizationalComponents || isInstanceHeavy && instanceGroups.size >= 2;
+    return isContainer;
   }
   function extractLayerHierarchy(node, depth = 0) {
     const hierarchy = [];
