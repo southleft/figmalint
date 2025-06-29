@@ -1983,6 +1983,83 @@
         .trim();
     }
 
+    // Filter out wrapper/boundary elements from token scoring
+    function filterWrapperElements(tokenSummary) {
+      // For now, apply a conservative filter that reduces hard-coded penalties
+      // for likely wrapper elements. This is a heuristic-based approach.
+
+      // If we have token data available, try to identify wrapper patterns
+      if (window.currentAnalysisData && window.currentAnalysisData.tokens) {
+        let wrapperTokenCount = 0;
+        const tokens = window.currentAnalysisData.tokens;
+
+        // Look for patterns that suggest wrapper/boundary elements:
+        // 1. Dashed/dotted strokes (common for component boundaries)
+        // 2. Arbitrary border radius on containers
+        // 3. Specific color patterns that suggest organizational use
+
+        ['colors', 'borders', 'effects'].forEach(category => {
+          if (tokens[category]) {
+            tokens[category].forEach(token => {
+              // Check if this looks like a wrapper element
+              if (isLikelyWrapperElement(token)) {
+                wrapperTokenCount++;
+              }
+            });
+          }
+        });
+
+        console.log(`🔍 [WRAPPER FILTER] Identified ${wrapperTokenCount} likely wrapper tokens`);
+
+        // Reduce hard-coded count by estimated wrapper elements, but be conservative
+        const filteredHardCoded = Math.max(0, tokenSummary.hardCodedValues - Math.min(wrapperTokenCount, Math.floor(tokenSummary.hardCodedValues * 0.3)));
+        const filteredTotal = Math.max(1, tokenSummary.totalTokens - Math.min(wrapperTokenCount, Math.floor(tokenSummary.totalTokens * 0.3)));
+
+        return {
+          hardCodedValues: filteredHardCoded,
+          totalTokens: filteredTotal,
+          actualTokens: tokenSummary.actualTokens,
+          wrapperElementsFiltered: wrapperTokenCount
+        };
+      }
+
+      // Fallback: no filtering if we can't detect patterns
+      return {
+        hardCodedValues: tokenSummary.hardCodedValues,
+        totalTokens: tokenSummary.totalTokens,
+        actualTokens: tokenSummary.actualTokens,
+        wrapperElementsFiltered: 0
+      };
+    }
+
+    // Heuristic to detect wrapper/boundary elements
+    function isLikelyWrapperElement(token) {
+      const context = token.context || '';
+      const value = token.value || '';
+
+      // Check for dashed/dotted borders (common wrapper pattern)
+      if (context.includes('stroke') && (context.includes('dashed') || context.includes('dotted'))) {
+        return true;
+      }
+
+      // Check for arbitrary border radius on outer containers
+      if (context.includes('radius') && context.includes('corner') && !token.isActualToken) {
+        return true;
+      }
+
+      // Check for specific color values that suggest organizational use
+      if (context.includes('stroke') || context.includes('border')) {
+        // Common wrapper colors: grays, light colors, transparency
+        const colorValue = value.toLowerCase();
+        if (colorValue.includes('gray') || colorValue.includes('#f0f0f0') || colorValue.includes('#e0e0e0') ||
+            colorValue.includes('rgba') || colorValue.includes('transparent')) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
     // UI State Management
     let currentTab = 'analyze';
     let apiKeySaved = false;
@@ -2710,6 +2787,31 @@
         console.log('🔍 [SCORING] +5 points for good component structure');
       }
 
+      // DESIGN TOKEN USAGE SCORING - High impact on overall score
+      let tokenPassCount = 0;
+      let tokenTotalCount = 0;
+      if (currentTokenSummary && currentTokenSummary.totalTokens > 0) {
+        // Filter out likely wrapper/boundary elements from scoring
+        const filteredHardCoded = filterWrapperElements(currentTokenSummary);
+        const scorableHardCoded = filteredHardCoded.hardCodedValues;
+        const scorableTotal = filteredHardCoded.totalTokens;
+
+        console.log(`🔍 [TOKEN SCORING] Original: ${currentTokenSummary.hardCodedValues} hard-coded, ${currentTokenSummary.totalTokens} total`);
+        console.log(`🔍 [TOKEN SCORING] After filtering: ${scorableHardCoded} hard-coded, ${scorableTotal} total`);
+
+        if (scorableTotal > 0) {
+          // Each token-able property gets weighted scoring (2x weight - important for design systems)
+          tokenTotalCount = scorableTotal;
+          tokenPassCount = currentTokenSummary.actualTokens; // Only count actual tokens as passing
+
+          const tokenWeight = 2; // High importance for design system compliance
+          weightedTotalScore += tokenTotalCount * tokenWeight;
+          weightedPassScore += tokenPassCount * tokenWeight;
+
+          console.log(`🔍 [TOKEN SCORING] Added ${tokenTotalCount * tokenWeight} total token points, ${tokenPassCount * tokenWeight} passing token points`);
+        }
+      }
+
       // States Audit
       if (audit.states && audit.states.length > 0) {
         html += '<div class="audit-section">';
@@ -2766,6 +2868,95 @@
           });
         }
         html += '</div>';
+      }
+
+      // Design Token Usage Audit - Show token analysis in audit format
+      if (currentTokenSummary && currentTokenSummary.totalTokens > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Design Token Usage</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Design Token Usage</strong><br>
+                Components should use design tokens (variables and styles) instead of hard-coded values for colors, spacing, typography, etc. This ensures consistency, makes updates easier, and improves maintainability. Hard-coded values make it difficult to maintain design consistency across your product.
+              </span>
+            </div>
+          </div>
+        `;
+
+        // Get filtered results
+        const filteredResults = filterWrapperElements(currentTokenSummary);
+
+        // Show overall token usage summary
+        const tokenUsagePercentage = filteredResults.totalTokens > 0
+          ? Math.round((currentTokenSummary.actualTokens / filteredResults.totalTokens) * 100)
+          : 0;
+
+        html += `
+          <div class="audit-item">
+            <span class="audit-status ${tokenUsagePercentage >= 80 ? 'pass' : tokenUsagePercentage >= 50 ? 'warning' : 'fail'}">${
+              tokenUsagePercentage >= 80 ? '✅' : tokenUsagePercentage >= 50 ? '⚠️' : '❌'
+            }</span>
+            <span class="audit-label">Token usage: ${currentTokenSummary.actualTokens}/${filteredResults.totalTokens} properties (${tokenUsagePercentage}%)</span>
+          </div>
+        `;
+
+        // Show hard-coded values as individual failures
+        if (filteredResults.hardCodedValues > 0) {
+          html += `
+            <div class="audit-item">
+              <span class="audit-status fail">❌</span>
+              <span class="audit-label">${filteredResults.hardCodedValues} hard-coded values found (should use design tokens)</span>
+            </div>
+          `;
+
+          // Show breakdown by category if available
+          if (currentTokenSummary.byCategory) {
+            Object.entries(currentTokenSummary.byCategory).forEach(([category, stats]) => {
+              if (stats.hardCoded > 0) {
+                html += `
+                  <div class="audit-item" style="margin-left: 20px; opacity: 0.8;">
+                    <span class="audit-status fail">→</span>
+                    <span class="audit-label">${toTitleCase(category)}: ${stats.hardCoded} hard-coded</span>
+                  </div>
+                `;
+              }
+            });
+          }
+        } else {
+          html += `
+            <div class="audit-item">
+              <span class="audit-status pass">✅</span>
+              <span class="audit-label">All properties use design tokens</span>
+            </div>
+          `;
+        }
+
+        // Show wrapper filtering info if any were filtered
+        if (filteredResults.wrapperElementsFiltered > 0) {
+          html += `
+            <div class="audit-item" style="margin-left: 20px; opacity: 0.6; font-size: 11px;">
+              <span class="audit-status info" style="color: var(--text-tertiary);">ℹ️</span>
+              <span class="audit-label">${filteredResults.wrapperElementsFiltered} wrapper elements excluded from scoring</span>
+            </div>
+          `;
+        }
+
+        html += '</div>';
+
+        // Update pass/total counts for this section
+        totalCount += 1; // Overall token usage check
+        if (tokenUsagePercentage >= 50) passCount += 1; // Pass if >= 50% token usage
+
+        if (filteredResults.hardCodedValues > 0) {
+          totalCount += 1; // Hard-coded values check
+          // This always fails if there are hard-coded values
+        } else {
+          totalCount += 1; // Hard-coded values check
+          passCount += 1; // Pass if no hard-coded values
+        }
       }
 
       // Accessibility Audit
