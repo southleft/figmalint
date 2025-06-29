@@ -2771,11 +2771,41 @@ ${scoringCriteria}
     }
   }
   function isNodeOnCurrentPage(node) {
-    let currentNode = node;
-    while (currentNode && currentNode.parent) {
-      currentNode = currentNode.parent;
+    try {
+      let currentNode = node;
+      const maxDepth = 50;
+      let depth = 0;
+      while (currentNode && currentNode.parent && depth < maxDepth) {
+        currentNode = currentNode.parent;
+        depth++;
+        if (currentNode === figma.currentPage) {
+          return true;
+        }
+      }
+      if (currentNode === figma.currentPage) {
+        return true;
+      }
+      if (node.parent === figma.currentPage) {
+        return true;
+      }
+      const allPages = figma.root.children.filter((child) => child.type === "PAGE");
+      const currentPage = figma.currentPage;
+      if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+        return findNodeInPage(currentPage, node.id);
+      }
+      return false;
+    } catch (error) {
+      console.warn("Error checking node page:", error);
+      return false;
     }
-    return currentNode === figma.currentPage;
+  }
+  function findNodeInPage(page, nodeId) {
+    try {
+      const allNodes = page.findAll();
+      return allNodes.some((node) => node.id === nodeId);
+    } catch (error) {
+      return false;
+    }
   }
   async function queryDesignSystemsMCP(query) {
     var _a;

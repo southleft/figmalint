@@ -2984,8 +2984,8 @@
           } else if (lowerName.includes('children')) {
             slotName = 'Children';
           } else {
-            // Default to adding "Content" suffix to make it clear it's a slot
-            slotName = originalName + ' Content';
+            // Keep original slot name - don't add "Content" by default
+            slotName = originalName;
           }
 
           const slotDescription = typeof slot === 'object' && slot.description ?

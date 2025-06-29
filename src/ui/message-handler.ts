@@ -459,13 +459,61 @@ async function handleSelectNode(data: { nodeId: string }): Promise<void> {
  * Check if a node is on the current page
  */
 function isNodeOnCurrentPage(node: BaseNode): boolean {
-  let currentNode: BaseNode | null = node;
+  try {
+    // For most nodes, check if they're descendants of the current page
+    let currentNode: BaseNode | null = node;
+    const maxDepth = 50; // Prevent infinite loops
+    let depth = 0;
 
-  while (currentNode && currentNode.parent) {
-    currentNode = currentNode.parent;
+    while (currentNode && currentNode.parent && depth < maxDepth) {
+      currentNode = currentNode.parent;
+      depth++;
+
+      // If we reached the current page, the node is on this page
+      if (currentNode === figma.currentPage) {
+        return true;
+      }
+    }
+
+    // If we reached the root and it's the current page
+    if (currentNode === figma.currentPage) {
+      return true;
+    }
+
+    // Additional check: if the node is directly on the current page
+    if (node.parent === figma.currentPage) {
+      return true;
+    }
+
+    // For component instances and other special cases,
+    // check if any page contains this node
+    const allPages = figma.root.children.filter(child => child.type === 'PAGE');
+    const currentPage = figma.currentPage;
+
+    // If this is a component or component set, it might be in the current page
+    if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+      // Try to find this node in the current page
+      return findNodeInPage(currentPage, node.id);
+    }
+
+    return false;
+  } catch (error) {
+    console.warn('Error checking node page:', error);
+    // If we can't determine, assume it's not on the current page to be safe
+    return false;
   }
+}
 
-  return currentNode === figma.currentPage;
+/**
+ * Helper function to find a node by ID within a page
+ */
+function findNodeInPage(page: PageNode, nodeId: string): boolean {
+  try {
+    const allNodes = page.findAll();
+    return allNodes.some(node => node.id === nodeId);
+  } catch (error) {
+    return false;
+  }
 }
 
 /**
