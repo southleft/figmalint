@@ -1569,6 +1569,54 @@
       color: var(--primary);
     }
 
+    /* Select node button styles */
+    .select-node-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 6px;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 26px;
+      height: 26px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .select-node-btn:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .select-node-btn:active {
+      transform: translateY(0);
+    }
+
+    .select-node-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Update token item layout to accommodate select button */
+    .token-item-compact {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-xs);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+    }
+
+    .token-item-compact .token-details {
+      flex: 1;
+      min-width: 0; /* Allow text to truncate */
+    }
+
     .chat-loading {
       display: flex;
       align-items: center;
@@ -3078,6 +3126,13 @@
               `${token.context.nodeType} in "${token.context.nodeName}"${token.context.isInteractive ? ' (Interactive)' : ''}` :
               'Unknown context';
 
+            const selectButton = token.context?.nodeId ?
+              `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+              </button>` : '';
+
             html += `
               <div class="token-item-compact warning">
                 <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
@@ -3085,6 +3140,7 @@
                   <div class="token-name">${usageIcon} ${token.value}</div>
                   <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
+                ${selectButton}
               </div>
             `;
           });
@@ -3142,6 +3198,14 @@
           html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Effects</h5>';
           hardCodedEffects.forEach(token => {
             const contextInfo = token.context ? `${token.context.nodeType} in "${token.context.nodeName}"` : 'Unknown context';
+
+            const selectButton = token.context?.nodeId ?
+              `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+              </button>` : '';
+
             html += `
               <div class="token-item-compact warning">
                 <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
@@ -3149,6 +3213,7 @@
                   <div class="token-name">✨ ${token.type}</div>
                   <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
+                ${selectButton}
               </div>
             `;
           });
@@ -3216,6 +3281,13 @@
                 }
               }
 
+              const selectButton = token.context?.nodeId ?
+                `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                </button>` : '';
+
               html += `
                 <div class="token-item-compact warning">
                   <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: ${token.value} solid var(--border);"></div>
@@ -3224,6 +3296,7 @@
                     <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
                     <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">Use appropriate stroke weight token (e.g., stroke.thin, stroke.medium)</div>
                   </div>
+                  ${selectButton}
                 </div>
               `;
             });
@@ -3252,6 +3325,13 @@
                 }
               }
 
+              const selectButton = token.context?.nodeId ?
+                `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                </button>` : '';
+
               html += `
                 <div class="token-item-compact warning">
                   <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};"></div>
@@ -3260,6 +3340,7 @@
                     <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
                     <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion}</div>
                   </div>
+                  ${selectButton}
                 </div>
               `;
             });
@@ -3315,6 +3396,13 @@
               }
             }
 
+            const selectButton = token.context?.nodeId ?
+              `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+              </button>` : '';
+
             html += `
               <div class="token-item-compact warning">
                 <div class="token-details">
@@ -3322,6 +3410,7 @@
                   <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
                   <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion || 'Create or use existing spacing token'}</div>
                 </div>
+                ${selectButton}
               </div>
             `;
           });
@@ -3368,6 +3457,13 @@
               `${token.context.fontFamily} in "${token.context.textContent || 'text element'}"` :
               'Unknown context';
 
+            const selectButton = token.context?.nodeId ?
+              `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+              </button>` : '';
+
             html += `
               <div class="token-item-compact warning">
                 <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
@@ -3375,6 +3471,7 @@
                   <div class="token-name">${typeIcon} ${token.value}</div>
                   <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
+                ${selectButton}
               </div>
             `;
           });
@@ -3917,6 +4014,13 @@
       } catch (error) {
         console.error('Failed to send message to plugin:', error);
       }
+    }
+
+    // Select a specific node in Figma
+    function selectFigmaNode(nodeId) {
+      console.log('🎯 Selecting Figma node:', nodeId);
+      sendMessageToPlugin('select-node', { nodeId });
+      updateStatus('Selecting node in Figma...', 'info');
     }
 
     // ==================== CHAT FUNCTIONALITY ====================

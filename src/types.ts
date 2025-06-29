@@ -81,6 +81,7 @@ export interface DesignToken {
   context?: {
     nodeType?: string;
     nodeName?: string;
+    nodeId?: string;
     hasVisibleStroke?: boolean;
     path?: string;
     description?: string;
@@ -187,7 +188,8 @@ export type UIMessageType =
   | 'analyze-enhanced'
   | 'clear-api-key'
   | 'chat-message'
-  | 'chat-clear-history';
+  | 'chat-clear-history'
+  | 'select-node';
 
 // Enhanced Analysis Types
 export interface EnhancedAnalysisOptions {

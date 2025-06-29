@@ -51,6 +51,9 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
       case 'chat-clear-history':
         await handleClearChatHistory();
         break;
+      case 'select-node':
+        await handleSelectNode(data);
+        break;
       default:
         console.warn('Unknown message type:', type);
     }
@@ -411,6 +414,58 @@ async function handleClearChatHistory(): Promise<void> {
   } catch (error) {
     console.error('Error clearing chat history:', error);
   }
+}
+
+/**
+ * Select a specific node in Figma
+ */
+async function handleSelectNode(data: { nodeId: string }): Promise<void> {
+  try {
+    console.log('🎯 Attempting to select node:', data.nodeId);
+
+    // Find the node by ID
+    const node = await figma.getNodeByIdAsync(data.nodeId);
+
+    if (!node) {
+      console.warn('⚠️ Node not found:', data.nodeId);
+      figma.notify('Node not found - it may have been deleted or moved', { error: true });
+      return;
+    }
+
+    // Check if the node is on the current page
+    if (!isNodeOnCurrentPage(node)) {
+      console.warn('⚠️ Node is not on current page:', data.nodeId);
+      figma.notify('Node is on a different page', { error: true });
+      return;
+    }
+
+    // Select the node
+    figma.currentPage.selection = [node as SceneNode];
+
+    // Zoom to the node for better visibility
+    figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+
+    console.log('✅ Successfully selected and zoomed to node:', node.name);
+    figma.notify(`Selected "${node.name}"`, { timeout: 2000 });
+
+  } catch (error) {
+    console.error('Error selecting node:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    figma.notify(`Failed to select node: ${errorMessage}`, { error: true });
+  }
+}
+
+/**
+ * Check if a node is on the current page
+ */
+function isNodeOnCurrentPage(node: BaseNode): boolean {
+  let currentNode: BaseNode | null = node;
+
+  while (currentNode && currentNode.parent) {
+    currentNode = currentNode.parent;
+  }
+
+  return currentNode === figma.currentPage;
 }
 
 /**

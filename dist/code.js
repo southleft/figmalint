@@ -355,6 +355,7 @@
                 context: {
                   nodeType: currentNode.type,
                   nodeName: currentNode.name,
+                  nodeId: currentNode.id,
                   path: debugContext.path,
                   description: debugContext.description,
                   property: "fills"
@@ -388,6 +389,7 @@
                 context: {
                   nodeType: currentNode.type,
                   nodeName: currentNode.name,
+                  nodeId: currentNode.id,
                   path: debugContext.path,
                   description: debugContext.description,
                   property: "strokes"
@@ -427,6 +429,7 @@
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
+                nodeId: currentNode.id,
                 hasVisibleStroke: true,
                 path: debugContext.path,
                 description: debugContext.description,
@@ -455,6 +458,7 @@
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
+                nodeId: currentNode.id,
                 path: debugContext.path,
                 description: debugContext.description,
                 property: "cornerRadius"
@@ -491,6 +495,7 @@
                   context: {
                     nodeType: currentNode.type,
                     nodeName: currentNode.name,
+                    nodeId: currentNode.id,
                     path: debugContext.path,
                     description: debugContext.description,
                     property: prop
@@ -525,6 +530,7 @@
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
+                nodeId: currentNode.id,
                 path: debugContext.path,
                 description: debugContext.description,
                 property: `padding${padding.name.charAt(0).toUpperCase() + padding.name.slice(1)}`
@@ -2501,6 +2507,9 @@ ${scoringCriteria}
         case "chat-clear-history":
           await handleClearChatHistory();
           break;
+        case "select-node":
+          await handleSelectNode(data);
+          break;
         default:
           console.warn("Unknown message type:", type);
       }
@@ -2736,6 +2745,37 @@ ${scoringCriteria}
     } catch (error) {
       console.error("Error clearing chat history:", error);
     }
+  }
+  async function handleSelectNode(data) {
+    try {
+      console.log("\u{1F3AF} Attempting to select node:", data.nodeId);
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node) {
+        console.warn("\u26A0\uFE0F Node not found:", data.nodeId);
+        figma.notify("Node not found - it may have been deleted or moved", { error: true });
+        return;
+      }
+      if (!isNodeOnCurrentPage(node)) {
+        console.warn("\u26A0\uFE0F Node is not on current page:", data.nodeId);
+        figma.notify("Node is on a different page", { error: true });
+        return;
+      }
+      figma.currentPage.selection = [node];
+      figma.viewport.scrollAndZoomIntoView([node]);
+      console.log("\u2705 Successfully selected and zoomed to node:", node.name);
+      figma.notify(`Selected "${node.name}"`, { timeout: 2e3 });
+    } catch (error) {
+      console.error("Error selecting node:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      figma.notify(`Failed to select node: ${errorMessage}`, { error: true });
+    }
+  }
+  function isNodeOnCurrentPage(node) {
+    let currentNode = node;
+    while (currentNode && currentNode.parent) {
+      currentNode = currentNode.parent;
+    }
+    return currentNode === figma.currentPage;
   }
   async function queryDesignSystemsMCP(query) {
     var _a;

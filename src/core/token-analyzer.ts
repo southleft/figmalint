@@ -284,6 +284,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
+                nodeId: currentNode.id,
                 path: debugContext.path,
                 description: debugContext.description,
                 property: 'fills'
@@ -313,21 +314,22 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             console.log(`   ⚠️ Found hard-coded stroke: ${hex}`);
             colorSet.add(hex);
 
-            const debugContext = getDebugContext(currentNode);
-            colors.push({
-              name: `hard-coded-stroke-${colors.length + 1}`,
-              value: hex,
-              type: 'stroke',
-              isToken: false,
-              source: 'hard-coded',
-              context: {
-                nodeType: currentNode.type,
-                nodeName: currentNode.name,
-                path: debugContext.path,
-                description: debugContext.description,
-                property: 'strokes'
-              }
-            });
+                          const debugContext = getDebugContext(currentNode);
+              colors.push({
+                name: `hard-coded-stroke-${colors.length + 1}`,
+                value: hex,
+                type: 'stroke',
+                isToken: false,
+                source: 'hard-coded',
+                context: {
+                  nodeType: currentNode.type,
+                  nodeName: currentNode.name,
+                  nodeId: currentNode.id,
+                  path: debugContext.path,
+                  description: debugContext.description,
+                  property: 'strokes'
+                }
+              });
           }
         }
       });
@@ -370,6 +372,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             context: {
               nodeType: currentNode.type,
               nodeName: currentNode.name,
+              nodeId: currentNode.id,
               hasVisibleStroke: true,
               path: debugContext.path,
               description: debugContext.description,
@@ -405,6 +408,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             context: {
               nodeType: currentNode.type,
               nodeName: currentNode.name,
+              nodeId: currentNode.id,
               path: debugContext.path,
               description: debugContext.description,
               property: 'cornerRadius'
@@ -445,6 +449,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                 context: {
                   nodeType: currentNode.type,
                   nodeName: currentNode.name,
+                  nodeId: currentNode.id,
                   path: debugContext.path,
                   description: debugContext.description,
                   property: prop
@@ -487,6 +492,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             context: {
               nodeType: currentNode.type,
               nodeName: currentNode.name,
+              nodeId: currentNode.id,
               path: debugContext.path,
               description: debugContext.description,
               property: `padding${padding.name.charAt(0).toUpperCase() + padding.name.slice(1)}`
