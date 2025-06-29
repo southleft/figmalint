@@ -2921,10 +2921,28 @@
         console.log('🔧 Adding slots as property recommendations:', currentMetadata.slots);
 
         currentMetadata.slots.forEach(slot => {
-          const slotName = typeof slot === 'string' ? slot : (slot.name || 'Unnamed Slot');
+          const originalName = typeof slot === 'string' ? slot : (slot.name || 'Unnamed Slot');
+
+          // Make slot names more descriptive to avoid confusion with properties
+          let slotName = originalName;
+          const lowerName = originalName.toLowerCase();
+
+          if (lowerName.includes('label') || lowerName.includes('text')) {
+            slotName = 'Label Content';
+          } else if (lowerName.includes('title')) {
+            slotName = 'Title Content';
+          } else if (lowerName.includes('content')) {
+            slotName = 'Content';
+          } else if (lowerName.includes('children')) {
+            slotName = 'Children';
+          } else {
+            // Default to adding "Content" suffix to make it clear it's a slot
+            slotName = originalName + ' Content';
+          }
+
           const slotDescription = typeof slot === 'object' && slot.description ?
             slot.description :
-            'Content slot for customizable elements';
+            `Content slot for customizable ${lowerName.includes('label') || lowerName.includes('text') ? 'text' : 'elements'}`;
 
           allRecommendations.push({
             name: slotName,
