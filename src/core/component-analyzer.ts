@@ -1282,10 +1282,19 @@ function generatePropertyRecommendations(componentName: string, existingProperti
   console.log('🔍 [RECOMMENDATIONS] Generating recommendations for:', componentName, 'with', existingProperties.length, 'existing properties');
 
   // Check what properties are already present
-  const hasProperty = (name: string) => existingProperties.some(prop =>
-    prop.name.toLowerCase().includes(name.toLowerCase()) ||
-    name.toLowerCase().includes(prop.name.toLowerCase())
-  );
+  const hasProperty = (name: string) => {
+    const lowerName = name.toLowerCase();
+    return existingProperties.some(prop => {
+      const propName = prop.name.toLowerCase();
+      // Exact match or very close match
+      return propName === lowerName ||
+             propName.includes(lowerName) ||
+             lowerName.includes(propName) ||
+             // Handle common variations
+             (lowerName === 'text' && (propName === 'label' || propName.includes('text'))) ||
+             (lowerName === 'label' && (propName === 'text' || propName.includes('label')));
+    });
+  };
 
   // Avatar/Profile component recommendations
   if (lowerName.includes('avatar') || lowerName.includes('profile') || lowerName.includes('user')) {
@@ -1545,14 +1554,46 @@ function generatePropertyRecommendations(componentName: string, existingProperti
 
   // Filter out recommendations that are too similar to existing properties
   const filteredRecommendations = recommendations.filter(rec => {
+    const recName = rec.name.toLowerCase();
     const similarExists = existingProperties.some(existing => {
-      const nameSimilarity = existing.name.toLowerCase().includes(rec.name.toLowerCase()) ||
-                            rec.name.toLowerCase().includes(existing.name.toLowerCase());
-      return nameSimilarity;
+      const existingName = existing.name.toLowerCase();
+
+      // Exact match
+      if (existingName === recName) return true;
+
+      // Partial matches
+      if (existingName.includes(recName) || recName.includes(existingName)) return true;
+
+      // Common semantic equivalents
+      const semanticMatches = [
+        ['text', 'label', 'content'],
+        ['size', 'scale', 'dimension'],
+        ['variant', 'style', 'type', 'kind'],
+        ['state', 'status', 'mode'],
+        ['color', 'theme', 'palette'],
+        ['icon', 'symbol', 'graphic']
+      ];
+
+      for (const group of semanticMatches) {
+        if (group.includes(recName) && group.some(term => existingName.includes(term))) {
+          return true;
+        }
+      }
+
+      return false;
     });
     return !similarExists;
   });
 
+  // Debug logging
+  if (recommendations.length > filteredRecommendations.length) {
+    const filtered = recommendations.filter(rec => !filteredRecommendations.includes(rec));
+    console.log('🔍 [RECOMMENDATIONS] Filtered out duplicates:', filtered.map(r => r.name));
+  }
+
   console.log(`🔍 [RECOMMENDATIONS] Generated ${filteredRecommendations.length} recommendations for ${componentName}`);
+  console.log('🔍 [RECOMMENDATIONS] Existing properties:', existingProperties.map(p => p.name));
+  console.log('🔍 [RECOMMENDATIONS] Final recommendations:', filteredRecommendations.map(r => r.name));
+
   return filteredRecommendations;
 }

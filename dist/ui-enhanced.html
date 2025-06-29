@@ -1123,7 +1123,6 @@
     .tab-button:hover:not(.active) {
       color: var(--text-primary);
       background: var(--surface);
-      border-bottom-color: var(--primary);
     }
 
     .tab-button.active {
@@ -2676,7 +2675,7 @@
 
         if (hasOnlyDefaultState) {
           // Show positive message for non-interactive components
-          html += `.
+          html += `
             <div class="audit-item">
               <span class="audit-status pass">✅</span>
               <span class="audit-label">No interactive states needed for this component</span>
