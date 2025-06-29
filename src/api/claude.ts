@@ -271,19 +271,184 @@ Keep the response concise and actionable for a designer.
 }
 
 /**
- * Extract JSON from Claude response
+ * Extract JSON from Claude response with improved parsing
  */
 export function extractJSONFromResponse(response: string): any {
   try {
-    // Try to find JSON in the response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    } else {
-      throw new Error('No JSON found in response');
+    console.log('🔍 Starting JSON extraction from Claude response...');
+    console.log('📝 Response length:', response.length);
+    console.log('📝 Response preview (first 200 chars):', response.substring(0, 200));
+
+    // First, try parsing the entire response as JSON
+    try {
+      const parsed = JSON.parse(response.trim());
+      console.log('✅ Successfully parsed entire response as JSON');
+      return parsed;
+    } catch (fullParseError) {
+      console.log('⚠️ Full response is not valid JSON, trying to extract JSON block...');
     }
+
+    // Try to find JSON blocks using multiple strategies
+    const strategies = [
+      // Strategy 1: Look for complete JSON objects with balanced braces
+      () => extractBalancedJson(response),
+
+      // Strategy 2: Look for JSON between common delimiters
+      () => extractJsonBetweenDelimiters(response),
+
+      // Strategy 3: Find JSON in code blocks
+      () => extractJsonFromCodeBlocks(response),
+
+      // Strategy 4: Last resort - original regex approach
+      () => extractJsonWithRegex(response)
+    ];
+
+    for (let i = 0; i < strategies.length; i++) {
+      try {
+        console.log(`🔍 Trying extraction strategy ${i + 1}...`);
+        const result = strategies[i]();
+        if (result) {
+          console.log('✅ Successfully extracted JSON with strategy', i + 1);
+          return result;
+        }
+      } catch (strategyError) {
+        const errorMessage = strategyError instanceof Error ? strategyError.message : 'Unknown error';
+        console.log(`⚠️ Strategy ${i + 1} failed:`, errorMessage);
+        continue;
+      }
+    }
+
+    throw new Error('No valid JSON found in response after trying all strategies');
+
   } catch (error) {
-    console.error('Failed to parse JSON from Claude response:', error);
+    console.error('❌ Failed to parse JSON from Claude response:', error);
+    console.log('📝 Full response for debugging:', response);
     throw new Error('Invalid JSON response from Claude API');
   }
+}
+
+/**
+ * Extract JSON with balanced brace counting
+ */
+function extractBalancedJson(response: string): any | null {
+  const firstBrace = response.indexOf('{');
+  if (firstBrace === -1) return null;
+
+  let braceCount = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = firstBrace; i < response.length; i++) {
+    const char = response[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === '{') {
+        braceCount++;
+      } else if (char === '}') {
+        braceCount--;
+        if (braceCount === 0) {
+          // Found complete JSON object
+          const jsonStr = response.substring(firstBrace, i + 1);
+          try {
+            return JSON.parse(jsonStr);
+          } catch (parseError) {
+            console.log('⚠️ Balanced JSON extraction found malformed JSON:', parseError instanceof Error ? parseError.message : 'Parse error');
+            return null;
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract JSON between common delimiters
+ */
+function extractJsonBetweenDelimiters(response: string): any | null {
+  const delimiters = [
+    ['```json', '```'],
+    ['```', '```'],
+    ['JSON:', '\n\n'],
+    ['Response:', '\n\n'],
+    ['{', '}\n'],
+  ];
+
+  for (const [start, end] of delimiters) {
+    const startIndex = response.indexOf(start);
+    if (startIndex === -1) continue;
+
+    const jsonStart = startIndex + start.length;
+    let endIndex = response.indexOf(end, jsonStart);
+
+    if (endIndex === -1 && end === '\n\n') {
+      // For cases where there's no double newline, use end of string
+      endIndex = response.length;
+    }
+
+    if (endIndex === -1) continue;
+
+    const jsonStr = response.substring(jsonStart, endIndex).trim();
+
+    // Try to parse what we found
+    try {
+      return JSON.parse(jsonStr);
+    } catch (parseError) {
+      // If it starts with { but doesn't parse, try balanced extraction
+      if (jsonStr.startsWith('{')) {
+        try {
+          return extractBalancedJson(jsonStr);
+        } catch (balancedError) {
+          continue;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract JSON from code blocks
+ */
+function extractJsonFromCodeBlocks(response: string): any | null {
+  const codeBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi;
+  let match;
+
+  while ((match = codeBlockRegex.exec(response)) !== null) {
+    try {
+      return JSON.parse(match[1]);
+    } catch (parseError) {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Fallback regex extraction (original method)
+ */
+function extractJsonWithRegex(response: string): any | null {
+  const jsonMatch = response.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return JSON.parse(jsonMatch[0]);
+  }
+  return null;
 }

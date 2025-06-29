@@ -418,7 +418,7 @@
     }
 
     /* Audit View Styles */
-    .audit-section {
+    .audit-section:not(:last-child) {
       margin-bottom: var(--space-lg);
     }
 
@@ -1082,7 +1082,6 @@
       padding: var(--space-md);
       background: var(--surface);
       border-radius: var(--radius-md);
-      margin-bottom: var(--space-md);
       align-items: center;
       justify-content: space-between;
     }
@@ -1123,6 +1122,7 @@
     .tab-button:hover:not(.active) {
       color: var(--text-primary);
       background: var(--surface);
+      border-bottom-color: var(--primary);
     }
 
     .tab-button.active {
@@ -1605,7 +1605,6 @@
     /* Update token item layout to accommodate select button */
     .token-item-compact {
       display: flex;
-      align-items: center;
       gap: var(--space-sm);
       padding: var(--space-xs);
       border-radius: var(--radius-sm);
@@ -3166,69 +3165,10 @@
         html += '</tbody></table>';
       }
 
-      // Combine regular recommendations with slots from metadata
+      // Use only property recommendations (no slots)
       let allRecommendations = recommendations ? [...recommendations] : [];
 
-      // Add legitimate content slots as slot recommendations (not structural elements)
-      if (currentMetadata && currentMetadata.slots && currentMetadata.slots.length > 0) {
-        console.log('🔧 Filtering slots for recommendations:', currentMetadata.slots);
-
-        // Filter out slots that are clearly structural elements
-        const legitimateSlots = currentMetadata.slots.filter(slot => {
-          const slotName = (typeof slot === 'string' ? slot : (slot.name || '')).toLowerCase();
-
-          // Skip structural terms that shouldn't be content slots
-          const structuralTerms = [
-            'radiobutton', 'checkbox', 'icon', 'button', 'focusring', 'focus',
-            'indicator', 'background', 'border', 'outline', 'shadow', 'ring'
-          ];
-
-          // Skip if it matches structural patterns
-          if (structuralTerms.some(term => slotName.includes(term))) {
-            console.log(`🚫 Skipping structural element as slot: ${slotName}`);
-            return false;
-          }
-
-          // Skip very short or generic names
-          if (slotName.length <= 2 || ['text', 'label'].includes(slotName)) {
-            console.log(`🚫 Skipping generic slot name: ${slotName}`);
-            return false;
-          }
-
-          return true;
-        });
-
-        console.log(`🔧 Adding ${legitimateSlots.length} legitimate slots as recommendations:`, legitimateSlots);
-
-        legitimateSlots.forEach(slot => {
-          const originalName = typeof slot === 'string' ? slot : (slot.name || 'Unnamed Slot');
-          let slotName = originalName;
-          const lowerName = originalName.toLowerCase();
-
-          // Make slot names more descriptive for legitimate content slots
-          if (lowerName.includes('title')) {
-            slotName = 'Title Content';
-          } else if (lowerName.includes('content') && !lowerName.includes('title')) {
-            slotName = 'Content';
-          } else if (lowerName.includes('children')) {
-            slotName = 'Children';
-          } else {
-            // For actual content slots, add descriptive suffix
-            slotName = toTitleCase(originalName) + ' Content';
-          }
-
-          const slotDescription = typeof slot === 'object' && slot.description ?
-            slot.description :
-            `Content slot for customizable ${lowerName.includes('title') ? 'title text' : 'content'}`;
-
-          allRecommendations.push({
-            name: slotName,
-            type: 'slot',
-            description: slotDescription,
-            examples: ['ReactNode', 'string', 'JSX.Element']
-          });
-        });
-      }
+      console.log('🔧 Property recommendations only (slots excluded):', allRecommendations.length);
 
       // Add recommendations section if available
       if (allRecommendations && allRecommendations.length > 0) {
@@ -3281,8 +3221,8 @@
 
       // Display token summary if available
       if (currentTokenSummary) {
-        html += '<div class="token-summary" style="background: var(--surface-secondary); padding: 12px; border-radius: 8px; margin-bottom: 16px;">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📊 Token Analysis Summary</h4>';
+        html += '<div class="token-summary" style="background: var(--surface-secondary); border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; margin-top: 0;">📊 Token Analysis Summary</h4>';
         html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px;">';
         html += `<div><strong>Total Items:</strong> ${currentTokenSummary.totalTokens}</div>`;
         html += `<div><strong>Design Tokens:</strong> <span style="color: var(--success)">${currentTokenSummary.actualTokens}</span></div>`;
@@ -3736,16 +3676,7 @@
         ].filter(token => token.isActualToken).length;
         const hardCodedCount = totalTokens - actualTokensCount;
 
-        html = `
-          <div style="background: var(--surface); padding: var(--space-sm); border-radius: var(--radius-sm); margin-bottom: var(--space-md); border: 1px solid var(--border);">
-            <div style="font-size: 11px; font-weight: 600; margin-bottom: 4px;">📊 Token Analysis Summary</div>
-            <div style="font-size: 10px; color: var(--text-secondary);">
-              <span style="color: var(--success);">✅ ${actualTokensCount} using design tokens</span> •
-              <span style="color: var(--warning);">⚠️ ${hardCodedCount} hard-coded values</span> •
-              <span style="color: var(--text-tertiary);">📊 ${totalTokens} total properties analyzed</span>
-            </div>
-          </div>
-        ` + html;
+        // Removed redundant compact token summary - detailed summary above provides better info
       }
 
       tokenSuggestions.innerHTML = html;
@@ -3757,7 +3688,7 @@
 
       // Component Info
       html += `<div class="mb-md">`;
-      html += `<h3 style="font-size: 13px; font-weight: 600;">${metadata.component}</h3>`;
+      html += `<h3 style="font-size: 13px; font-weight: 600; margin-top: 0;">${metadata.component}</h3>`;
       html += `<p style="color: var(--text-secondary);">${metadata.description}</p>`;
       html += `</div>`;
 
@@ -3833,7 +3764,7 @@
       if (mcpData.strengths && mcpData.strengths.length > 0) {
         console.log('✅ Found strengths:', mcpData.strengths);
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--success);">✅ Strengths</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--success); margin-top: 0;">✅ Strengths</h4>';
         mcpData.strengths.forEach(strength => {
           html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${strength}</div>`;
         });

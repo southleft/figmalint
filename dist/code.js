@@ -1524,6 +1524,7 @@
     };
   }
   function generateFallbackMCPReadiness(data) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     const { node, context, actualProperties, actualStates, tokens } = data;
     const family = context.componentFamily || "generic";
     const strengths = [];
@@ -1532,51 +1533,98 @@
     if (node.name && node.name.trim() !== "" && !node.name.toLowerCase().includes("untitled")) {
       strengths.push("Component has descriptive naming");
     } else {
-      gaps.push("Component name needs improvement");
-      recommendations.push("Use descriptive component names that indicate purpose");
+      gaps.push("Generic component name - makes discovery and organization difficult");
+      recommendations.push('Use descriptive component names that indicate purpose (e.g., "PrimaryButton", "UserAvatar")');
     }
     if (context.hierarchy && context.hierarchy.length > 1) {
       strengths.push("Well-structured component hierarchy");
     } else {
-      gaps.push("Simple component structure");
+      if (family !== "icon" && family !== "badge") {
+        gaps.push("Minimal layer structure - may lack semantic organization for complex use cases");
+      }
     }
     if (actualProperties.length > 0) {
       strengths.push(`Has ${actualProperties.length} configurable properties`);
     } else {
-      gaps.push("No configurable properties defined");
-      recommendations.push("Add component properties for customization");
+      gaps.push("No configurable properties - component cannot be customized for different use cases");
+      recommendations.push("Add component properties for customization (size, variant, text content, etc.)");
     }
     const shouldHaveStates = context.hasInteractiveElements && family !== "badge" && family !== "icon";
     if (shouldHaveStates) {
       if (actualStates.length > 1) {
         strengths.push("Includes multiple component states");
       } else {
-        gaps.push("Missing interactive states");
-        recommendations.push("Add hover, focus, and disabled states for interactive components");
+        gaps.push("Missing interactive states - users won't receive proper feedback for interactions");
+        recommendations.push("Add hover, focus, and disabled states with clear visual feedback");
       }
     }
-    const hasTokens = tokens && (tokens.colors && tokens.colors.some((t) => t.isActualToken) || tokens.spacing && tokens.spacing.some((t) => t.isActualToken) || tokens.typography && tokens.typography.some((t) => t.isActualToken));
-    if (hasTokens) {
+    const tokenCounts = {
+      colors: ((_b = (_a = tokens == null ? void 0 : tokens.colors) == null ? void 0 : _a.filter((t) => t.isActualToken)) == null ? void 0 : _b.length) || 0,
+      spacing: ((_d = (_c = tokens == null ? void 0 : tokens.spacing) == null ? void 0 : _c.filter((t) => t.isActualToken)) == null ? void 0 : _d.length) || 0,
+      typography: ((_f = (_e = tokens == null ? void 0 : tokens.typography) == null ? void 0 : _e.filter((t) => t.isActualToken)) == null ? void 0 : _f.length) || 0,
+      // Count ALL hard-coded values across categories, not just colors
+      hardCoded: [
+        ...((_g = tokens == null ? void 0 : tokens.colors) == null ? void 0 : _g.filter((t) => !t.isActualToken)) || [],
+        ...((_h = tokens == null ? void 0 : tokens.spacing) == null ? void 0 : _h.filter((t) => !t.isActualToken)) || [],
+        ...((_i = tokens == null ? void 0 : tokens.typography) == null ? void 0 : _i.filter((t) => !t.isActualToken)) || [],
+        ...((_j = tokens == null ? void 0 : tokens.effects) == null ? void 0 : _j.filter((t) => !t.isActualToken)) || [],
+        ...((_k = tokens == null ? void 0 : tokens.borders) == null ? void 0 : _k.filter((t) => !t.isActualToken)) || []
+      ].length
+    };
+    const totalTokens = tokenCounts.colors + tokenCounts.spacing + tokenCounts.typography;
+    if (totalTokens > 0) {
       strengths.push("Uses design tokens for consistency");
-    } else {
-      gaps.push("Limited design token usage");
-      recommendations.push("Replace hard-coded values with design tokens");
+      if (tokenCounts.hardCoded > 0) {
+        gaps.push("Found hard-coded values - inconsistent with design system");
+        recommendations.push("Replace remaining hard-coded colors and spacing with design tokens");
+      }
+    } else if (tokenCounts.hardCoded > 2) {
+      gaps.push("No design tokens used - component styling is inconsistent with design system");
+      recommendations.push("Replace hard-coded values with design tokens for colors, spacing, and typography");
     }
-    if (family === "avatar" && actualProperties.length === 0) {
-      gaps.push("Missing size variants");
-      recommendations.push("Add size property for different use cases");
-    } else if (family === "button" && actualStates.length <= 1) {
-      gaps.push("Incomplete accessibility features");
-      recommendations.push("Add accessibility states and ARIA labels");
+    const hasSize = actualProperties.some(
+      (prop) => prop.name.toLowerCase().includes("size") || prop.name.toLowerCase().includes("scale") || prop.name.toLowerCase().includes("dimension")
+    );
+    const hasVariant = actualProperties.some(
+      (prop) => prop.name.toLowerCase().includes("variant") || prop.name.toLowerCase().includes("style") || prop.name.toLowerCase().includes("type")
+    );
+    if (family === "avatar") {
+      if (!hasSize && actualProperties.length > 0) {
+        gaps.push("No size variants defined - limits reusability across different contexts");
+        recommendations.push("Add size property (xs, sm, md, lg, xl) for headers, lists, and profiles");
+      }
+    } else if (family === "button") {
+      if (actualStates.length <= 1) {
+        gaps.push("Missing interactive states - reduces accessibility and user feedback");
+        recommendations.push("Add hover, focus, and disabled states with clear visual feedback");
+      }
+      if (!hasVariant && actualProperties.length > 0) {
+        gaps.push("No visual hierarchy variants - limits design flexibility");
+        recommendations.push("Add variant property (primary, secondary, danger) for proper hierarchy");
+      }
+    } else if (family === "input") {
+      if (actualStates.length <= 1) {
+        gaps.push("Missing form states - poor accessibility and user experience");
+        recommendations.push("Add focus, error, and disabled states with clear visual indicators");
+      }
+    }
+    if (actualProperties.length === 0) {
+      gaps.push("No configurable properties - component lacks flexibility for different use cases");
+      recommendations.push("Add component properties to enable customization and reuse");
+    } else if (actualProperties.length === 1 && !hasSize && !hasVariant) {
+      gaps.push("Limited customization options - consider adding more properties for flexibility");
+      if (shouldHaveStates && actualStates.length <= 1) {
+        recommendations.push("Add interactive states and additional variant options");
+      }
     }
     if (strengths.length === 0) {
-      strengths.push("Component follows basic structure patterns");
+      strengths.push("Component follows basic Figma structure patterns");
     }
     if (gaps.length === 0) {
-      gaps.push("Component could benefit from additional states");
+      gaps.push("Well-structured component - consider minor enhancements for broader usage");
     }
     if (recommendations.length === 0) {
-      recommendations.push("Consider adding size variants for scalability");
+      recommendations.push("Component is well-configured - ready for code generation");
     }
     const baseScore = Math.max(40, 100 - gaps.length * 15 + strengths.length * 10);
     const score = Math.min(100, baseScore);
@@ -1945,16 +1993,136 @@
   }
   function extractJSONFromResponse(response) {
     try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found in response");
+      console.log("\u{1F50D} Starting JSON extraction from Claude response...");
+      console.log("\u{1F4DD} Response length:", response.length);
+      console.log("\u{1F4DD} Response preview (first 200 chars):", response.substring(0, 200));
+      try {
+        const parsed = JSON.parse(response.trim());
+        console.log("\u2705 Successfully parsed entire response as JSON");
+        return parsed;
+      } catch (fullParseError) {
+        console.log("\u26A0\uFE0F Full response is not valid JSON, trying to extract JSON block...");
       }
+      const strategies = [
+        // Strategy 1: Look for complete JSON objects with balanced braces
+        () => extractBalancedJson(response),
+        // Strategy 2: Look for JSON between common delimiters
+        () => extractJsonBetweenDelimiters(response),
+        // Strategy 3: Find JSON in code blocks
+        () => extractJsonFromCodeBlocks(response),
+        // Strategy 4: Last resort - original regex approach
+        () => extractJsonWithRegex(response)
+      ];
+      for (let i = 0; i < strategies.length; i++) {
+        try {
+          console.log(`\u{1F50D} Trying extraction strategy ${i + 1}...`);
+          const result = strategies[i]();
+          if (result) {
+            console.log("\u2705 Successfully extracted JSON with strategy", i + 1);
+            return result;
+          }
+        } catch (strategyError) {
+          const errorMessage = strategyError instanceof Error ? strategyError.message : "Unknown error";
+          console.log(`\u26A0\uFE0F Strategy ${i + 1} failed:`, errorMessage);
+          continue;
+        }
+      }
+      throw new Error("No valid JSON found in response after trying all strategies");
     } catch (error) {
-      console.error("Failed to parse JSON from Claude response:", error);
+      console.error("\u274C Failed to parse JSON from Claude response:", error);
+      console.log("\u{1F4DD} Full response for debugging:", response);
       throw new Error("Invalid JSON response from Claude API");
     }
+  }
+  function extractBalancedJson(response) {
+    const firstBrace = response.indexOf("{");
+    if (firstBrace === -1) return null;
+    let braceCount = 0;
+    let inString = false;
+    let escapeNext = false;
+    for (let i = firstBrace; i < response.length; i++) {
+      const char = response[i];
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      if (char === "\\") {
+        escapeNext = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === "{") {
+          braceCount++;
+        } else if (char === "}") {
+          braceCount--;
+          if (braceCount === 0) {
+            const jsonStr = response.substring(firstBrace, i + 1);
+            try {
+              return JSON.parse(jsonStr);
+            } catch (parseError) {
+              console.log("\u26A0\uFE0F Balanced JSON extraction found malformed JSON:", parseError instanceof Error ? parseError.message : "Parse error");
+              return null;
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+  function extractJsonBetweenDelimiters(response) {
+    const delimiters = [
+      ["```json", "```"],
+      ["```", "```"],
+      ["JSON:", "\n\n"],
+      ["Response:", "\n\n"],
+      ["{", "}\n"]
+    ];
+    for (const [start, end] of delimiters) {
+      const startIndex = response.indexOf(start);
+      if (startIndex === -1) continue;
+      const jsonStart = startIndex + start.length;
+      let endIndex = response.indexOf(end, jsonStart);
+      if (endIndex === -1 && end === "\n\n") {
+        endIndex = response.length;
+      }
+      if (endIndex === -1) continue;
+      const jsonStr = response.substring(jsonStart, endIndex).trim();
+      try {
+        return JSON.parse(jsonStr);
+      } catch (parseError) {
+        if (jsonStr.startsWith("{")) {
+          try {
+            return extractBalancedJson(jsonStr);
+          } catch (balancedError) {
+            continue;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  function extractJsonFromCodeBlocks(response) {
+    const codeBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi;
+    let match;
+    while ((match = codeBlockRegex.exec(response)) !== null) {
+      try {
+        return JSON.parse(match[1]);
+      } catch (parseError) {
+        continue;
+      }
+    }
+    return null;
+  }
+  function extractJsonWithRegex(response) {
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    return null;
   }
 
   // src/core/consistency-engine.ts

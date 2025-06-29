@@ -1190,23 +1190,26 @@ function generateFallbackMCPReadiness(data: {
   if (node.name && node.name.trim() !== '' && !node.name.toLowerCase().includes('untitled')) {
     strengths.push('Component has descriptive naming');
   } else {
-    gaps.push('Component name needs improvement');
-    recommendations.push('Use descriptive component names that indicate purpose');
+    gaps.push('Generic component name - makes discovery and organization difficult');
+    recommendations.push('Use descriptive component names that indicate purpose (e.g., "PrimaryButton", "UserAvatar")');
   }
 
   // Check component structure
   if (context.hierarchy && context.hierarchy.length > 1) {
     strengths.push('Well-structured component hierarchy');
   } else {
-    gaps.push('Simple component structure');
+    // Only flag as gap if it's actually too simple for its purpose
+    if (family !== 'icon' && family !== 'badge') {
+      gaps.push('Minimal layer structure - may lack semantic organization for complex use cases');
+    }
   }
 
   // Check for properties
   if (actualProperties.length > 0) {
     strengths.push(`Has ${actualProperties.length} configurable properties`);
   } else {
-    gaps.push('No configurable properties defined');
-    recommendations.push('Add component properties for customization');
+    gaps.push('No configurable properties - component cannot be customized for different use cases');
+    recommendations.push('Add component properties for customization (size, variant, text content, etc.)');
   }
 
   // Check for states based on component family
@@ -1215,43 +1218,94 @@ function generateFallbackMCPReadiness(data: {
     if (actualStates.length > 1) {
       strengths.push('Includes multiple component states');
     } else {
-      gaps.push('Missing interactive states');
-      recommendations.push('Add hover, focus, and disabled states for interactive components');
+      gaps.push('Missing interactive states - users won\'t receive proper feedback for interactions');
+      recommendations.push('Add hover, focus, and disabled states with clear visual feedback');
     }
   }
 
-  // Check for design tokens usage
-  const hasTokens = tokens && (
-    (tokens.colors && tokens.colors.some((t: any) => t.isActualToken)) ||
-    (tokens.spacing && tokens.spacing.some((t: any) => t.isActualToken)) ||
-    (tokens.typography && tokens.typography.some((t: any) => t.isActualToken))
+  // Check for design tokens usage with more specificity
+  const tokenCounts = {
+    colors: tokens?.colors?.filter((t: any) => t.isActualToken)?.length || 0,
+    spacing: tokens?.spacing?.filter((t: any) => t.isActualToken)?.length || 0,
+    typography: tokens?.typography?.filter((t: any) => t.isActualToken)?.length || 0,
+    // Count ALL hard-coded values across categories, not just colors
+    hardCoded: [
+      ...(tokens?.colors?.filter((t: any) => !t.isActualToken) || []),
+      ...(tokens?.spacing?.filter((t: any) => !t.isActualToken) || []),
+      ...(tokens?.typography?.filter((t: any) => !t.isActualToken) || []),
+      ...(tokens?.effects?.filter((t: any) => !t.isActualToken) || []),
+      ...(tokens?.borders?.filter((t: any) => !t.isActualToken) || [])
+    ].length
+  };
+
+  const totalTokens = tokenCounts.colors + tokenCounts.spacing + tokenCounts.typography;
+
+  if (totalTokens > 0) {
+    strengths.push('Uses design tokens for consistency');
+    if (tokenCounts.hardCoded > 0) {
+      gaps.push('Found hard-coded values - inconsistent with design system');
+      recommendations.push('Replace remaining hard-coded colors and spacing with design tokens');
+    }
+  } else if (tokenCounts.hardCoded > 2) {
+    gaps.push('No design tokens used - component styling is inconsistent with design system');
+    recommendations.push('Replace hard-coded values with design tokens for colors, spacing, and typography');
+  }
+
+  // Check for specific property gaps (be smarter about existing properties)
+  const hasSize = actualProperties.some(prop =>
+    prop.name.toLowerCase().includes('size') ||
+    prop.name.toLowerCase().includes('scale') ||
+    prop.name.toLowerCase().includes('dimension')
   );
 
-  if (hasTokens) {
-    strengths.push('Uses design tokens for consistency');
-  } else {
-    gaps.push('Limited design token usage');
-    recommendations.push('Replace hard-coded values with design tokens');
+  const hasVariant = actualProperties.some(prop =>
+    prop.name.toLowerCase().includes('variant') ||
+    prop.name.toLowerCase().includes('style') ||
+    prop.name.toLowerCase().includes('type')
+  );
+
+  // Component family specific recommendations (check existing properties first)
+  if (family === 'avatar') {
+    if (!hasSize && actualProperties.length > 0) {
+      gaps.push('No size variants defined - limits reusability across different contexts');
+      recommendations.push('Add size property (xs, sm, md, lg, xl) for headers, lists, and profiles');
+    }
+  } else if (family === 'button') {
+    if (actualStates.length <= 1) {
+      gaps.push('Missing interactive states - reduces accessibility and user feedback');
+      recommendations.push('Add hover, focus, and disabled states with clear visual feedback');
+    }
+    if (!hasVariant && actualProperties.length > 0) {
+      gaps.push('No visual hierarchy variants - limits design flexibility');
+      recommendations.push('Add variant property (primary, secondary, danger) for proper hierarchy');
+    }
+  } else if (family === 'input') {
+    if (actualStates.length <= 1) {
+      gaps.push('Missing form states - poor accessibility and user experience');
+      recommendations.push('Add focus, error, and disabled states with clear visual indicators');
+    }
   }
 
-  // Component family specific recommendations
-  if (family === 'avatar' && actualProperties.length === 0) {
-    gaps.push('Missing size variants');
-    recommendations.push('Add size property for different use cases');
-  } else if (family === 'button' && actualStates.length <= 1) {
-    gaps.push('Incomplete accessibility features');
-    recommendations.push('Add accessibility states and ARIA labels');
+  // Generic improvements (only suggest if not already present)
+  if (actualProperties.length === 0) {
+    gaps.push('No configurable properties - component lacks flexibility for different use cases');
+    recommendations.push('Add component properties to enable customization and reuse');
+  } else if (actualProperties.length === 1 && !hasSize && !hasVariant) {
+    gaps.push('Limited customization options - consider adding more properties for flexibility');
+    if (shouldHaveStates && actualStates.length <= 1) {
+      recommendations.push('Add interactive states and additional variant options');
+    }
   }
 
-  // Ensure we have minimum content
+  // Ensure we have minimum content (but make it more specific)
   if (strengths.length === 0) {
-    strengths.push('Component follows basic structure patterns');
+    strengths.push('Component follows basic Figma structure patterns');
   }
   if (gaps.length === 0) {
-    gaps.push('Component could benefit from additional states');
+    gaps.push('Well-structured component - consider minor enhancements for broader usage');
   }
   if (recommendations.length === 0) {
-    recommendations.push('Consider adding size variants for scalability');
+    recommendations.push('Component is well-configured - ready for code generation');
   }
 
   // Calculate score based on strengths vs gaps
