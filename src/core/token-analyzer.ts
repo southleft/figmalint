@@ -4,6 +4,95 @@ import { DesignToken, TokenAnalysis, TokenCategory } from '../types';
 import { rgbToHex, getVariableName, getVariableValue, getDebugContext } from '../utils/figma-helpers';
 
 /**
+ * Check if a node has default variant frame styles
+ * These are automatically applied by Figma to variant frames:
+ * - Stroke: #9747FF (purple)
+ * - Corner Radius: 5px
+ * - Stroke Weight: 1px
+ * - Padding: 16px (all sides)
+ */
+function hasDefaultVariantFrameStyles(node: SceneNode): boolean {
+  // First check if this node or any ancestor is part of a component set
+  let currentNode: SceneNode | null = node;
+  let isPartOfVariant = false;
+  
+  while (currentNode) {
+    if (currentNode.type === 'COMPONENT_SET') {
+      isPartOfVariant = true;
+      break;
+    }
+    if (currentNode.parent && currentNode.parent.type === 'COMPONENT_SET') {
+      isPartOfVariant = true;
+      break;
+    }
+    currentNode = currentNode.parent as SceneNode | null;
+  }
+  
+  if (!isPartOfVariant) {
+    return false;
+  }
+  if (!('strokes' in node) || !('cornerRadius' in node) || !('strokeWeight' in node)) {
+    return false;
+  }
+  
+  // Check for the specific default values
+  // Check both unified cornerRadius and individual corner radii
+  const hasDefaultRadius = (node.cornerRadius === 5) || 
+    ('topLeftRadius' in node && 'topRightRadius' in node && 
+     'bottomLeftRadius' in node && 'bottomRightRadius' in node &&
+     node.topLeftRadius === 5 && node.topRightRadius === 5 && 
+     node.bottomLeftRadius === 5 && node.bottomRightRadius === 5);
+  const hasDefaultStrokeWeight = node.strokeWeight === 1;
+  
+  // Check for default purple stroke color
+  const strokes = node.strokes as Paint[];
+  const hasDefaultStroke = strokes.length > 0 && strokes.some(stroke => {
+    if (stroke.type === 'SOLID' && stroke.visible !== false && stroke.color) {
+      const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b).toUpperCase();
+      return hex === '#9747FF';
+    }
+    return false;
+  });
+  
+  // Check for default padding (16px on all sides)
+  const hasDefaultPadding = 'paddingLeft' in node && 'paddingRight' in node && 
+                           'paddingTop' in node && 'paddingBottom' in node &&
+                           node.paddingLeft === 16 && node.paddingRight === 16 && 
+                           node.paddingTop === 16 && node.paddingBottom === 16;
+  
+  // Only return true if ALL default values are present
+  const hasAllDefaults = hasDefaultRadius && hasDefaultStrokeWeight && hasDefaultStroke && hasDefaultPadding;
+  
+  if (hasAllDefaults) {
+    console.log(`🎯 [FILTER] Detected default variant frame styles in ${node.name} - filtering out`);
+    console.log(`   Type: ${node.type}, Parent: ${node.parent?.type}`);
+    console.log(`   Radius: ${node.cornerRadius}, Weight: ${node.strokeWeight}, Color: ${strokes.length > 0 ? rgbToHex(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b) : 'none'}`);
+    console.log(`   Padding: L=${node.paddingLeft}, R=${node.paddingRight}, T=${node.paddingTop}, B=${node.paddingBottom}`);
+  }
+  
+  return hasAllDefaults;
+}
+
+/**
+ * Check if a node is part of a component variant
+ */
+function isNodeInVariant(node: SceneNode): boolean {
+  let currentNode: SceneNode | null = node;
+  
+  while (currentNode) {
+    if (currentNode.type === 'COMPONENT_SET') {
+      return true;
+    }
+    if (currentNode.parent && currentNode.parent.type === 'COMPONENT_SET') {
+      return true;
+    }
+    currentNode = currentNode.parent as SceneNode | null;
+  }
+  
+  return false;
+}
+
+/**
  * Extract comprehensive design tokens from a Figma node
  */
 export async function extractDesignTokensFromNode(node: SceneNode): Promise<TokenAnalysis> {
@@ -307,12 +396,17 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
 
     if ('strokes' in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
       console.log(`🔍 [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
-      currentNode.strokes.forEach((stroke) => {
-        if (stroke.type === 'SOLID' && stroke.visible !== false && stroke.color) {
-          const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
-          if (!colorSet.has(hex)) {
-            console.log(`   ⚠️ Found hard-coded stroke: ${hex}`);
-            colorSet.add(hex);
+      
+      // Skip if this node has default variant frame styles
+      if (hasDefaultVariantFrameStyles(currentNode)) {
+        console.log(`   🚫 Skipping default variant frame stroke colors`);
+      } else {
+        currentNode.strokes.forEach((stroke) => {
+          if (stroke.type === 'SOLID' && stroke.visible !== false && stroke.color) {
+            const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
+            if (!colorSet.has(hex)) {
+              console.log(`   ⚠️ Found hard-coded stroke: ${hex}`);
+              colorSet.add(hex);
 
                           const debugContext = getDebugContext(currentNode);
               colors.push({
@@ -321,6 +415,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                 type: 'stroke',
                 isToken: false,
                 source: 'hard-coded',
+                isDefaultVariantStyle: hex.toUpperCase() === '#9747FF' && isNodeInVariant(currentNode),
                 context: {
                   nodeType: currentNode.type,
                   nodeName: currentNode.name,
@@ -330,9 +425,10 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                   property: 'strokes'
                 }
               });
+            }
           }
-        }
-      });
+        });
+      }
     } else if (hasStrokeVariables) {
       console.log(`🔍 [VARIABLES] ${currentNode.name} has stroke variables - skipping hard-coded detection`);
     } else if (hasStrokeStyle) {
@@ -348,7 +444,8 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
 
       console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}`);
 
-      if (currentNode.strokeWeight > 0 && hasVisibleStrokes) {
+      if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
+        
         const strokeWeightValue = `${currentNode.strokeWeight}px`;
         // Get the color of the first visible stroke
         let strokeColor = undefined;
@@ -369,6 +466,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             isToken: false,
             source: 'hard-coded',
             strokeColor: strokeColor,
+            isDefaultVariantStyle: currentNode.strokeWeight === 1 && strokeColor?.toUpperCase() === '#9747FF' && isNodeInVariant(currentNode),
             context: {
               nodeType: currentNode.type,
               nodeName: currentNode.name,
@@ -380,6 +478,8 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             }
           });
         }
+      } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && hasDefaultVariantFrameStyles(currentNode)) {
+        console.log(`   🚫 Skipping default variant frame stroke weight`);
       }
     }
 
@@ -391,20 +491,26 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
 
     if ('cornerRadius' in currentNode && typeof currentNode.cornerRadius === 'number' && !hasRadiusVariables) {
       console.log(`🔍 [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
-      const radius = currentNode.cornerRadius;
-      if (radius > 0) {
-        const radiusValue = `${radius}px`;
-        if (!borderSet.has(radiusValue)) {
-          console.log(`   ⚠️ Found hard-coded corner radius: ${radiusValue}`);
-          borderSet.add(radiusValue);
+      
+      // Skip if this node has default variant frame styles
+      if (hasDefaultVariantFrameStyles(currentNode)) {
+        console.log(`   🚫 Skipping default variant frame corner radius`);
+      } else {
+        const radius = currentNode.cornerRadius;
+        if (radius > 0) {
+          const radiusValue = `${radius}px`;
+          if (!borderSet.has(radiusValue)) {
+            console.log(`   ⚠️ Found hard-coded corner radius: ${radiusValue}`);
+            borderSet.add(radiusValue);
 
-          const debugContext = getDebugContext(currentNode);
-          borders.push({
+            const debugContext = getDebugContext(currentNode);
+            borders.push({
             name: `hard-coded-corner-radius-${radius}`,
             value: radiusValue,
             type: 'corner-radius',
             isToken: false,
             source: 'hard-coded',
+            isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
             context: {
               nodeType: currentNode.type,
               nodeName: currentNode.name,
@@ -414,6 +520,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
               property: 'cornerRadius'
             }
           });
+          }
         }
       }
     } else if (hasRadiusVariables) {
@@ -423,7 +530,12 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     // Also check for individual corner radius properties if they exist
     if (!hasRadiusVariables && 'topLeftRadius' in currentNode) {
       console.log(`🔍 [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
-      const radiusProps = [
+      
+      // Skip if this node has default variant frame styles
+      if (hasDefaultVariantFrameStyles(currentNode)) {
+        console.log(`   🚫 Skipping default variant frame individual corner radii`);
+      } else {
+        const radiusProps = [
         { prop: 'topLeftRadius', name: 'top-left' },
         { prop: 'topRightRadius', name: 'top-right' },
         { prop: 'bottomLeftRadius', name: 'bottom-left' },
@@ -446,6 +558,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                 type: `${name}-radius`,
                 isToken: false,
                 source: 'hard-coded',
+                isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
                 context: {
                   nodeType: currentNode.type,
                   nodeName: currentNode.name,
@@ -459,6 +572,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
           }
         }
       });
+      }
     }
 
     // Extract spacing values ONLY if no bound variables
@@ -483,12 +597,17 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
           spacingSet.add(padding.value.toString());
 
           const debugContext = getDebugContext(currentNode);
+          // Check if this is a default variant style (16px padding in a variant)
+          const isDefaultVariantPadding = padding.value === 16 && isNodeInVariant(currentNode) &&
+                                          hasDefaultVariantFrameStyles(currentNode);
+          
           spacing.push({
             name: `hard-coded-padding-${padding.name}-${padding.value}`,
             value: `${padding.value}px`,
             type: 'padding',
             isToken: false,
             source: 'hard-coded',
+            isDefaultVariantStyle: isDefaultVariantPadding,
             context: {
               nodeType: currentNode.type,
               nodeName: currentNode.name,
@@ -543,17 +662,19 @@ export function analyzeTokensConsistently(extractedTokens: {
       suggestion: getDefaultSuggestion(token, category)
     }));
 
-    const actualTokens = tokens.filter(t => t.isActualToken).length;
-    const hardCoded = tokens.filter(t => t.source === 'hard-coded').length;
+    // Filter out default variant styles from all counts
+    const nonDefaultTokens = tokens.filter(t => !t.isDefaultVariantStyle);
+    const actualTokens = nonDefaultTokens.filter(t => t.isActualToken).length;
+    const hardCoded = nonDefaultTokens.filter(t => t.source === 'hard-coded').length;
 
     summary.byCategory[category] = {
-      total: tokens.length,
+      total: nonDefaultTokens.length,
       tokens: actualTokens,
       hardCoded,
       suggestions: 0
     };
 
-    summary.totalTokens += tokens.length;
+    summary.totalTokens += nonDefaultTokens.length;
     summary.actualTokens += actualTokens;
     summary.hardCodedValues += hardCoded;
 

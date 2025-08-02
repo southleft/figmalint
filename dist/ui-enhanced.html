@@ -2889,12 +2889,9 @@
           </div>
         `;
 
-        // Get filtered results
-        const filteredResults = filterWrapperElements(currentTokenSummary);
-
         // Show overall token usage summary
-        const tokenUsagePercentage = filteredResults.totalTokens > 0
-          ? Math.round((currentTokenSummary.actualTokens / filteredResults.totalTokens) * 100)
+        const tokenUsagePercentage = currentTokenSummary.totalTokens > 0
+          ? Math.round((currentTokenSummary.actualTokens / currentTokenSummary.totalTokens) * 100)
           : 0;
 
         html += `
@@ -2902,16 +2899,16 @@
             <span class="audit-status ${tokenUsagePercentage >= 80 ? 'pass' : tokenUsagePercentage >= 50 ? 'warning' : 'fail'}">${
               tokenUsagePercentage >= 80 ? '✅' : tokenUsagePercentage >= 50 ? '⚠️' : '❌'
             }</span>
-            <span class="audit-label">Token usage: ${currentTokenSummary.actualTokens}/${filteredResults.totalTokens} properties (${tokenUsagePercentage}%)</span>
+            <span class="audit-label">Token usage: ${currentTokenSummary.actualTokens}/${currentTokenSummary.totalTokens} properties (${tokenUsagePercentage}%)</span>
           </div>
         `;
 
         // Show hard-coded values as individual failures
-        if (filteredResults.hardCodedValues > 0) {
+        if (currentTokenSummary.hardCodedValues > 0) {
           html += `
             <div class="audit-item">
               <span class="audit-status fail">❌</span>
-              <span class="audit-label">${filteredResults.hardCodedValues} hard-coded values found (should use design tokens)</span>
+              <span class="audit-label">${currentTokenSummary.hardCodedValues} hard-coded values found (should use design tokens)</span>
             </div>
           `;
 
@@ -2937,15 +2934,6 @@
           `;
         }
 
-        // Show wrapper filtering info if any were filtered
-        if (filteredResults.wrapperElementsFiltered > 0) {
-          html += `
-            <div class="audit-item" style="margin-left: 20px; opacity: 0.6; font-size: 11px;">
-              <span class="audit-status info" style="color: var(--text-tertiary);">ℹ️</span>
-              <span class="audit-label">${filteredResults.wrapperElementsFiltered} wrapper elements excluded from scoring</span>
-            </div>
-          `;
-        }
 
         html += '</div>';
 
@@ -2953,7 +2941,7 @@
         totalCount += 1; // Overall token usage check
         if (tokenUsagePercentage >= 50) passCount += 1; // Pass if >= 50% token usage
 
-        if (filteredResults.hardCodedValues > 0) {
+        if (currentTokenSummary.hardCodedValues > 0) {
           totalCount += 1; // Hard-coded values check
           // This always fails if there are hard-coded values
         } else {
@@ -3221,15 +3209,12 @@
 
       // Display token summary if available
       if (currentTokenSummary) {
-        // Use the same filtering logic as the component audit section for consistency
-        const filteredTokenSummary = filterWrapperElements(currentTokenSummary);
-
         html += '<div class="token-summary" style="background: var(--surface-secondary); border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; margin-top: 0;">📊 Token Analysis Summary</h4>';
         html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px;">';
-        html += `<div><strong>Total Items:</strong> ${filteredTokenSummary.totalTokens}</div>`;
+        html += `<div><strong>Total Items:</strong> ${currentTokenSummary.totalTokens}</div>`;
         html += `<div><strong>Design Tokens:</strong> <span style="color: var(--success)">${currentTokenSummary.actualTokens}</span></div>`;
-        html += `<div><strong>Hard-coded:</strong> <span style="color: var(--warning)">${filteredTokenSummary.hardCodedValues}</span></div>`;
+        html += `<div><strong>Hard-coded:</strong> <span style="color: var(--warning)">${currentTokenSummary.hardCodedValues}</span></div>`;
         html += `<div><strong>AI Suggestions:</strong> <span style="color: var(--primary)">${currentTokenSummary.aiSuggestions}</span></div>`;
         html += '</div>';
 
@@ -3247,12 +3232,6 @@
           html += '</div>';
         }
 
-        // Add note about wrapper filtering if any elements were filtered
-        if (filteredTokenSummary.wrapperElementsFiltered > 0) {
-          html += '<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text-tertiary);">';
-          html += `<div>💡 Filtered out ${filteredTokenSummary.wrapperElementsFiltered} wrapper element${filteredTokenSummary.wrapperElementsFiltered > 1 ? 's' : ''} to focus on content styling</div>`;
-          html += '</div>';
-        }
 
         html += '</div>';
       }
@@ -3266,7 +3245,8 @@
         // Separate actual tokens from hard-coded values
         console.log('Color tokens before filtering:', tokens.colors);
         const actualTokens = tokens.colors.filter(token => token.isActualToken);
-        const hardCodedTokens = tokens.colors.filter(token => !token.isActualToken && token.source === 'hard-coded');
+        const hardCodedTokens = tokens.colors.filter(token => !token.isActualToken && token.source === 'hard-coded' && !token.isDefaultVariantStyle);
+        const defaultVariantTokens = tokens.colors.filter(token => !token.isActualToken && token.source === 'hard-coded' && token.isDefaultVariantStyle);
         const aiSuggestions = tokens.colors.filter(token => token.source === 'ai-suggestion');
 
         console.log('Filtered results:', {
@@ -3279,7 +3259,7 @@
         // Show actual design tokens first
         if (actualTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Design Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Design Tokens in Use</h5>';
           actualTokens.forEach(token => {
             const usageIcon = token.usage === 'background' ? '🎨' : '🔲';
             html += `
@@ -3308,7 +3288,7 @@
             const selectButton = token.context?.nodeId ?
               `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
                 </svg>
               </button>` : '';
 
@@ -3344,6 +3324,7 @@
           html += '</div>';
         }
 
+
         html += '</div>';
       }
 
@@ -3353,11 +3334,11 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">✨ Effect Tokens</h4>';
 
         const actualEffectTokens = tokens.effects.filter(token => token.isActualToken);
-        const hardCodedEffects = tokens.effects.filter(token => !token.isActualToken);
+        const hardCodedEffects = tokens.effects.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
 
         if (actualEffectTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Effect Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Effect Tokens in Use</h5>';
           actualEffectTokens.forEach(token => {
             html += `
               <div class="token-item-compact">
@@ -3381,7 +3362,7 @@
             const selectButton = token.context?.nodeId ?
               `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
                 </svg>
               </button>` : '';
 
@@ -3408,11 +3389,12 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🔲 Border Tokens</h4>';
 
         const actualBorderTokens = tokens.borders.filter(token => token.isActualToken);
-        const hardCodedBorders = tokens.borders.filter(token => !token.isActualToken);
+        const hardCodedBorders = tokens.borders.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
+        const defaultBorders = tokens.borders.filter(token => !token.isActualToken && token.isDefaultVariantStyle);
 
         if (actualBorderTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Border Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Border Tokens in Use</h5>';
           actualBorderTokens.forEach(token => {
             html += `
               <div class="token-item-compact">
@@ -3463,7 +3445,7 @@
               const selectButton = token.context?.nodeId ?
                 `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
                   </svg>
                 </button>` : '';
 
@@ -3507,7 +3489,7 @@
               const selectButton = token.context?.nodeId ?
                 `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
                   </svg>
                 </button>` : '';
 
@@ -3527,6 +3509,7 @@
           }
         }
 
+
         html += '</div>';
       }
 
@@ -3536,11 +3519,12 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📏 Spacing Tokens</h4>';
 
         const actualSpacingTokens = tokens.spacing.filter(token => token.isActualToken);
-        const hardCodedSpacing = tokens.spacing.filter(token => !token.isActualToken);
+        const hardCodedSpacing = tokens.spacing.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
+        const defaultSpacing = tokens.spacing.filter(token => !token.isActualToken && token.isDefaultVariantStyle);
 
         if (actualSpacingTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Spacing Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Spacing Tokens in Use</h5>';
           actualSpacingTokens.forEach(token => {
             html += `
               <div class="token-item-compact">
@@ -3578,7 +3562,7 @@
             const selectButton = token.context?.nodeId ?
               `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
                 </svg>
               </button>` : '';
 
@@ -3596,6 +3580,7 @@
           html += '</div>';
         }
 
+
         html += '</div>';
       }
 
@@ -3605,11 +3590,11 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Typography Tokens</h4>';
 
         const actualTypographyTokens = tokens.typography.filter(token => token.isActualToken);
-        const hardCodedTypography = tokens.typography.filter(token => !token.isActualToken);
+        const hardCodedTypography = tokens.typography.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
 
         if (actualTypographyTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">✅ Typography Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Typography Tokens in Use</h5>';
           actualTypographyTokens.forEach(token => {
             const typeIcon = token.type === 'font-size' ? '📝' :
                            token.type === 'line-height' ? '📏' : '📝';
@@ -3639,7 +3624,7 @@
             const selectButton = token.context?.nodeId ?
               `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
                 </svg>
               </button>` : '';
 
@@ -3672,19 +3657,19 @@
         `;
       } else {
         // Add summary statistics
-        const totalTokens = (tokens.colors && tokens.colors.length ? tokens.colors.length : 0) +
-                          (tokens.spacing && tokens.spacing.length ? tokens.spacing.length : 0) +
-                          (tokens.typography && tokens.typography.length ? tokens.typography.length : 0) +
-                          (tokens.effects && tokens.effects.length ? tokens.effects.length : 0) +
-                          (tokens.borders && tokens.borders.length ? tokens.borders.length : 0);
-        const actualTokensCount = [
+        const allTokens = [
           ...(tokens.colors || []),
           ...(tokens.spacing || []),
           ...(tokens.typography || []),
           ...(tokens.effects || []),
           ...(tokens.borders || [])
-        ].filter(token => token.isActualToken).length;
-        const hardCodedCount = totalTokens - actualTokensCount;
+        ];
+
+        // Exclude default variant styles from counts
+        const nonDefaultTokens = allTokens.filter(token => !token.isDefaultVariantStyle);
+        const totalTokens = nonDefaultTokens.length;
+        const actualTokensCount = nonDefaultTokens.filter(token => token.isActualToken).length;
+        const hardCodedCount = nonDefaultTokens.filter(token => !token.isActualToken && token.source === 'hard-coded').length;
 
         // Removed redundant compact token summary - detailed summary above provides better info
       }
@@ -4383,34 +4368,197 @@
     }
 
     function formatChatContent(content) {
-      // Wrap content in article-style container and apply standard formatting
-      const formatted = content
+      // Debug logging
+      console.log('Original content:', content);
+
+      // First pass: identify and group all lists
+      let processedContent = content;
+
+      // Process ordered lists - match all of them first, then replace
+      const orderedListRegex = /^(\d+)\.\s+(.+?)(?=\n\d+\.|$(?!\n))/gms;
+      const orderedLists = [];
+      let match;
+
+      // Find all ordered list items
+      const orderedMatches = [];
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const olMatch = line.match(/^(\d+)\.\s+(.+)$/);
+        if (olMatch) {
+          orderedMatches.push({ lineIndex: i, number: olMatch[1], content: olMatch[2], line: line });
+        }
+      }
+
+      // Group consecutive ordered items
+      if (orderedMatches.length > 0) {
+        let currentGroup = [orderedMatches[0]];
+        const groups = [];
+
+        for (let i = 1; i < orderedMatches.length; i++) {
+          const prev = orderedMatches[i - 1];
+          const curr = orderedMatches[i];
+
+          // Check if this item should be in the same list (consecutive or with nested content between)
+          let shouldGroup = false;
+
+          // Check if there's only nested content (indented lines) between items
+          let allNested = true;
+          for (let j = prev.lineIndex + 1; j < curr.lineIndex; j++) {
+            const betweenLine = lines[j].trim();
+            if (betweenLine && !lines[j].match(/^\s+/)) {
+              allNested = false;
+              break;
+            }
+          }
+
+          if (allNested && (curr.lineIndex - prev.lineIndex < 10)) {
+            shouldGroup = true;
+          }
+
+          if (shouldGroup) {
+            currentGroup.push(curr);
+          } else {
+            groups.push(currentGroup);
+            currentGroup = [curr];
+          }
+        }
+        groups.push(currentGroup);
+
+        // Replace each group with proper HTML
+        let modifiedContent = content;
+        for (const group of groups.reverse()) {
+          if (group.length > 0) {
+            const startLine = group[0].lineIndex;
+            const endLine = group[group.length - 1].lineIndex;
+
+            // Build the HTML for this group
+            let olHtml = '<ol>\n';
+            for (let i = 0; i < group.length; i++) {
+              const item = group[i];
+              let itemContent = item.content;
+
+              // Check for nested content after this item
+              if (i < group.length - 1) {
+                const nextItem = group[i + 1];
+                const nestedLines = [];
+                for (let j = item.lineIndex + 1; j < nextItem.lineIndex; j++) {
+                  if (lines[j].match(/^\s+[-*]\s+/)) {
+                    nestedLines.push(lines[j]);
+                  }
+                }
+                if (nestedLines.length > 0) {
+                  // Process nested unordered list
+                  const nestedHtml = nestedLines.map(l => {
+                    const match = l.match(/^\s*[-*]\s+(.*)$/);
+                    return match ? `<li>${match[1]}</li>` : '';
+                  }).filter(l => l).join('\n');
+                  if (nestedHtml) {
+                    itemContent += '\n<ul>\n' + nestedHtml + '\n</ul>';
+                  }
+                }
+              }
+
+              olHtml += `<li>${itemContent}</li>\n`;
+            }
+            olHtml += '</ol>';
+
+            // Replace in content
+            const linesToReplace = [];
+            for (let i = startLine; i <= endLine; i++) {
+              linesToReplace.push(i);
+              // Include nested lines
+              if (i < endLine) {
+                for (let j = i + 1; j < lines.length && lines[j].match(/^\s+[-*]\s+/); j++) {
+                  linesToReplace.push(j);
+                  i = j;
+                }
+              }
+            }
+
+            // Build new content
+            const newLines = [...lines];
+            newLines[startLine] = olHtml;
+            for (let i = startLine + 1; i <= Math.max(...linesToReplace); i++) {
+              newLines[i] = '';
+            }
+            lines.splice(0, lines.length, ...newLines);
+          }
+        }
+
+        processedContent = lines.filter(l => l !== '').join('\n');
+      }
+
+      // Process standalone unordered lists
+      processedContent = processedContent.replace(/^([-*]\s+.+(?:\n(?:[-*]\s+.+|\s+[-*]\s+.+))*)/gm, (match) => {
+        const items = match.split('\n').map(line => {
+          const itemMatch = line.match(/^\s*[-*]\s+(.*)$/);
+          return itemMatch ? `<li>${itemMatch[1]}</li>` : '';
+        }).filter(item => item);
+        return '<ul>\n' + items.join('\n') + '\n</ul>';
+      });
+
+      // Now apply other formatting
+      const formatted = processedContent
         // Convert headers with standard article spacing
         .replace(/^### (.*$)/gm, '<h4>$1</h4>')
         .replace(/^## (.*$)/gm, '<h3>$1</h3>')
         .replace(/^# (.*$)/gm, '<h2>$1</h2>')
-        // Convert bullet lists
-        .replace(/^- (.*$)/gm, '<li>$1</li>')
-        // Wrap consecutive <li> elements in <ul>
-        .replace(/(<li[^>]*>.*?<\/li>)(\s*<li[^>]*>.*?<\/li>)*/g, function(match) {
-          return '<ul>' + match + '</ul>';
-        })
-        // Bold and italic
+        // Bold and italic (be careful not to match * in lists)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/(?<!<[^>]*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>')
         // Inline code
-        .replace(/`(.*?)`/g, '<code>$1</code>')
-        // Convert double line breaks to paragraphs, single line breaks to spaces
-        .replace(/\n\n+/g, '</p><p>')
-        .replace(/\n/g, ' ');
+        .replace(/`(.*?)`/g, '<code>$1</code>');
 
-      // Wrap in paragraphs if not already structured
-      let finalFormatted = formatted;
-      if (!finalFormatted.includes('<p>') && !finalFormatted.includes('<h') && !finalFormatted.includes('<ul>')) {
-        finalFormatted = '<p>' + finalFormatted + '</p>';
-      } else if (finalFormatted.includes('</p><p>')) {
-        finalFormatted = '<p>' + finalFormatted + '</p>';
+      // Properly wrap content in paragraphs
+      const formattedLines = formatted.split('\n');
+      const wrappedLines = [];
+      let inList = false;
+      let currentParagraph = [];
+      
+      for (const line of formattedLines) {
+        const trimmedLine = line.trim();
+        
+        // Check if we're entering or exiting a list
+        if (trimmedLine.startsWith('<ol>') || trimmedLine.startsWith('<ul>')) {
+          // Close current paragraph if any
+          if (currentParagraph.length > 0) {
+            wrappedLines.push('<p>' + currentParagraph.join(' ') + '</p>');
+            currentParagraph = [];
+          }
+          inList = true;
+          wrappedLines.push(line);
+        } else if (trimmedLine.startsWith('</ol>') || trimmedLine.startsWith('</ul>')) {
+          wrappedLines.push(line);
+          inList = false;
+        } else if (trimmedLine.startsWith('<h') || trimmedLine.startsWith('</h')) {
+          // Headers - close current paragraph and add header
+          if (currentParagraph.length > 0) {
+            wrappedLines.push('<p>' + currentParagraph.join(' ') + '</p>');
+            currentParagraph = [];
+          }
+          wrappedLines.push(line);
+        } else if (inList) {
+          // Inside a list, add as-is
+          wrappedLines.push(line);
+        } else if (trimmedLine === '') {
+          // Empty line - close current paragraph if any
+          if (currentParagraph.length > 0) {
+            wrappedLines.push('<p>' + currentParagraph.join(' ') + '</p>');
+            currentParagraph = [];
+          }
+        } else {
+          // Regular text - add to current paragraph
+          currentParagraph.push(trimmedLine);
+        }
       }
+      
+      // Close any remaining paragraph
+      if (currentParagraph.length > 0) {
+        wrappedLines.push('<p>' + currentParagraph.join(' ') + '</p>');
+      }
+      
+      const finalFormatted = wrappedLines.join('\n');
 
       return '<div class="chat-article">' + finalFormatted + '</div>';
     }

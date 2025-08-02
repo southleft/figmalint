@@ -115,11 +115,17 @@ export function sendMessageToUI(type: string, data?: any): void {
 
 /**
  * Get the main component from a node (follows instance chains)
+ * Now uses async API to avoid documentAccess errors
  */
-export function getMainComponent(node: SceneNode): ComponentNode | null {
+export async function getMainComponentAsync(node: SceneNode): Promise<ComponentNode | null> {
   if (node.type === 'INSTANCE') {
     const instance = node as InstanceNode;
-    return instance.mainComponent;
+    try {
+      return await instance.getMainComponentAsync();
+    } catch (error) {
+      console.warn('Could not access main component:', error);
+      return null;
+    }
   } else if (node.type === 'COMPONENT') {
     return node as ComponentNode;
   }

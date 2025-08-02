@@ -17,6 +17,24 @@ const DETERMINISTIC_CONFIG = {
  * Send a prompt to Claude API and get a response with deterministic settings
  */
 export async function fetchClaude(prompt: string, apiKey: string, model: string = DEFAULT_MODEL, isDeterministic: boolean = true): Promise<string> {
+  // Validate API key format
+  if (!apiKey || typeof apiKey !== 'string') {
+    throw new Error('API Key Required: Please provide a valid Claude API key in the plugin settings.');
+  }
+
+  const trimmedKey = apiKey.trim();
+  if (trimmedKey.length === 0) {
+    throw new Error('API Key Required: The Claude API key cannot be empty.');
+  }
+
+  if (!trimmedKey.startsWith('sk-ant-')) {
+    throw new Error('Invalid API Key Format: Claude API keys should start with "sk-ant-". Please check your API key.');
+  }
+
+  if (trimmedKey.length < 40) {
+    throw new Error('Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key.');
+  }
+
   console.log('Making Claude API call with deterministic settings...');
 
   // Prepare the request payload for Anthropic API
@@ -50,9 +68,42 @@ export async function fetchClaude(prompt: string, apiKey: string, model: string 
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Claude API error response:', errorText);
-      throw new Error(`Claude API request failed: ${response.status} ${response.statusText}`);
+      let errorText = '';
+      let errorDetails: any = {};
+
+      try {
+        errorText = await response.text();
+        errorDetails = JSON.parse(errorText);
+      } catch (e) {
+        // If response is not JSON, use the plain text
+        errorDetails = { message: errorText };
+      }
+
+      console.error('Claude API error response:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText,
+        errorDetails
+      });
+
+      // Provide detailed error messages based on status code
+      if (response.status === 400) {
+        const errorMsg = errorDetails.error?.message || errorDetails.message || 'Bad request';
+        throw new Error(`Claude API Error (400): ${errorMsg}. Please check your request format.`);
+      } else if (response.status === 401) {
+        throw new Error('Claude API Error (401): Invalid API key. Please check your Claude API key in settings.');
+      } else if (response.status === 403) {
+        throw new Error('Claude API Error (403): Access forbidden. Please check your API key permissions.');
+      } else if (response.status === 429) {
+        const retryAfter = response.headers.get('retry-after');
+        throw new Error(`Claude API Error (429): Rate limit exceeded. ${retryAfter ? `Please try again in ${retryAfter} seconds.` : 'Please try again later.'}`);
+      } else if (response.status === 500) {
+        throw new Error('Claude API Error (500): Server error. The Claude API is experiencing issues. Please try again later.');
+      } else if (response.status === 503) {
+        throw new Error('Claude API Error (503): Service unavailable. The Claude API is temporarily down. Please try again later.');
+      } else {
+        throw new Error(`Claude API Error (${response.status}): ${errorDetails.error?.message || errorDetails.message || response.statusText}`);
+      }
     }
 
     const data: ClaudeAPIResponse = await response.json();
@@ -67,15 +118,23 @@ export async function fetchClaude(prompt: string, apiKey: string, model: string 
     console.error('Error calling Claude API:', error);
 
     if (error instanceof Error) {
-      if (error.message.includes('Failed to fetch')) {
-        throw new Error('Failed to connect to Claude API. Please check your internet connection.');
-      } else if (error.message.includes('401')) {
-        throw new Error('Invalid API key. Please check your Claude API key.');
-      } else if (error.message.includes('429')) {
-        throw new Error('Rate limit exceeded. Please try again later.');
+      // If it's already a formatted error from above, pass it through
+      if (error.message.includes('Claude API Error')) {
+        throw error;
+      }
+
+      // Handle network and other errors
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        throw new Error('Network Error: Failed to connect to Claude API. Please check your internet connection and try again.');
+      } else if (error.message.includes('TypeError')) {
+        throw new Error('Request Error: Invalid request format. Please contact support if this persists.');
+      } else if (error.message.includes('timeout')) {
+        throw new Error('Timeout Error: Request to Claude API timed out. Please try again.');
       }
     }
-    throw error;
+
+    // For unknown errors, provide a generic message with the original error
+    throw new Error(`Unexpected error calling Claude API: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 

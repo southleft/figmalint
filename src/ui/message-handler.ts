@@ -166,11 +166,17 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     // Handle instances
     if (selectedNode.type === 'INSTANCE') {
       const instance = selectedNode as InstanceNode;
-      if (instance.mainComponent) {
-        figma.notify('Analyzing main component instead of instance...', { timeout: 2000 });
-        selectedNode = instance.mainComponent;
-      } else {
-        throw new Error('This instance has no main component. Please select a component directly.');
+      try {
+        const mainComponent = await instance.getMainComponentAsync();
+        if (mainComponent) {
+          figma.notify('Analyzing main component instead of instance...', { timeout: 2000 });
+          selectedNode = mainComponent;
+        } else {
+          throw new Error('This instance has no main component. Please select a component directly.');
+        }
+      } catch (error) {
+        console.error('Error accessing main component:', error);
+        throw new Error('Could not access main component. Please select a component directly.');
       }
     }
 
@@ -192,7 +198,7 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     await consistencyEngine.loadDesignSystemsKnowledge();
 
     // Extract component context
-    const componentContext = extractComponentContext(selectedNode);
+    const componentContext = await extractComponentContext(selectedNode);
 
     // Set up enhanced analysis options with MCP enabled by default
     const enhancedOptions: EnhancedAnalysisOptions = {
@@ -251,7 +257,7 @@ async function handleBatchAnalysis(nodes: readonly SceneNode[], _options: Enhanc
     if (isValidNodeForAnalysis(node)) {
       try {
         // Extract context and tokens for hashing
-        const componentContext = extractComponentContext(node);
+        const componentContext = await extractComponentContext(node);
         const tokenAnalysis = await extractDesignTokensFromNode(node);
         const allTokens = [
           ...tokenAnalysis.colors,

@@ -138,6 +138,60 @@
   }
 
   // src/core/token-analyzer.ts
+  function hasDefaultVariantFrameStyles(node) {
+    var _a;
+    let currentNode = node;
+    let isPartOfVariant = false;
+    while (currentNode) {
+      if (currentNode.type === "COMPONENT_SET") {
+        isPartOfVariant = true;
+        break;
+      }
+      if (currentNode.parent && currentNode.parent.type === "COMPONENT_SET") {
+        isPartOfVariant = true;
+        break;
+      }
+      currentNode = currentNode.parent;
+    }
+    if (!isPartOfVariant) {
+      return false;
+    }
+    if (!("strokes" in node) || !("cornerRadius" in node) || !("strokeWeight" in node)) {
+      return false;
+    }
+    const hasDefaultRadius = node.cornerRadius === 5 || "topLeftRadius" in node && "topRightRadius" in node && "bottomLeftRadius" in node && "bottomRightRadius" in node && node.topLeftRadius === 5 && node.topRightRadius === 5 && node.bottomLeftRadius === 5 && node.bottomRightRadius === 5;
+    const hasDefaultStrokeWeight = node.strokeWeight === 1;
+    const strokes = node.strokes;
+    const hasDefaultStroke = strokes.length > 0 && strokes.some((stroke) => {
+      if (stroke.type === "SOLID" && stroke.visible !== false && stroke.color) {
+        const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b).toUpperCase();
+        return hex === "#9747FF";
+      }
+      return false;
+    });
+    const hasDefaultPadding = "paddingLeft" in node && "paddingRight" in node && "paddingTop" in node && "paddingBottom" in node && node.paddingLeft === 16 && node.paddingRight === 16 && node.paddingTop === 16 && node.paddingBottom === 16;
+    const hasAllDefaults = hasDefaultRadius && hasDefaultStrokeWeight && hasDefaultStroke && hasDefaultPadding;
+    if (hasAllDefaults) {
+      console.log(`\u{1F3AF} [FILTER] Detected default variant frame styles in ${node.name} - filtering out`);
+      console.log(`   Type: ${node.type}, Parent: ${(_a = node.parent) == null ? void 0 : _a.type}`);
+      console.log(`   Radius: ${node.cornerRadius}, Weight: ${node.strokeWeight}, Color: ${strokes.length > 0 ? rgbToHex(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b) : "none"}`);
+      console.log(`   Padding: L=${node.paddingLeft}, R=${node.paddingRight}, T=${node.paddingTop}, B=${node.paddingBottom}`);
+    }
+    return hasAllDefaults;
+  }
+  function isNodeInVariant(node) {
+    let currentNode = node;
+    while (currentNode) {
+      if (currentNode.type === "COMPONENT_SET") {
+        return true;
+      }
+      if (currentNode.parent && currentNode.parent.type === "COMPONENT_SET") {
+        return true;
+      }
+      currentNode = currentNode.parent;
+    }
+    return false;
+  }
   async function extractDesignTokensFromNode(node) {
     const colors = [];
     const spacing = [];
@@ -373,31 +427,36 @@
       const hasStrokeStyle = "strokeStyleId" in currentNode && currentNode.strokeStyleId;
       if ("strokes" in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
         console.log(`\u{1F50D} [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
-        currentNode.strokes.forEach((stroke) => {
-          if (stroke.type === "SOLID" && stroke.visible !== false && stroke.color) {
-            const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
-            if (!colorSet.has(hex)) {
-              console.log(`   \u26A0\uFE0F Found hard-coded stroke: ${hex}`);
-              colorSet.add(hex);
-              const debugContext = getDebugContext(currentNode);
-              colors.push({
-                name: `hard-coded-stroke-${colors.length + 1}`,
-                value: hex,
-                type: "stroke",
-                isToken: false,
-                source: "hard-coded",
-                context: {
-                  nodeType: currentNode.type,
-                  nodeName: currentNode.name,
-                  nodeId: currentNode.id,
-                  path: debugContext.path,
-                  description: debugContext.description,
-                  property: "strokes"
-                }
-              });
+        if (hasDefaultVariantFrameStyles(currentNode)) {
+          console.log(`   \u{1F6AB} Skipping default variant frame stroke colors`);
+        } else {
+          currentNode.strokes.forEach((stroke) => {
+            if (stroke.type === "SOLID" && stroke.visible !== false && stroke.color) {
+              const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
+              if (!colorSet.has(hex)) {
+                console.log(`   \u26A0\uFE0F Found hard-coded stroke: ${hex}`);
+                colorSet.add(hex);
+                const debugContext = getDebugContext(currentNode);
+                colors.push({
+                  name: `hard-coded-stroke-${colors.length + 1}`,
+                  value: hex,
+                  type: "stroke",
+                  isToken: false,
+                  source: "hard-coded",
+                  isDefaultVariantStyle: hex.toUpperCase() === "#9747FF" && isNodeInVariant(currentNode),
+                  context: {
+                    nodeType: currentNode.type,
+                    nodeName: currentNode.name,
+                    nodeId: currentNode.id,
+                    path: debugContext.path,
+                    description: debugContext.description,
+                    property: "strokes"
+                  }
+                });
+              }
             }
-          }
-        });
+          });
+        }
       } else if (hasStrokeVariables) {
         console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has stroke variables - skipping hard-coded detection`);
       } else if (hasStrokeStyle) {
@@ -408,7 +467,7 @@
         const hasStrokes = "strokes" in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
         const hasVisibleStrokes = hasStrokes && currentNode.strokes.some((stroke) => stroke.visible !== false);
         console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}`);
-        if (currentNode.strokeWeight > 0 && hasVisibleStrokes) {
+        if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
           const strokeWeightValue = `${currentNode.strokeWeight}px`;
           let strokeColor = void 0;
           const firstVisibleStroke = currentNode.strokes.find((stroke) => stroke.visible !== false && stroke.type === "SOLID");
@@ -426,6 +485,7 @@
               isToken: false,
               source: "hard-coded",
               strokeColor,
+              isDefaultVariantStyle: currentNode.strokeWeight === 1 && (strokeColor == null ? void 0 : strokeColor.toUpperCase()) === "#9747FF" && isNodeInVariant(currentNode),
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
@@ -437,33 +497,40 @@
               }
             });
           }
+        } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && hasDefaultVariantFrameStyles(currentNode)) {
+          console.log(`   \u{1F6AB} Skipping default variant frame stroke weight`);
         }
       }
       const hasRadiusVariables = "boundVariables" in currentNode && currentNode.boundVariables && ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", "cornerRadius"].some((prop) => currentNode.boundVariables[prop]);
       if ("cornerRadius" in currentNode && typeof currentNode.cornerRadius === "number" && !hasRadiusVariables) {
         console.log(`\u{1F50D} [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
-        const radius = currentNode.cornerRadius;
-        if (radius > 0) {
-          const radiusValue = `${radius}px`;
-          if (!borderSet.has(radiusValue)) {
-            console.log(`   \u26A0\uFE0F Found hard-coded corner radius: ${radiusValue}`);
-            borderSet.add(radiusValue);
-            const debugContext = getDebugContext(currentNode);
-            borders.push({
-              name: `hard-coded-corner-radius-${radius}`,
-              value: radiusValue,
-              type: "corner-radius",
-              isToken: false,
-              source: "hard-coded",
-              context: {
-                nodeType: currentNode.type,
-                nodeName: currentNode.name,
-                nodeId: currentNode.id,
-                path: debugContext.path,
-                description: debugContext.description,
-                property: "cornerRadius"
-              }
-            });
+        if (hasDefaultVariantFrameStyles(currentNode)) {
+          console.log(`   \u{1F6AB} Skipping default variant frame corner radius`);
+        } else {
+          const radius = currentNode.cornerRadius;
+          if (radius > 0) {
+            const radiusValue = `${radius}px`;
+            if (!borderSet.has(radiusValue)) {
+              console.log(`   \u26A0\uFE0F Found hard-coded corner radius: ${radiusValue}`);
+              borderSet.add(radiusValue);
+              const debugContext = getDebugContext(currentNode);
+              borders.push({
+                name: `hard-coded-corner-radius-${radius}`,
+                value: radiusValue,
+                type: "corner-radius",
+                isToken: false,
+                source: "hard-coded",
+                isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
+                context: {
+                  nodeType: currentNode.type,
+                  nodeName: currentNode.name,
+                  nodeId: currentNode.id,
+                  path: debugContext.path,
+                  description: debugContext.description,
+                  property: "cornerRadius"
+                }
+              });
+            }
           }
         }
       } else if (hasRadiusVariables) {
@@ -471,40 +538,45 @@
       }
       if (!hasRadiusVariables && "topLeftRadius" in currentNode) {
         console.log(`\u{1F50D} [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
-        const radiusProps = [
-          { prop: "topLeftRadius", name: "top-left" },
-          { prop: "topRightRadius", name: "top-right" },
-          { prop: "bottomLeftRadius", name: "bottom-left" },
-          { prop: "bottomRightRadius", name: "bottom-right" }
-        ];
-        radiusProps.forEach(({ prop, name }) => {
-          if (prop in currentNode && typeof currentNode[prop] === "number") {
-            const radius = currentNode[prop];
-            if (radius > 0) {
-              const radiusValue = `${radius}px`;
-              if (!borderSet.has(radiusValue)) {
-                console.log(`   \u26A0\uFE0F Found hard-coded ${name} radius: ${radiusValue}`);
-                borderSet.add(radiusValue);
-                const debugContext = getDebugContext(currentNode);
-                borders.push({
-                  name: `hard-coded-${name}-radius-${radius}`,
-                  value: radiusValue,
-                  type: `${name}-radius`,
-                  isToken: false,
-                  source: "hard-coded",
-                  context: {
-                    nodeType: currentNode.type,
-                    nodeName: currentNode.name,
-                    nodeId: currentNode.id,
-                    path: debugContext.path,
-                    description: debugContext.description,
-                    property: prop
-                  }
-                });
+        if (hasDefaultVariantFrameStyles(currentNode)) {
+          console.log(`   \u{1F6AB} Skipping default variant frame individual corner radii`);
+        } else {
+          const radiusProps = [
+            { prop: "topLeftRadius", name: "top-left" },
+            { prop: "topRightRadius", name: "top-right" },
+            { prop: "bottomLeftRadius", name: "bottom-left" },
+            { prop: "bottomRightRadius", name: "bottom-right" }
+          ];
+          radiusProps.forEach(({ prop, name }) => {
+            if (prop in currentNode && typeof currentNode[prop] === "number") {
+              const radius = currentNode[prop];
+              if (radius > 0) {
+                const radiusValue = `${radius}px`;
+                if (!borderSet.has(radiusValue)) {
+                  console.log(`   \u26A0\uFE0F Found hard-coded ${name} radius: ${radiusValue}`);
+                  borderSet.add(radiusValue);
+                  const debugContext = getDebugContext(currentNode);
+                  borders.push({
+                    name: `hard-coded-${name}-radius-${radius}`,
+                    value: radiusValue,
+                    type: `${name}-radius`,
+                    isToken: false,
+                    source: "hard-coded",
+                    isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
+                    context: {
+                      nodeType: currentNode.type,
+                      nodeName: currentNode.name,
+                      nodeId: currentNode.id,
+                      path: debugContext.path,
+                      description: debugContext.description,
+                      property: prop
+                    }
+                  });
+                }
               }
             }
-          }
-        });
+          });
+        }
       }
       const hasPaddingVariables = "boundVariables" in currentNode && currentNode.boundVariables && ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"].some((prop) => currentNode.boundVariables[prop]);
       if ("paddingLeft" in currentNode && typeof currentNode.paddingLeft === "number" && !hasPaddingVariables) {
@@ -521,12 +593,14 @@
             console.log(`   \u26A0\uFE0F Found hard-coded padding-${padding.name}: ${padding.value}px`);
             spacingSet.add(padding.value.toString());
             const debugContext = getDebugContext(currentNode);
+            const isDefaultVariantPadding = padding.value === 16 && isNodeInVariant(currentNode) && hasDefaultVariantFrameStyles(currentNode);
             spacing.push({
               name: `hard-coded-padding-${padding.name}-${padding.value}`,
               value: `${padding.value}px`,
               type: "padding",
               isToken: false,
               source: "hard-coded",
+              isDefaultVariantStyle: isDefaultVariantPadding,
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
@@ -565,15 +639,16 @@
         recommendation: getDefaultRecommendation(token, category),
         suggestion: getDefaultSuggestion(token, category)
       }));
-      const actualTokens = tokens.filter((t) => t.isActualToken).length;
-      const hardCoded = tokens.filter((t) => t.source === "hard-coded").length;
+      const nonDefaultTokens = tokens.filter((t) => !t.isDefaultVariantStyle);
+      const actualTokens = nonDefaultTokens.filter((t) => t.isActualToken).length;
+      const hardCoded = nonDefaultTokens.filter((t) => t.source === "hard-coded").length;
       summary.byCategory[category] = {
-        total: tokens.length,
+        total: nonDefaultTokens.length,
         tokens: actualTokens,
         hardCoded,
         suggestions: 0
       };
-      summary.totalTokens += tokens.length;
+      summary.totalTokens += nonDefaultTokens.length;
       summary.actualTokens += actualTokens;
       summary.hardCodedValues += hardCoded;
       extractedTokens[category] = tokens;
@@ -633,6 +708,20 @@
     // Low top_p for deterministic responses
   };
   async function fetchClaude(prompt, apiKey, model = DEFAULT_MODEL, isDeterministic = true) {
+    var _a, _b;
+    if (!apiKey || typeof apiKey !== "string") {
+      throw new Error("API Key Required: Please provide a valid Claude API key in the plugin settings.");
+    }
+    const trimmedKey = apiKey.trim();
+    if (trimmedKey.length === 0) {
+      throw new Error("API Key Required: The Claude API key cannot be empty.");
+    }
+    if (!trimmedKey.startsWith("sk-ant-")) {
+      throw new Error('Invalid API Key Format: Claude API keys should start with "sk-ant-". Please check your API key.');
+    }
+    if (trimmedKey.length < 40) {
+      throw new Error("Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key.");
+    }
     console.log("Making Claude API call with deterministic settings...");
     const requestBody = __spreadValues({
       model,
@@ -658,9 +747,37 @@
         body: JSON.stringify(requestBody)
       });
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Claude API error response:", errorText);
-        throw new Error(`Claude API request failed: ${response.status} ${response.statusText}`);
+        let errorText = "";
+        let errorDetails = {};
+        try {
+          errorText = await response.text();
+          errorDetails = JSON.parse(errorText);
+        } catch (e) {
+          errorDetails = { message: errorText };
+        }
+        console.error("Claude API error response:", {
+          status: response.status,
+          statusText: response.statusText,
+          errorText,
+          errorDetails
+        });
+        if (response.status === 400) {
+          const errorMsg = ((_a = errorDetails.error) == null ? void 0 : _a.message) || errorDetails.message || "Bad request";
+          throw new Error(`Claude API Error (400): ${errorMsg}. Please check your request format.`);
+        } else if (response.status === 401) {
+          throw new Error("Claude API Error (401): Invalid API key. Please check your Claude API key in settings.");
+        } else if (response.status === 403) {
+          throw new Error("Claude API Error (403): Access forbidden. Please check your API key permissions.");
+        } else if (response.status === 429) {
+          const retryAfter = response.headers.get("retry-after");
+          throw new Error(`Claude API Error (429): Rate limit exceeded. ${retryAfter ? `Please try again in ${retryAfter} seconds.` : "Please try again later."}`);
+        } else if (response.status === 500) {
+          throw new Error("Claude API Error (500): Server error. The Claude API is experiencing issues. Please try again later.");
+        } else if (response.status === 503) {
+          throw new Error("Claude API Error (503): Service unavailable. The Claude API is temporarily down. Please try again later.");
+        } else {
+          throw new Error(`Claude API Error (${response.status}): ${((_b = errorDetails.error) == null ? void 0 : _b.message) || errorDetails.message || response.statusText}`);
+        }
       }
       const data = await response.json();
       console.log("Claude API response:", data);
@@ -672,15 +789,18 @@
     } catch (error) {
       console.error("Error calling Claude API:", error);
       if (error instanceof Error) {
-        if (error.message.includes("Failed to fetch")) {
-          throw new Error("Failed to connect to Claude API. Please check your internet connection.");
-        } else if (error.message.includes("401")) {
-          throw new Error("Invalid API key. Please check your Claude API key.");
-        } else if (error.message.includes("429")) {
-          throw new Error("Rate limit exceeded. Please try again later.");
+        if (error.message.includes("Claude API Error")) {
+          throw error;
+        }
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          throw new Error("Network Error: Failed to connect to Claude API. Please check your internet connection and try again.");
+        } else if (error.message.includes("TypeError")) {
+          throw new Error("Request Error: Invalid request format. Please contact support if this persists.");
+        } else if (error.message.includes("timeout")) {
+          throw new Error("Timeout Error: Request to Claude API timed out. Please try again.");
         }
       }
-      throw error;
+      throw new Error(`Unexpected error calling Claude API: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
   function createEnhancedMetadataPrompt(componentContext) {
@@ -1170,7 +1290,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   }
 
   // src/core/component-analyzer.ts
-  function extractComponentContext(node) {
+  async function extractComponentContext(node) {
     const hierarchy = extractLayerHierarchy(node);
     const nestedLayers = getLayerNames(hierarchy);
     const textContent = extractTextContent(node).join(" ");
@@ -1187,7 +1307,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     };
     const detectedSlots = detectSlots(node);
     const { isComponentSet, potentialVariants } = detectVariantPatterns(node);
-    const additionalContext = extractAdditionalContext(node);
+    const additionalContext = await extractAdditionalContext(node);
     return {
       name: node.name,
       type: node.type,
@@ -1202,7 +1322,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       additionalContext
     };
   }
-  function extractAdditionalContext(node) {
+  async function extractAdditionalContext(node) {
     const context = {
       hasInteractiveElements: false,
       possibleUseCase: "",
@@ -1243,7 +1363,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       "checkbox-group"
     ];
     const isContainerByName = containerPatterns.some((pattern) => nodeName.includes(pattern));
-    const isContainerByStructure = analyzeContainerStructure(node);
+    const isContainerByStructure = await analyzeContainerStructure(node);
     const isContainer = isContainerByName || isContainerByStructure;
     console.log(`\u{1F50D} [CONTAINER DETECTION] ${node.name}:`);
     console.log(`  Name-based: ${isContainerByName}`);
@@ -1308,7 +1428,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     }
     return context;
   }
-  function analyzeContainerStructure(node) {
+  async function analyzeContainerStructure(node) {
     if (!("children" in node) || !node.children || node.children.length === 0) {
       return false;
     }
@@ -1319,9 +1439,9 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     }
     console.log(`\u{1F50D} [STRUCTURE] Analyzing ${node.name} with ${childInstances.length} child instances`);
     const instanceGroups = /* @__PURE__ */ new Map();
-    childInstances.forEach((instance) => {
+    await Promise.all(childInstances.map(async (instance) => {
       try {
-        const mainComponent = instance.mainComponent;
+        const mainComponent = await instance.getMainComponentAsync();
         if (mainComponent) {
           const componentName = mainComponent.name;
           if (!instanceGroups.has(componentName)) {
@@ -1332,7 +1452,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       } catch (error) {
         console.log(`\u26A0\uFE0F [STRUCTURE] Could not access main component for instance:`, error);
       }
-    });
+    }));
     console.log(`\u{1F50D} [STRUCTURE] Instance groups:`, Array.from(instanceGroups.entries()).map(([name, instances]) => `${name}: ${instances.length}`));
     const hasRepeatedComponents = Array.from(instanceGroups.values()).some((group) => group.length > 1);
     const hasOrganizationalComponents = Array.from(instanceGroups.keys()).some((name) => {
@@ -1552,7 +1672,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     });
     return result;
   }
-  function extractActualComponentProperties(node, selectedNode) {
+  async function extractActualComponentProperties(node, selectedNode) {
     const actualProperties = [];
     console.log("\u{1F50D} [DEBUG] Starting property extraction for node:", node.name, "type:", node.type);
     console.log("\u{1F50D} [DEBUG] Originally selected node:", selectedNode == null ? void 0 : selectedNode.name, "type:", selectedNode == null ? void 0 : selectedNode.type);
@@ -1563,7 +1683,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         if ("componentProperties" in instance && instance.componentProperties) {
           const instanceProps = instance.componentProperties;
           console.log("\u{1F50D} [DEBUG] Found componentProperties on selected instance:", Object.keys(instanceProps));
-          const mainComponent = instance.mainComponent;
+          const mainComponent = await instance.getMainComponentAsync();
           if (mainComponent && mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
             const componentSet = mainComponent.parent;
             let propertyDefinitions = null;
@@ -2008,7 +2128,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     console.log(`\u{1F50D} [STRUCTURAL] Final structural analysis result: ${properties.length} properties found`);
     return properties;
   }
-  function extractActualComponentStates(node) {
+  async function extractActualComponentStates(node) {
     const actualStates = [];
     if (node.type === "COMPONENT_SET") {
       const componentSet = node;
@@ -2039,13 +2159,13 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     } else if (node.type === "COMPONENT") {
       const component = node;
       if (component.parent && component.parent.type === "COMPONENT_SET") {
-        return extractActualComponentStates(component.parent);
+        return await extractActualComponentStates(component.parent);
       }
     } else if (node.type === "INSTANCE") {
       const instance = node;
-      const mainComponent = instance.mainComponent;
+      const mainComponent = await instance.getMainComponentAsync();
       if (mainComponent) {
-        return extractActualComponentStates(mainComponent);
+        return await extractActualComponentStates(mainComponent);
       }
     }
     const uniqueStates = [];
@@ -2066,8 +2186,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     if (!node) {
       throw new Error("No node selected");
     }
-    const actualProperties = extractActualComponentProperties(node, selectedNode);
-    const actualStates = extractActualComponentStates(node);
+    const actualProperties = await extractActualComponentProperties(node, selectedNode);
+    const actualStates = await extractActualComponentStates(node);
     const tokens = await extractDesignTokensFromNode(node);
     console.log(`\u{1F4CA} [ANALYSIS] Extracted from Figma API:`);
     console.log(`  Properties: ${actualProperties.length}`);
@@ -2352,8 +2472,8 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       } else {
         throw new Error("No component selected");
       }
-      const actualProperties = extractActualComponentProperties(node);
-      const actualStates = extractActualComponentStates(node);
+      const actualProperties = await extractActualComponentProperties(node);
+      const actualStates = await extractActualComponentStates(node);
       let tokens = {
         colors: [],
         spacing: [],
@@ -2515,11 +2635,11 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       typography: ((_f = (_e = tokens == null ? void 0 : tokens.typography) == null ? void 0 : _e.filter((t) => t.isActualToken)) == null ? void 0 : _f.length) || 0,
       // Count ALL hard-coded values across categories, not just colors
       hardCoded: [
-        ...((_g = tokens == null ? void 0 : tokens.colors) == null ? void 0 : _g.filter((t) => !t.isActualToken)) || [],
-        ...((_h = tokens == null ? void 0 : tokens.spacing) == null ? void 0 : _h.filter((t) => !t.isActualToken)) || [],
-        ...((_i = tokens == null ? void 0 : tokens.typography) == null ? void 0 : _i.filter((t) => !t.isActualToken)) || [],
-        ...((_j = tokens == null ? void 0 : tokens.effects) == null ? void 0 : _j.filter((t) => !t.isActualToken)) || [],
-        ...((_k = tokens == null ? void 0 : tokens.borders) == null ? void 0 : _k.filter((t) => !t.isActualToken)) || []
+        ...((_g = tokens == null ? void 0 : tokens.colors) == null ? void 0 : _g.filter((t) => !t.isActualToken && !t.isDefaultVariantStyle)) || [],
+        ...((_h = tokens == null ? void 0 : tokens.spacing) == null ? void 0 : _h.filter((t) => !t.isActualToken && !t.isDefaultVariantStyle)) || [],
+        ...((_i = tokens == null ? void 0 : tokens.typography) == null ? void 0 : _i.filter((t) => !t.isActualToken && !t.isDefaultVariantStyle)) || [],
+        ...((_j = tokens == null ? void 0 : tokens.effects) == null ? void 0 : _j.filter((t) => !t.isActualToken && !t.isDefaultVariantStyle)) || [],
+        ...((_k = tokens == null ? void 0 : tokens.borders) == null ? void 0 : _k.filter((t) => !t.isActualToken && !t.isDefaultVariantStyle)) || []
       ].length
     };
     const totalTokens = tokenCounts.colors + tokenCounts.spacing + tokenCounts.typography;
@@ -2592,16 +2712,70 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
     if (recommendations.length === 0) {
       recommendations.push("Component is well-configured - ready for code generation");
     }
-    const baseScore = Math.max(40, 100 - gaps.length * 15 + strengths.length * 10);
-    const score = Math.min(100, baseScore);
+    const maxPossibleScore = 100;
+    const gapPenalty = Math.min(gaps.length * 12, 60);
+    const strengthBonus = Math.min(strengths.length * 8, 40);
+    let baseScore = 50;
+    if (actualProperties.length > 0) baseScore += 15;
+    if (actualStates.length > 1) baseScore += 10;
+    if (totalTokens > tokenCounts.hardCoded) baseScore += 15;
+    if (context.hierarchy && context.hierarchy.length > 2) baseScore += 10;
+    const score = Math.max(0, Math.min(100, baseScore - gapPenalty + strengthBonus));
     return {
       score,
       strengths,
       gaps: deduplicateRecommendations(gaps),
       // Apply same deduplication to gaps
       recommendations: deduplicateRecommendations(recommendations),
-      implementationNotes: `This ${family} component can be enhanced for better MCP code generation compatibility by addressing the identified gaps.`
+      implementationNotes: generateImplementationNotes(family, strengths, gaps, actualProperties, actualStates, tokenCounts)
     };
+  }
+  function generateImplementationNotes(family, strengths, gaps, properties, states, tokenCounts) {
+    const notes = [];
+    if (family === "button") {
+      if (states.length < 3) {
+        notes.push("Implement hover, focus, and active states for better interactivity");
+      }
+      if (properties.length === 0) {
+        notes.push("Add variant and size properties to support different use cases");
+      }
+    } else if (family === "input") {
+      if (!states.includes("error")) {
+        notes.push("Add error state with clear visual indicators for form validation");
+      }
+      notes.push("Ensure proper label association and placeholder text patterns");
+    } else if (family === "card") {
+      notes.push("Consider implementing click handlers for interactive cards");
+      if (properties.length === 0) {
+        notes.push("Add elevation or variant properties for visual hierarchy");
+      }
+    } else if (family === "avatar") {
+      notes.push("Implement fallback patterns for missing images");
+      if (!properties.some((p) => p.name.toLowerCase().includes("size"))) {
+        notes.push("Add size variants for flexible usage across contexts");
+      }
+    } else if (family === "container") {
+      notes.push("Focus on layout flexibility and content composition");
+      notes.push("Consider responsive behavior for different screen sizes");
+    }
+    if (tokenCounts.hardCoded > tokenCounts.colors + tokenCounts.spacing) {
+      notes.push("Prioritize converting hard-coded values to design tokens");
+    }
+    if (properties.length === 0) {
+      notes.push("Define component properties to enable customization without code changes");
+    } else if (properties.length === 1) {
+      notes.push("Consider additional properties for greater flexibility");
+    }
+    if (notes.length === 0) {
+      if (gaps.length > 3) {
+        notes.push("Focus on addressing the high-priority gaps identified above");
+      } else if (strengths.length > gaps.length) {
+        notes.push("Component is well-structured for code generation with minor improvements needed");
+      } else {
+        notes.push("Balance quick wins with systematic improvements for optimal results");
+      }
+    }
+    return notes.join(". ") + ".";
   }
   function generatePropertyRecommendations(componentName, existingProperties) {
     const recommendations = [];
@@ -3646,11 +3820,17 @@ ${scoringCriteria}
       const originalSelectedNode = selectedNode;
       if (selectedNode.type === "INSTANCE") {
         const instance = selectedNode;
-        if (instance.mainComponent) {
-          figma.notify("Analyzing main component instead of instance...", { timeout: 2e3 });
-          selectedNode = instance.mainComponent;
-        } else {
-          throw new Error("This instance has no main component. Please select a component directly.");
+        try {
+          const mainComponent = await instance.getMainComponentAsync();
+          if (mainComponent) {
+            figma.notify("Analyzing main component instead of instance...", { timeout: 2e3 });
+            selectedNode = mainComponent;
+          } else {
+            throw new Error("This instance has no main component. Please select a component directly.");
+          }
+        } catch (error) {
+          console.error("Error accessing main component:", error);
+          throw new Error("Could not access main component. Please select a component directly.");
         }
       }
       if (selectedNode.type === "COMPONENT" && ((_a = selectedNode.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") {
@@ -3663,7 +3843,7 @@ ${scoringCriteria}
         throw new Error("Please select a Frame, Component, Component Set, or Instance to analyze");
       }
       await consistencyEngine.loadDesignSystemsKnowledge();
-      const componentContext = extractComponentContext(selectedNode);
+      const componentContext = await extractComponentContext(selectedNode);
       const enhancedOptions = __spreadValues({
         enableMCPEnhancement: true,
         // Enable MCP enhancement by default
@@ -3699,7 +3879,7 @@ ${scoringCriteria}
     for (const node of nodes) {
       if (isValidNodeForAnalysis(node)) {
         try {
-          const componentContext = extractComponentContext(node);
+          const componentContext = await extractComponentContext(node);
           const tokenAnalysis = await extractDesignTokensFromNode(node);
           const allTokens = [
             ...tokenAnalysis.colors,

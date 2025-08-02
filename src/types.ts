@@ -78,6 +78,7 @@ export interface DesignToken {
   recommendation?: string;
   suggestion?: string;
   strokeColor?: string;
+  isDefaultVariantStyle?: boolean;
   context?: {
     nodeType?: string;
     nodeName?: string;

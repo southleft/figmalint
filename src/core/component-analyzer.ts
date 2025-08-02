@@ -8,7 +8,7 @@ import { fetchClaude, extractJSONFromResponse, createEnhancedMetadataPrompt, fil
 /**
  * Extract comprehensive component context for analysis
  */
-export function extractComponentContext(node: SceneNode): ComponentContext {
+export async function extractComponentContext(node: SceneNode): Promise<ComponentContext> {
   const hierarchy = extractLayerHierarchy(node);
   const nestedLayers = getLayerNames(hierarchy);
   const textContent = extractTextContent(node).join(' ');
@@ -33,7 +33,7 @@ export function extractComponentContext(node: SceneNode): ComponentContext {
   const { isComponentSet, potentialVariants } = detectVariantPatterns(node);
 
   // Extract additional context
-  const additionalContext = extractAdditionalContext(node);
+  const additionalContext = await extractAdditionalContext(node);
 
   return {
     name: node.name,
@@ -53,7 +53,7 @@ export function extractComponentContext(node: SceneNode): ComponentContext {
 /**
  * Extract additional context to help AI make better decisions
  */
-function extractAdditionalContext(node: SceneNode): any {
+async function extractAdditionalContext(node: SceneNode): Promise<any> {
   const context: any = {
     hasInteractiveElements: false,
     possibleUseCase: '',
@@ -79,7 +79,7 @@ function extractAdditionalContext(node: SceneNode): any {
   const isContainerByName = containerPatterns.some(pattern => nodeName.includes(pattern));
 
   // Structural container detection by analyzing nested instances
-  const isContainerByStructure = analyzeContainerStructure(node);
+  const isContainerByStructure = await analyzeContainerStructure(node);
 
   // Combine both approaches
   const isContainer = isContainerByName || isContainerByStructure;
@@ -162,7 +162,7 @@ function extractAdditionalContext(node: SceneNode): any {
  * Analyze component structure to determine if it's a container
  * Based on nested instances and their patterns
  */
-function analyzeContainerStructure(node: SceneNode): boolean {
+async function analyzeContainerStructure(node: SceneNode): Promise<boolean> {
   if (!('children' in node) || !node.children || node.children.length === 0) {
     return false;
   }
@@ -180,9 +180,10 @@ function analyzeContainerStructure(node: SceneNode): boolean {
   // Group instances by their main component name
   const instanceGroups = new Map<string, InstanceNode[]>();
 
-  childInstances.forEach(instance => {
+  // Use Promise.all to handle async operations
+  await Promise.all(childInstances.map(async (instance) => {
     try {
-      const mainComponent = instance.mainComponent;
+      const mainComponent = await instance.getMainComponentAsync();
       if (mainComponent) {
         const componentName = mainComponent.name;
         if (!instanceGroups.has(componentName)) {
@@ -194,7 +195,7 @@ function analyzeContainerStructure(node: SceneNode): boolean {
       // Ignore instances with inaccessible main components
       console.log(`⚠️ [STRUCTURE] Could not access main component for instance:`, error);
     }
-  });
+  }));
 
   console.log(`🔍 [STRUCTURE] Instance groups:`, Array.from(instanceGroups.entries()).map(([name, instances]) => `${name}: ${instances.length}`));
 
@@ -515,7 +516,7 @@ function extractPropertiesFromVariantNames(componentSet: ComponentSetNode): Arra
  * @param node The node to extract properties from (component set, component, or instance)
  * @param selectedNode The originally selected node (for accessing instance properties)
  */
-function extractActualComponentProperties(node: SceneNode, selectedNode?: SceneNode): Array<{ name: string; values: string[]; default: string }> {
+async function extractActualComponentProperties(node: SceneNode, selectedNode?: SceneNode): Promise<Array<{ name: string; values: string[]; default: string }>> {
   const actualProperties: Array<{ name: string; values: string[]; default: string }> = [];
 
   console.log('🔍 [DEBUG] Starting property extraction for node:', node.name, 'type:', node.type);
@@ -532,7 +533,7 @@ function extractActualComponentProperties(node: SceneNode, selectedNode?: SceneN
         console.log('🔍 [DEBUG] Found componentProperties on selected instance:', Object.keys(instanceProps));
 
         // Get the component set for property definitions
-        const mainComponent = instance.mainComponent;
+        const mainComponent = await instance.getMainComponentAsync();
         if (mainComponent && mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
           const componentSet = mainComponent.parent as ComponentSetNode;
 
@@ -1100,7 +1101,7 @@ function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode)
 /**
  * Extract actual states from a component
  */
-function extractActualComponentStates(node: SceneNode): string[] {
+async function extractActualComponentStates(node: SceneNode): Promise<string[]> {
   const actualStates: string[] = [];
 
   if (node.type === 'COMPONENT_SET') {
@@ -1140,14 +1141,14 @@ function extractActualComponentStates(node: SceneNode): string[] {
     // For individual components, check if they're part of a component set with states
     const component = node as ComponentNode;
     if (component.parent && component.parent.type === 'COMPONENT_SET') {
-      return extractActualComponentStates(component.parent);
+      return await extractActualComponentStates(component.parent);
     }
   } else if (node.type === 'INSTANCE') {
     // For instances, get states from the main component
     const instance = node as InstanceNode;
-    const mainComponent = instance.mainComponent;
+    const mainComponent = await instance.getMainComponentAsync();
     if (mainComponent) {
-      return extractActualComponentStates(mainComponent);
+      return await extractActualComponentStates(mainComponent);
     }
   }
 
@@ -1184,8 +1185,8 @@ export async function processEnhancedAnalysis(
   }
 
   // Extract actual component data from Figma API
-  const actualProperties = extractActualComponentProperties(node, selectedNode);
-  const actualStates = extractActualComponentStates(node);
+  const actualProperties = await extractActualComponentProperties(node, selectedNode);
+  const actualStates = await extractActualComponentStates(node);
   const tokens = await extractDesignTokensFromNode(node);
 
   // Log extracted data for debugging
@@ -1603,10 +1604,10 @@ async function processAnalysisResult(
     }
 
     // Extract actual properties from the Figma component
-    const actualProperties = extractActualComponentProperties(node);
+    const actualProperties = await extractActualComponentProperties(node);
 
     // Extract actual states
-    const actualStates = extractActualComponentStates(node);
+    const actualStates = await extractActualComponentStates(node);
 
     // Extract design tokens if enabled
     let tokens: TokenAnalysis = {
@@ -1835,11 +1836,11 @@ function generateFallbackMCPReadiness(data: {
     typography: tokens?.typography?.filter((t: any) => t.isActualToken)?.length || 0,
     // Count ALL hard-coded values across categories, not just colors
     hardCoded: [
-      ...(tokens?.colors?.filter((t: any) => !t.isActualToken) || []),
-      ...(tokens?.spacing?.filter((t: any) => !t.isActualToken) || []),
-      ...(tokens?.typography?.filter((t: any) => !t.isActualToken) || []),
-      ...(tokens?.effects?.filter((t: any) => !t.isActualToken) || []),
-      ...(tokens?.borders?.filter((t: any) => !t.isActualToken) || [])
+      ...(tokens?.colors?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
+      ...(tokens?.spacing?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
+      ...(tokens?.typography?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
+      ...(tokens?.effects?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
+      ...(tokens?.borders?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || [])
     ].length
   };
 
@@ -1934,16 +1935,98 @@ function generateFallbackMCPReadiness(data: {
   }
 
   // Calculate score based on strengths vs gaps
-  const baseScore = Math.max(40, 100 - (gaps.length * 15) + (strengths.length * 10));
-  const score = Math.min(100, baseScore);
+  // More realistic scoring that reflects actual readiness
+  const maxPossibleScore = 100;
+  const gapPenalty = Math.min(gaps.length * 12, 60); // Cap gap penalty at 60
+  const strengthBonus = Math.min(strengths.length * 8, 40); // Cap strength bonus at 40
+  
+  // Start with base score based on component essentials
+  let baseScore = 50; // Base score for having a component
+  
+  // Add points for key features
+  if (actualProperties.length > 0) baseScore += 15;
+  if (actualStates.length > 1) baseScore += 10;
+  if (totalTokens > tokenCounts.hardCoded) baseScore += 15;
+  if (context.hierarchy && context.hierarchy.length > 2) baseScore += 10;
+  
+  // Apply penalties and bonuses
+  const score = Math.max(0, Math.min(100, baseScore - gapPenalty + strengthBonus));
 
   return {
     score,
     strengths,
     gaps: deduplicateRecommendations(gaps), // Apply same deduplication to gaps
     recommendations: deduplicateRecommendations(recommendations),
-    implementationNotes: `This ${family} component can be enhanced for better MCP code generation compatibility by addressing the identified gaps.`
+    implementationNotes: generateImplementationNotes(family, strengths, gaps, actualProperties, actualStates, tokenCounts)
   };
+}
+
+/**
+ * Generate meaningful implementation notes based on component analysis
+ */
+function generateImplementationNotes(
+  family: string,
+  strengths: string[],
+  gaps: string[],
+  properties: any[],
+  states: string[],
+  tokenCounts: any
+): string {
+  // Provide specific guidance based on the component's current state
+  const notes: string[] = [];
+  
+  // Component-specific guidance
+  if (family === 'button') {
+    if (states.length < 3) {
+      notes.push('Implement hover, focus, and active states for better interactivity');
+    }
+    if (properties.length === 0) {
+      notes.push('Add variant and size properties to support different use cases');
+    }
+  } else if (family === 'input') {
+    if (!states.includes('error')) {
+      notes.push('Add error state with clear visual indicators for form validation');
+    }
+    notes.push('Ensure proper label association and placeholder text patterns');
+  } else if (family === 'card') {
+    notes.push('Consider implementing click handlers for interactive cards');
+    if (properties.length === 0) {
+      notes.push('Add elevation or variant properties for visual hierarchy');
+    }
+  } else if (family === 'avatar') {
+    notes.push('Implement fallback patterns for missing images');
+    if (!properties.some(p => p.name.toLowerCase().includes('size'))) {
+      notes.push('Add size variants for flexible usage across contexts');
+    }
+  } else if (family === 'container') {
+    notes.push('Focus on layout flexibility and content composition');
+    notes.push('Consider responsive behavior for different screen sizes');
+  }
+  
+  // Token usage guidance
+  if (tokenCounts.hardCoded > tokenCounts.colors + tokenCounts.spacing) {
+    notes.push('Prioritize converting hard-coded values to design tokens');
+  }
+  
+  // Property guidance
+  if (properties.length === 0) {
+    notes.push('Define component properties to enable customization without code changes');
+  } else if (properties.length === 1) {
+    notes.push('Consider additional properties for greater flexibility');
+  }
+  
+  // If we have no specific notes, provide general guidance
+  if (notes.length === 0) {
+    if (gaps.length > 3) {
+      notes.push('Focus on addressing the high-priority gaps identified above');
+    } else if (strengths.length > gaps.length) {
+      notes.push('Component is well-structured for code generation with minor improvements needed');
+    } else {
+      notes.push('Balance quick wins with systematic improvements for optimal results');
+    }
+  }
+  
+  return notes.join('. ') + '.';
 }
 
 /**
@@ -1989,7 +2072,25 @@ function enhanceMCPReadinessWithFallback(mcpData: any, data: {
     gaps: deduplicateRecommendations(gaps), // Apply same deduplication to gaps
     recommendations: deduplicateRecommendations(recommendations),
     implementationNotes: mcpData.implementationNotes ||
-      `This component can be optimized for MCP code generation by addressing the identified improvements.`
+      generateImplementationNotes(
+        data.context.additionalContext?.componentFamily || 'generic',
+        mcpData.strengths || [],
+        mcpData.gaps || [],
+        data.actualProperties,
+        data.actualStates,
+        {
+          colors: data.tokens?.colors?.filter((t: any) => t.isActualToken)?.length || 0,
+          spacing: data.tokens?.spacing?.filter((t: any) => t.isActualToken)?.length || 0,
+          typography: data.tokens?.typography?.filter((t: any) => t.isActualToken)?.length || 0,
+          hardCoded: [
+            ...(data.tokens?.colors?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
+            ...(data.tokens?.spacing?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
+            ...(data.tokens?.typography?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
+            ...(data.tokens?.effects?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
+            ...(data.tokens?.borders?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || [])
+          ].length
+        }
+      )
   };
 }
 
