@@ -823,22 +823,22 @@ ${componentContext.additionalContext ? `
 - Considerations: ${componentContext.additionalContext.suggestedConsiderations.join("; ") || "None"}
 ` : "- No additional context available"}
 
-**IMPORTANT: This is a FIGMA DESIGN component analysis, not code implementation.**
-Focus on design system concerns that can be addressed in Figma, not development implementation details.
+**IMPORTANT: Focus on what makes this component ready for CODE GENERATION via MCP.**
+Evaluate based on these criteria that actually matter for development:
 
 **Analysis Requirements:**
 
-1. **Component Metadata**: Provide comprehensive component documentation for design handoff
-2. **Design Token Analysis**: Analyze and recommend semantic design tokens
-3. **Design Consistency**: Evaluate design system compliance within Figma
-4. **Naming Convention Review**: Check layer naming consistency
-5. **Design System Integration**: Suggest improvements for scalability
-6. **MCP Server Compatibility**: Ensure component structure supports automated code generation
+1. **Component Properties**: Identify all configurable properties needed for flexibility
+2. **Design Token Usage**: Analyze use of semantic tokens vs hard-coded values  
+3. **Component States**: Document all interactive states (hover, focus, active, disabled, etc.)
+4. **Component Boundaries**: Ensure clear component definition and structure
+5. **Code Generation Readiness**: Assess how well the component can be translated to code
+6. **MCP Compatibility**: Evaluate component structure for automated code generation
 
-**Figma-Specific Focus Areas:**
-- **Component Structure**: How layers are organized and named
-- **Token Usage**: Replace hard-coded values with Figma variables/tokens
-- **Visual States**: Design states that should exist in Figma (hover, focus, disabled representations)
+**Code Generation Focus Areas:**
+- **Properties**: What can be configured when using this component
+- **Token Usage**: Semantic tokens that maintain design consistency in code
+- **States**: Interactive states that need to be implemented in code
 - **Variant Organization**: When and how to use Figma component variants
 - **Design Handoff**: Information developers need to implement this design
 
@@ -936,8 +936,6 @@ Focus on design system concerns that can be addressed in Figma, not development 
     }
   ],
   "audit": {
-    "designIssues": ["Specific design consistency issues found in Figma"],
-    "namingIssues": ["Layer naming problems with suggestions for better organization"],
     "tokenOpportunities": ["Specific recommendations for design token implementation in Figma"],
     "structureIssues": ["Component structure improvements for better design system integration"]
   },
@@ -1132,9 +1130,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           variants: {},
           tokens: { colors: [], spacing: [], typography: [] },
           audit: {
-            designIssues: ["Complex JSON response was truncated"],
-            tokenOpportunities: ["Review and simplify component analysis"],
-            structureIssues: []
+            tokenOpportunities: ["Review and simplify component analysis"]
           },
           mcpReadiness: {
             score: 60,
@@ -1268,9 +1264,6 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       }
     }
     if (filteredData.audit) {
-      if (filteredData.audit.designIssues) {
-        filteredData.audit.designIssues = filterRecommendationArray(filteredData.audit.designIssues);
-      }
       if (filteredData.audit.tokenOpportunities) {
         filteredData.audit.tokenOpportunities = filterRecommendationArray(filteredData.audit.tokenOpportunities);
       }
@@ -2568,28 +2561,9 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       // Basic accessibility audit
       accessibility: [
         {
-          check: "Component naming",
-          status: context.name && !context.name.toLowerCase().includes("untitled") ? "pass" : "warning",
-          suggestion: context.name && !context.name.toLowerCase().includes("untitled") ? "Component has descriptive naming" : "Consider using more descriptive component names"
-        },
-        {
           check: "Property configuration",
           status: actualProperties.length > 0 ? "pass" : "warning",
           suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
-        }
-      ],
-      // Layer naming audit
-      naming: context.hierarchy.map((layer) => ({
-        layer: layer.name,
-        issue: layer.name && !layer.name.toLowerCase().includes("untitled") ? "" : "Generic layer name",
-        suggestion: layer.name && !layer.name.toLowerCase().includes("untitled") ? "Layer has descriptive naming" : "Consider using more descriptive layer names"
-      })),
-      // Consistency audit
-      consistency: [
-        {
-          property: "Token usage",
-          issue: tokens.summary.hardCodedValues > 0 ? "Hard-coded values found" : "",
-          suggestion: tokens.summary.hardCodedValues > 0 ? "Replace hard-coded values with design tokens" : "Good token usage consistency"
         }
       ]
     };
@@ -2601,19 +2575,6 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
     const strengths = [];
     const gaps = [];
     const recommendations = [];
-    if (node.name && node.name.trim() !== "" && !node.name.toLowerCase().includes("untitled")) {
-      strengths.push("Component has descriptive naming");
-    } else {
-      gaps.push("Generic component name - makes discovery and organization difficult");
-      recommendations.push('Use descriptive component names that indicate purpose (e.g., "PrimaryButton", "UserAvatar")');
-    }
-    if (context.hierarchy && context.hierarchy.length > 1) {
-      strengths.push("Well-structured component hierarchy");
-    } else {
-      if (family !== "icon" && family !== "badge") {
-        gaps.push("Minimal layer structure - may lack semantic organization for complex use cases");
-      }
-    }
     if (actualProperties.length > 0) {
       strengths.push(`Has ${actualProperties.length} configurable properties`);
     } else {
@@ -2712,15 +2673,31 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
     if (recommendations.length === 0) {
       recommendations.push("Component is well-configured - ready for code generation");
     }
-    const maxPossibleScore = 100;
-    const gapPenalty = Math.min(gaps.length * 12, 60);
-    const strengthBonus = Math.min(strengths.length * 8, 40);
-    let baseScore = 50;
-    if (actualProperties.length > 0) baseScore += 15;
-    if (actualStates.length > 1) baseScore += 10;
-    if (totalTokens > tokenCounts.hardCoded) baseScore += 15;
-    if (context.hierarchy && context.hierarchy.length > 2) baseScore += 10;
-    const score = Math.max(0, Math.min(100, baseScore - gapPenalty + strengthBonus));
+    let score = 0;
+    const hasProperties = actualProperties.length > 0;
+    const hasTokens = totalTokens > 0;
+    const tokenUsageRatio = totalTokens > 0 ? totalTokens / (totalTokens + tokenCounts.hardCoded) : 0;
+    if (hasProperties) {
+      score += 25;
+    }
+    score += Math.round(25 * tokenUsageRatio);
+    const needsStates = context.hasInteractiveElements && family !== "badge" && family !== "icon";
+    if (needsStates) {
+      const stateCompleteness = Math.min(actualStates.length / 3, 1);
+      score += Math.round(20 * stateCompleteness);
+    } else {
+      score += 20;
+    }
+    if (node.type === "COMPONENT" || node.type === "COMPONENT_SET" || node.type === "INSTANCE") {
+      score += 10;
+    }
+    if (context.name && !context.name.toLowerCase().includes("untitled")) {
+      score += 10;
+    }
+    if (hasProperties || hasTokens || actualStates.length > 0) {
+      score += 10;
+    }
+    score = Math.max(0, Math.min(100, score));
     return {
       score,
       strengths,
@@ -3537,13 +3514,13 @@ ${scoringCriteria}
     }
     getDefaultComponentKnowledge() {
       return {
-        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (40%), semantic token usage (30%), accessibility (20%), and naming consistency (10%).",
+        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
         avatar: "Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
         card: "Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
         badge: "Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
         input: "Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
-        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (30%), accessibility (30%), semantic naming (25%), and style consistency (15%).",
-        generic: "Generic components should follow basic design system principles. Score based on structure clarity (25%), token usage (25%), naming consistency (25%), and accessibility basics (25%)."
+        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
       };
     }
     getFallbackKnowledgeForQuery(query) {
@@ -3576,12 +3553,12 @@ ${scoringCriteria}
       var _a;
       const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
       const guidanceMap = {
-        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (40%), semantic token usage (30%), accessibility (20%), and naming consistency (10%).",
+        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
         avatar: "Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
         card: "Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
         badge: "Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
         input: "Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
-        generic: "Generic components should follow basic design system principles. Score based on structure clarity (25%), token usage (25%), naming consistency (25%), and accessibility basics (25%)."
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
       };
       return guidanceMap[family] || guidanceMap.generic;
     }
@@ -3686,18 +3663,8 @@ ${scoringCriteria}
       return corrected;
     }
     ensureConsistentScoring(mcpReadiness, context) {
-      var _a;
-      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
-      const baselineScores = {
-        button: { structure: 85, tokens: 80, accessibility: 90, consistency: 85 },
-        avatar: { structure: 90, tokens: 75, accessibility: 85, consistency: 80 },
-        input: { structure: 85, tokens: 85, accessibility: 95, consistency: 90 },
-        generic: { structure: 80, tokens: 75, accessibility: 80, consistency: 75 }
-      };
-      const baseline = baselineScores[family] || baselineScores.generic;
       return __spreadProps(__spreadValues({}, mcpReadiness), {
-        score: mcpReadiness.score || Math.round((baseline.structure + baseline.tokens + baseline.accessibility + baseline.consistency) / 4),
-        baseline
+        score: mcpReadiness.score || 0
       });
     }
   };

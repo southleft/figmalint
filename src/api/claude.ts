@@ -161,22 +161,22 @@ ${componentContext.additionalContext ? `
 - Considerations: ${componentContext.additionalContext.suggestedConsiderations.join('; ') || 'None'}
 ` : '- No additional context available'}
 
-**IMPORTANT: This is a FIGMA DESIGN component analysis, not code implementation.**
-Focus on design system concerns that can be addressed in Figma, not development implementation details.
+**IMPORTANT: Focus on what makes this component ready for CODE GENERATION via MCP.**
+Evaluate based on these criteria that actually matter for development:
 
 **Analysis Requirements:**
 
-1. **Component Metadata**: Provide comprehensive component documentation for design handoff
-2. **Design Token Analysis**: Analyze and recommend semantic design tokens
-3. **Design Consistency**: Evaluate design system compliance within Figma
-4. **Naming Convention Review**: Check layer naming consistency
-5. **Design System Integration**: Suggest improvements for scalability
-6. **MCP Server Compatibility**: Ensure component structure supports automated code generation
+1. **Component Properties**: Identify all configurable properties needed for flexibility
+2. **Design Token Usage**: Analyze use of semantic tokens vs hard-coded values  
+3. **Component States**: Document all interactive states (hover, focus, active, disabled, etc.)
+4. **Component Boundaries**: Ensure clear component definition and structure
+5. **Code Generation Readiness**: Assess how well the component can be translated to code
+6. **MCP Compatibility**: Evaluate component structure for automated code generation
 
-**Figma-Specific Focus Areas:**
-- **Component Structure**: How layers are organized and named
-- **Token Usage**: Replace hard-coded values with Figma variables/tokens
-- **Visual States**: Design states that should exist in Figma (hover, focus, disabled representations)
+**Code Generation Focus Areas:**
+- **Properties**: What can be configured when using this component
+- **Token Usage**: Semantic tokens that maintain design consistency in code
+- **States**: Interactive states that need to be implemented in code
 - **Variant Organization**: When and how to use Figma component variants
 - **Design Handoff**: Information developers need to implement this design
 
@@ -274,8 +274,6 @@ Focus on design system concerns that can be addressed in Figma, not development 
     }
   ],
   "audit": {
-    "designIssues": ["Specific design consistency issues found in Figma"],
-    "namingIssues": ["Layer naming problems with suggestions for better organization"],
     "tokenOpportunities": ["Specific recommendations for design token implementation in Figma"],
     "structureIssues": ["Component structure improvements for better design system integration"]
   },
@@ -549,9 +547,7 @@ function extractBasicComponentInfo(response: string): any | null {
         variants: {},
         tokens: { colors: [], spacing: [], typography: [] },
         audit: {
-          designIssues: ['Complex JSON response was truncated'],
-          tokenOpportunities: ['Review and simplify component analysis'],
-          structureIssues: []
+          tokenOpportunities: ['Review and simplify component analysis']
         },
         mcpReadiness: {
           score: 60,
@@ -701,9 +697,6 @@ export function filterDevelopmentRecommendations(data: any): any {
   }
 
   if (filteredData.audit) {
-    if (filteredData.audit.designIssues) {
-      filteredData.audit.designIssues = filterRecommendationArray(filteredData.audit.designIssues);
-    }
     if (filteredData.audit.tokenOpportunities) {
       filteredData.audit.tokenOpportunities = filterRecommendationArray(filteredData.audit.tokenOpportunities);
     }

@@ -1739,36 +1739,11 @@ function createAuditResults(
     // Basic accessibility audit
     accessibility: [
       {
-        check: 'Component naming',
-        status: context.name && !context.name.toLowerCase().includes('untitled') ? 'pass' : 'warning',
-        suggestion: context.name && !context.name.toLowerCase().includes('untitled')
-          ? 'Component has descriptive naming'
-          : 'Consider using more descriptive component names'
-      },
-      {
         check: 'Property configuration',
         status: actualProperties.length > 0 ? 'pass' : 'warning',
         suggestion: actualProperties.length > 0
           ? 'Component has configurable properties'
           : 'Consider adding properties for component customization'
-      }
-    ],
-    // Layer naming audit
-    naming: context.hierarchy.map(layer => ({
-      layer: layer.name,
-      issue: layer.name && !layer.name.toLowerCase().includes('untitled') ? '' : 'Generic layer name',
-      suggestion: layer.name && !layer.name.toLowerCase().includes('untitled')
-        ? 'Layer has descriptive naming'
-        : 'Consider using more descriptive layer names'
-    })),
-    // Consistency audit
-    consistency: [
-      {
-        property: 'Token usage',
-        issue: tokens.summary.hardCodedValues > 0 ? 'Hard-coded values found' : '',
-        suggestion: tokens.summary.hardCodedValues > 0
-          ? 'Replace hard-coded values with design tokens'
-          : 'Good token usage consistency'
       }
     ]
   };
@@ -1792,23 +1767,8 @@ function generateFallbackMCPReadiness(data: {
   const gaps: string[] = [];
   const recommendations: string[] = [];
 
-  // Check layer naming
-  if (node.name && node.name.trim() !== '' && !node.name.toLowerCase().includes('untitled')) {
-    strengths.push('Component has descriptive naming');
-  } else {
-    gaps.push('Generic component name - makes discovery and organization difficult');
-    recommendations.push('Use descriptive component names that indicate purpose (e.g., "PrimaryButton", "UserAvatar")');
-  }
 
-  // Check component structure
-  if (context.hierarchy && context.hierarchy.length > 1) {
-    strengths.push('Well-structured component hierarchy');
-  } else {
-    // Only flag as gap if it's actually too simple for its purpose
-    if (family !== 'icon' && family !== 'badge') {
-      gaps.push('Minimal layer structure - may lack semantic organization for complex use cases');
-    }
-  }
+  // Skip meaningless layer counting - focus on actual functionality instead
 
   // Check for properties
   if (actualProperties.length > 0) {
@@ -1934,23 +1894,51 @@ function generateFallbackMCPReadiness(data: {
     recommendations.push('Component is well-configured - ready for code generation');
   }
 
-  // Calculate score based on strengths vs gaps
-  // More realistic scoring that reflects actual readiness
-  const maxPossibleScore = 100;
-  const gapPenalty = Math.min(gaps.length * 12, 60); // Cap gap penalty at 60
-  const strengthBonus = Math.min(strengths.length * 8, 40); // Cap strength bonus at 40
+  // Calculate score based on actual code generation readiness
+  let score = 0;
   
-  // Start with base score based on component essentials
-  let baseScore = 50; // Base score for having a component
+  // Core requirements for code generation (70% of score)
+  const hasProperties = actualProperties.length > 0;
+  const hasTokens = totalTokens > 0;
+  const tokenUsageRatio = totalTokens > 0 ? totalTokens / (totalTokens + tokenCounts.hardCoded) : 0;
   
-  // Add points for key features
-  if (actualProperties.length > 0) baseScore += 15;
-  if (actualStates.length > 1) baseScore += 10;
-  if (totalTokens > tokenCounts.hardCoded) baseScore += 15;
-  if (context.hierarchy && context.hierarchy.length > 2) baseScore += 10;
+  // Properties (25% - essential for component flexibility)
+  if (hasProperties) {
+    score += 25;
+  }
   
-  // Apply penalties and bonuses
-  const score = Math.max(0, Math.min(100, baseScore - gapPenalty + strengthBonus));
+  // Design tokens (25% - essential for consistency)
+  score += Math.round(25 * tokenUsageRatio);
+  
+  // States for interactive components (20% - conditional)
+  const needsStates = context.hasInteractiveElements && family !== 'badge' && family !== 'icon';
+  if (needsStates) {
+    const stateCompleteness = Math.min(actualStates.length / 3, 1); // Expect at least 3 states
+    score += Math.round(20 * stateCompleteness);
+  } else {
+    // Non-interactive components get this portion automatically
+    score += 20;
+  }
+  
+  // Component definition clarity (30%)
+  // - Has clear boundaries (10%)
+  // - Is a proper component/instance (10%)
+  // - Has semantic purpose (10%)
+  if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET' || node.type === 'INSTANCE') {
+    score += 10; // Clear component boundaries
+  }
+  
+  if (context.name && !context.name.toLowerCase().includes('untitled')) {
+    score += 10; // Has semantic purpose (indicated by meaningful name)
+  }
+  
+  // Component is properly structured (not just a raw frame)
+  if (hasProperties || hasTokens || actualStates.length > 0) {
+    score += 10; // Shows intentional component design
+  }
+  
+  // Ensure score is within bounds
+  score = Math.max(0, Math.min(100, score));
 
   return {
     score,

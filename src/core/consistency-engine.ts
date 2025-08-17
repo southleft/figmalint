@@ -481,13 +481,13 @@ ${scoringCriteria}
 
   private getDefaultComponentKnowledge(): Record<string, string> {
     return {
-      button: 'Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (40%), semantic token usage (30%), accessibility (20%), and naming consistency (10%).',
+      button: 'Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).',
       avatar: 'Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).',
       card: 'Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).',
       badge: 'Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).',
       input: 'Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).',
-      icon: 'Icon components should be scalable and consistent. Score based on sizing flexibility (30%), accessibility (30%), semantic naming (25%), and style consistency (15%).',
-      generic: 'Generic components should follow basic design system principles. Score based on structure clarity (25%), token usage (25%), naming consistency (25%), and accessibility basics (25%).'
+      icon: 'Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).',
+      generic: 'Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%).'
     };
   }
 
@@ -524,12 +524,12 @@ ${scoringCriteria}
     const family = context.additionalContext?.componentFamily || 'generic';
 
     const guidanceMap: Record<string, string> = {
-      button: 'Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (40%), semantic token usage (30%), accessibility (20%), and naming consistency (10%).',
+      button: 'Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).',
       avatar: 'Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).',
       card: 'Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).',
       badge: 'Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).',
       input: 'Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).',
-      generic: 'Generic components should follow basic design system principles. Score based on structure clarity (25%), token usage (25%), naming consistency (25%), and accessibility basics (25%).'
+      generic: 'Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%).'
     };
 
     return guidanceMap[family] || guidanceMap.generic;
@@ -654,22 +654,10 @@ ${scoringCriteria}
   }
 
   private ensureConsistentScoring(mcpReadiness: any, context: ComponentContext): any {
-    const family = context.additionalContext?.componentFamily || 'generic';
-
-    // Apply family-specific scoring baselines
-    const baselineScores = {
-      button: { structure: 85, tokens: 80, accessibility: 90, consistency: 85 },
-      avatar: { structure: 90, tokens: 75, accessibility: 85, consistency: 80 },
-      input: { structure: 85, tokens: 85, accessibility: 95, consistency: 90 },
-      generic: { structure: 80, tokens: 75, accessibility: 80, consistency: 75 }
-    };
-
-    const baseline = baselineScores[family as keyof typeof baselineScores] || baselineScores.generic;
-
+    // Return the actual calculated score without arbitrary baselines
     return {
       ...mcpReadiness,
-      score: mcpReadiness.score || Math.round((baseline.structure + baseline.tokens + baseline.accessibility + baseline.consistency) / 4),
-      baseline: baseline
+      score: mcpReadiness.score || 0
     };
   }
 }

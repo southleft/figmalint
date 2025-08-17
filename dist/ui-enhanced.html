@@ -2988,133 +2988,7 @@
         html += '</div>';
       }
 
-      // Naming Conventions
-      if (audit.naming && audit.naming.length > 0) {
-        html += '<div class="audit-section">';
-        html += `
-          <div class="section-header">
-            <h4 class="section-title">Naming Conventions</h4>
-            <div class="tooltip">
-              <div class="info-icon">i</div>
-              <span class="tooltiptext">
-                <strong>Naming Conventions</strong><br>
-                Clear, descriptive layer names help developers understand component structure and speed up the design-to-code process. Good names describe purpose (not appearance) and follow consistent patterns. This reduces miscommunication and makes handoff smoother.
-              </span>
-            </div>
-          </div>
-        `;
 
-        audit.naming.forEach(item => {
-          totalCount++;
-          // Check if this is a positive message or actual issue
-          const isPositive = item.issue && item.issue.includes('follows conventions');
-          const status = isPositive ? 'pass' : 'warning';
-          if (isPositive) passCount++;
-
-          // Low weight for naming (0.5x) - nice to have but doesn't affect MCP compatibility
-          weightedTotalScore += 0.5;
-          if (isPositive) weightedPassScore += 0.5;
-
-          html += `
-            <div class="audit-item">
-              <span class="audit-status ${status}">${isPositive ? '✅' : '⚠️'}</span>
-              <span class="audit-label">${isPositive ? item.issue : item.issue || 'Naming could be improved'}</span>
-            </div>
-          `;
-        });
-        html += '</div>';
-      } else {
-        // Show fallback for naming when no issues found
-        html += '<div class="audit-section">';
-        html += `
-          <div class="section-header">
-            <h4 class="section-title">Naming Conventions</h4>
-            <div class="tooltip">
-              <div class="info-icon">i</div>
-              <span class="tooltiptext">
-                <strong>Naming Conventions</strong><br>
-                Clear, descriptive layer names help developers understand component structure and speed up the design-to-code process. Good names describe purpose (not appearance) and follow consistent patterns. This reduces miscommunication and makes handoff smoother.
-              </span>
-            </div>
-          </div>
-        `;
-        html += `
-          <div class="audit-item">
-            <span class="audit-status pass">✅</span>
-            <span class="audit-label">Layer names follow good conventions</span>
-          </div>
-        `;
-        html += '</div>';
-        totalCount++;
-        passCount++;
-        // Low weight for naming (0.5x) - nice to have but doesn't affect MCP compatibility
-        weightedTotalScore += 0.5;
-        weightedPassScore += 0.5;
-      }
-
-      // Consistency Audit (if available)
-      if (audit.consistency && audit.consistency.length > 0) {
-        html += '<div class="audit-section">';
-        html += `
-          <div class="section-header">
-            <h4 class="section-title">Design Consistency</h4>
-            <div class="tooltip">
-              <div class="info-icon">i</div>
-              <span class="tooltiptext">
-                <strong>Design Consistency</strong><br>
-                Ensures your component follows established design system patterns and standards. This includes consistent spacing, sizing, color usage, and interaction patterns. Consistency reduces development time, improves user experience, and maintains brand coherence across your product.
-              </span>
-            </div>
-          </div>
-        `;
-
-        audit.consistency.forEach(item => {
-          totalCount++;
-          // Check if this is a positive message or actual issue
-          const isPositive = item.issue && item.issue.includes('follows design system patterns');
-          const status = isPositive ? 'pass' : 'warning';
-          if (isPositive) passCount++;
-
-          // Medium weight for consistency (2x) - affects code generation quality
-          weightedTotalScore += 2;
-          if (isPositive) weightedPassScore += 2;
-
-          html += `
-            <div class="audit-item">
-              <span class="audit-status ${status}">${isPositive ? '✅' : '⚠️'}</span>
-              <span class="audit-label">${isPositive ? item.issue : item.issue || 'Consistency issue detected'}</span>
-            </div>
-          `;
-        });
-        html += '</div>';
-      } else {
-        // Show fallback for consistency when no audit data
-        html += '<div class="audit-section">';
-        html += `
-          <div class="section-header">
-            <h4 class="section-title">Design Consistency</h4>
-            <div class="tooltip">
-              <div class="info-icon">i</div>
-              <span class="tooltiptext">
-                <strong>Design Consistency</strong><br>
-                Ensures your component follows established design system patterns and standards. This includes consistent spacing, sizing, color usage, and interaction patterns. Consistency reduces development time, improves user experience, and maintains brand coherence across your product.
-              </span>
-            </div>
-          </div>
-        `;
-        html += `
-          <div class="audit-item">
-            <span class="audit-status pass">✅</span>
-            <span class="audit-label">Component follows design system patterns</span>
-          </div>
-        `;
-        html += '</div>';
-        totalCount++;
-        passCount++;
-        // Medium weight for consistency (2x) - affects code generation quality
-        weightedTotalScore += 2;
-        weightedPassScore += 2;
-      }
 
       auditContent.innerHTML = html;
 
@@ -4368,199 +4242,126 @@
     }
 
     function formatChatContent(content) {
-      // Debug logging
-      console.log('Original content:', content);
-
-      // First pass: identify and group all lists
-      let processedContent = content;
-
-      // Process ordered lists - match all of them first, then replace
-      const orderedListRegex = /^(\d+)\.\s+(.+?)(?=\n\d+\.|$(?!\n))/gms;
-      const orderedLists = [];
-      let match;
-
-      // Find all ordered list items
-      const orderedMatches = [];
+      // Simple markdown-to-HTML converter that handles common patterns correctly
+      
+      // Convert markdown to HTML using a simple state machine
       const lines = content.split('\n');
+      const htmlLines = [];
+      let currentBlock = null;
+      let currentBlockContent = [];
+      
+      const closeCurrentBlock = () => {
+        if (currentBlock === 'paragraph' && currentBlockContent.length > 0) {
+          htmlLines.push(`<p>${currentBlockContent.join(' ')}</p>`);
+        } else if (currentBlock === 'ol') {
+          htmlLines.push('</ol>');
+        } else if (currentBlock === 'ul') {
+          htmlLines.push('</ul>');
+        }
+        currentBlock = null;
+        currentBlockContent = [];
+      };
+      
+      // Process inline markdown (bold, italic, code)
+      function processInlineMarkdown(text) {
+        return text
+          // Code spans (do this first to avoid conflicts)
+          .replace(/`([^`]+)`/g, '<code>$1</code>')
+          // Bold
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+          // Italic (avoid matching list markers)
+          .replace(/(\s|^)\*([^*\s][^*]*)\*(\s|$)/g, '$1<em>$2</em>$3');
+      }
+      
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        const olMatch = line.match(/^(\d+)\.\s+(.+)$/);
-        if (olMatch) {
-          orderedMatches.push({ lineIndex: i, number: olMatch[1], content: olMatch[2], line: line });
-        }
-      }
-
-      // Group consecutive ordered items
-      if (orderedMatches.length > 0) {
-        let currentGroup = [orderedMatches[0]];
-        const groups = [];
-
-        for (let i = 1; i < orderedMatches.length; i++) {
-          const prev = orderedMatches[i - 1];
-          const curr = orderedMatches[i];
-
-          // Check if this item should be in the same list (consecutive or with nested content between)
-          let shouldGroup = false;
-
-          // Check if there's only nested content (indented lines) between items
-          let allNested = true;
-          for (let j = prev.lineIndex + 1; j < curr.lineIndex; j++) {
-            const betweenLine = lines[j].trim();
-            if (betweenLine && !lines[j].match(/^\s+/)) {
-              allNested = false;
-              break;
-            }
-          }
-
-          if (allNested && (curr.lineIndex - prev.lineIndex < 10)) {
-            shouldGroup = true;
-          }
-
-          if (shouldGroup) {
-            currentGroup.push(curr);
-          } else {
-            groups.push(currentGroup);
-            currentGroup = [curr];
-          }
-        }
-        groups.push(currentGroup);
-
-        // Replace each group with proper HTML
-        let modifiedContent = content;
-        for (const group of groups.reverse()) {
-          if (group.length > 0) {
-            const startLine = group[0].lineIndex;
-            const endLine = group[group.length - 1].lineIndex;
-
-            // Build the HTML for this group
-            let olHtml = '<ol>\n';
-            for (let i = 0; i < group.length; i++) {
-              const item = group[i];
-              let itemContent = item.content;
-
-              // Check for nested content after this item
-              if (i < group.length - 1) {
-                const nextItem = group[i + 1];
-                const nestedLines = [];
-                for (let j = item.lineIndex + 1; j < nextItem.lineIndex; j++) {
-                  if (lines[j].match(/^\s+[-*]\s+/)) {
-                    nestedLines.push(lines[j]);
-                  }
-                }
-                if (nestedLines.length > 0) {
-                  // Process nested unordered list
-                  const nestedHtml = nestedLines.map(l => {
-                    const match = l.match(/^\s*[-*]\s+(.*)$/);
-                    return match ? `<li>${match[1]}</li>` : '';
-                  }).filter(l => l).join('\n');
-                  if (nestedHtml) {
-                    itemContent += '\n<ul>\n' + nestedHtml + '\n</ul>';
-                  }
-                }
-              }
-
-              olHtml += `<li>${itemContent}</li>\n`;
-            }
-            olHtml += '</ol>';
-
-            // Replace in content
-            const linesToReplace = [];
-            for (let i = startLine; i <= endLine; i++) {
-              linesToReplace.push(i);
-              // Include nested lines
-              if (i < endLine) {
-                for (let j = i + 1; j < lines.length && lines[j].match(/^\s+[-*]\s+/); j++) {
-                  linesToReplace.push(j);
-                  i = j;
-                }
-              }
-            }
-
-            // Build new content
-            const newLines = [...lines];
-            newLines[startLine] = olHtml;
-            for (let i = startLine + 1; i <= Math.max(...linesToReplace); i++) {
-              newLines[i] = '';
-            }
-            lines.splice(0, lines.length, ...newLines);
-          }
-        }
-
-        processedContent = lines.filter(l => l !== '').join('\n');
-      }
-
-      // Process standalone unordered lists
-      processedContent = processedContent.replace(/^([-*]\s+.+(?:\n(?:[-*]\s+.+|\s+[-*]\s+.+))*)/gm, (match) => {
-        const items = match.split('\n').map(line => {
-          const itemMatch = line.match(/^\s*[-*]\s+(.*)$/);
-          return itemMatch ? `<li>${itemMatch[1]}</li>` : '';
-        }).filter(item => item);
-        return '<ul>\n' + items.join('\n') + '\n</ul>';
-      });
-
-      // Now apply other formatting
-      const formatted = processedContent
-        // Convert headers with standard article spacing
-        .replace(/^### (.*$)/gm, '<h4>$1</h4>')
-        .replace(/^## (.*$)/gm, '<h3>$1</h3>')
-        .replace(/^# (.*$)/gm, '<h2>$1</h2>')
-        // Bold and italic (be careful not to match * in lists)
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/(?<!<[^>]*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>')
-        // Inline code
-        .replace(/`(.*?)`/g, '<code>$1</code>');
-
-      // Properly wrap content in paragraphs
-      const formattedLines = formatted.split('\n');
-      const wrappedLines = [];
-      let inList = false;
-      let currentParagraph = [];
-      
-      for (const line of formattedLines) {
         const trimmedLine = line.trim();
         
-        // Check if we're entering or exiting a list
-        if (trimmedLine.startsWith('<ol>') || trimmedLine.startsWith('<ul>')) {
-          // Close current paragraph if any
-          if (currentParagraph.length > 0) {
-            wrappedLines.push('<p>' + currentParagraph.join(' ') + '</p>');
-            currentParagraph = [];
-          }
-          inList = true;
-          wrappedLines.push(line);
-        } else if (trimmedLine.startsWith('</ol>') || trimmedLine.startsWith('</ul>')) {
-          wrappedLines.push(line);
-          inList = false;
-        } else if (trimmedLine.startsWith('<h') || trimmedLine.startsWith('</h')) {
-          // Headers - close current paragraph and add header
-          if (currentParagraph.length > 0) {
-            wrappedLines.push('<p>' + currentParagraph.join(' ') + '</p>');
-            currentParagraph = [];
-          }
-          wrappedLines.push(line);
-        } else if (inList) {
-          // Inside a list, add as-is
-          wrappedLines.push(line);
-        } else if (trimmedLine === '') {
-          // Empty line - close current paragraph if any
-          if (currentParagraph.length > 0) {
-            wrappedLines.push('<p>' + currentParagraph.join(' ') + '</p>');
-            currentParagraph = [];
-          }
-        } else {
-          // Regular text - add to current paragraph
-          currentParagraph.push(trimmedLine);
+        // Empty line - close current block
+        if (trimmedLine === '') {
+          closeCurrentBlock();
+          continue;
         }
+        
+        // Headers
+        const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+        if (headerMatch) {
+          closeCurrentBlock();
+          const level = Math.min(headerMatch[1].length + 1, 6); // Offset by 1 for better hierarchy
+          htmlLines.push(`<h${level}>${processInlineMarkdown(headerMatch[2])}</h${level}>`);
+          continue;
+        }
+        
+        // Ordered list
+        const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.+)$/);
+        if (orderedMatch) {
+          const [, indent, num, content] = orderedMatch;
+          const indentLevel = indent.length;
+          
+          // Check if we need to start a new list
+          if (currentBlock !== 'ol') {
+            closeCurrentBlock();
+            htmlLines.push('<ol>');
+            currentBlock = 'ol';
+          }
+          
+          // Add list item - check for nested content
+          let itemHtml = `<li>${processInlineMarkdown(content)}`;
+          
+          // Look ahead for nested lists
+          let j = i + 1;
+          const nestedItems = [];
+          while (j < lines.length && lines[j].match(/^\s+[-*]\s+/)) {
+            const nestedMatch = lines[j].match(/^\s*[-*]\s+(.+)$/);
+            if (nestedMatch) {
+              nestedItems.push(nestedMatch[1]);
+            }
+            j++;
+          }
+          
+          if (nestedItems.length > 0) {
+            itemHtml += '\n<ul>';
+            nestedItems.forEach(item => {
+              itemHtml += `\n<li>${processInlineMarkdown(item)}</li>`;
+            });
+            itemHtml += '\n</ul>';
+            i = j - 1; // Skip the nested items we just processed
+          }
+          
+          itemHtml += '</li>';
+          htmlLines.push(itemHtml);
+          continue;
+        }
+        
+        // Unordered list
+        const unorderedMatch = line.match(/^(\s*)[-*]\s+(.+)$/);
+        if (unorderedMatch) {
+          const [, indent, content] = unorderedMatch;
+          
+          // Check if we're at root level (not nested)
+          if (indent.length === 0) {
+            if (currentBlock !== 'ul') {
+              closeCurrentBlock();
+              htmlLines.push('<ul>');
+              currentBlock = 'ul';
+            }
+            htmlLines.push(`<li>${processInlineMarkdown(content)}</li>`);
+            continue;
+          }
+        }
+        
+        // Regular paragraph text
+        if (currentBlock !== 'paragraph') {
+          closeCurrentBlock();
+          currentBlock = 'paragraph';
+        }
+        currentBlockContent.push(processInlineMarkdown(trimmedLine));
       }
       
-      // Close any remaining paragraph
-      if (currentParagraph.length > 0) {
-        wrappedLines.push('<p>' + currentParagraph.join(' ') + '</p>');
-      }
+      // Close any remaining block
+      closeCurrentBlock();
       
-      const finalFormatted = wrappedLines.join('\n');
-
-      return '<div class="chat-article">' + finalFormatted + '</div>';
+      return '<div class="chat-article">' + htmlLines.join('\n') + '</div>';
     }
 
     function formatTimestamp(timestamp) {

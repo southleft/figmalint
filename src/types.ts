@@ -54,8 +54,6 @@ export interface TokenRecommendations {
 
 export interface AuditResults {
   accessibilityIssues: string[];
-  namingIssues: string[];
-  consistencyIssues: string[];
   tokenOpportunities?: string[];
 }
 
@@ -206,8 +204,6 @@ export interface EnhancedAnalysisOptions {
 export interface DetailedAuditResults {
   states: Array<{ name: string; found: boolean }>;
   accessibility: Array<{ check: string; status: 'pass' | 'fail' | 'warning'; suggestion: string }>;
-  naming: Array<{ layer: string; issue: string; suggestion: string }>;
-  consistency: Array<{ property: string; issue: string; suggestion: string }>;
 }
 
 export interface EnhancedAnalysisResult {
@@ -221,8 +217,6 @@ export interface EnhancedAnalysisResult {
 export interface DetailedAudit {
   states: StateAudit[];
   accessibility: AccessibilityAudit[];
-  naming: NamingAudit[];
-  consistency: ConsistencyAudit[];
 }
 
 export interface StateAudit {
@@ -236,17 +230,7 @@ export interface AccessibilityAudit {
   suggestion: string;
 }
 
-export interface NamingAudit {
-  layer: string;
-  issue: string;
-  suggestion: string;
-}
 
-export interface ConsistencyAudit {
-  property: string;
-  issue: string;
-  suggestion: string;
-}
 
 export interface Suggestion {
   category: 'token' | 'accessibility' | 'naming' | 'state';
