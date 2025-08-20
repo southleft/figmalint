@@ -158,6 +158,7 @@ declare global {
 
   interface ComponentSetNode extends BaseFrameNode {
     type: 'COMPONENT_SET';
+    description: string;
     variantGroupProperties: { [property: string]: { values: string[] } };
   }
 

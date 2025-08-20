@@ -1188,12 +1188,25 @@ export async function processEnhancedAnalysis(
   const actualProperties = await extractActualComponentProperties(node, selectedNode);
   const actualStates = await extractActualComponentStates(node);
   const tokens = await extractDesignTokensFromNode(node);
+  
+  // Extract component description if available
+  let componentDescription = '';
+  if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+    componentDescription = (node as ComponentNode | ComponentSetNode).description || '';
+  } else if (node.type === 'INSTANCE') {
+    const instance = node as InstanceNode;
+    const mainComponent = await instance.getMainComponentAsync();
+    if (mainComponent) {
+      componentDescription = mainComponent.description || '';
+    }
+  }
 
   // Log extracted data for debugging
   console.log(`📊 [ANALYSIS] Extracted from Figma API:`);
   console.log(`  Properties: ${actualProperties.length}`);
   console.log(`  States: ${actualStates.length}`);
   console.log(`  Tokens: ${Object.keys(tokens).length} categories`);
+  console.log(`  Description: ${componentDescription ? 'Present' : 'Missing'}`);
 
   // Check if MCP server is available
   const mcpServerUrl = options.mcpServerUrl || 'http://localhost:3000/mcp';
@@ -1205,7 +1218,7 @@ export async function processEnhancedAnalysis(
     console.log('🔄 Using hybrid Claude + MCP approach...');
 
     // Step 1: Use Claude for direct Figma data extraction and analysis
-    const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens);
+    const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
     const claudeResponse = await fetchClaude(claudePrompt, apiKey, model);
     const claudeData = extractJSONFromResponse(claudeResponse);
 
@@ -1228,7 +1241,8 @@ export async function processEnhancedAnalysis(
       context,
       actualProperties,
       actualStates,
-      tokens
+      tokens,
+      componentDescription
     });
 
   } else {
@@ -1255,7 +1269,8 @@ function createFigmaDataExtractionPrompt(
   context: ComponentContext,
   actualProperties: Array<{ name: string; values: string[]; default: string }>,
   actualStates: string[],
-  tokens: TokenAnalysis
+  tokens: TokenAnalysis,
+  componentDescription: string
 ): string {
   const componentFamily = context.additionalContext?.componentFamily || 'generic';
 
@@ -1265,6 +1280,7 @@ function createFigmaDataExtractionPrompt(
 - Name: ${context.name}
 - Type: ${context.type}
 - Family: ${componentFamily}
+- Description: ${componentDescription || 'No description provided'}
 
 **Actual Figma Properties (${actualProperties.length} total):**
 ${actualProperties.slice(0, 10).map(p => `- ${p.name}: ${p.values.join(', ')} (default: ${p.default})`).join('\n')}
@@ -1433,6 +1449,7 @@ function mergClaudeAndMCPResults(
     actualProperties: Array<{ name: string; values: string[]; default: string }>;
     actualStates: string[];
     tokens: TokenAnalysis;
+    componentDescription?: string;
   }
 ): any {
   // Start with Claude's extracted data
@@ -1450,6 +1467,11 @@ function mergClaudeAndMCPResults(
     tokenOpportunities: [],
     structureIssues: []
   };
+  
+  // Add issue for missing component description
+  if (!fallbackData.componentDescription || fallbackData.componentDescription.trim().length === 0) {
+    merged.audit.structureIssues.push('Component lacks description - Add a description in component properties to help MCP and AI understand the component\'s purpose and usage');
+  }
 
   // Add MCP-enhanced readiness score if available
   if (mcpEnhancements?.success) {
@@ -1608,6 +1630,18 @@ async function processAnalysisResult(
 
     // Extract actual states
     const actualStates = await extractActualComponentStates(node);
+    
+    // Extract component description if available
+    let componentDescription = '';
+    if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+      componentDescription = (node as ComponentNode | ComponentSetNode).description || '';
+    } else if (node.type === 'INSTANCE') {
+      const instance = node as InstanceNode;
+      const mainComponent = await instance.getMainComponentAsync();
+      if (mainComponent) {
+        componentDescription = mainComponent.description || '';
+      }
+    }
 
     // Extract design tokens if enabled
     let tokens: TokenAnalysis = {
@@ -1689,7 +1723,8 @@ async function processAnalysisResult(
         context,
         actualProperties,
         actualStates,
-        tokens
+        tokens,
+        componentDescription
       })
     };
 
@@ -1699,7 +1734,7 @@ async function processAnalysisResult(
     console.log('📤 Sending to UI - metadata.mcpReadiness:', metadata.mcpReadiness);
 
     // Create audit results
-    const audit: DetailedAuditResults = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens);
+    const audit: DetailedAuditResults = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
 
     // Generate property recommendations if the component has few properties
     const recommendations = generatePropertyRecommendations(context.name, actualProperties);
@@ -1728,7 +1763,8 @@ function createAuditResults(
   node: SceneNode,
   actualProperties: Array<{ name: string; values: string[]; default: string }>,
   actualStates: string[],
-  tokens: TokenAnalysis
+  tokens: TokenAnalysis,
+  componentDescription?: string
 ): DetailedAuditResults {
   return {
     // Basic state checking
@@ -1744,6 +1780,13 @@ function createAuditResults(
         suggestion: actualProperties.length > 0
           ? 'Component has configurable properties'
           : 'Consider adding properties for component customization'
+      },
+      {
+        check: 'Component description',
+        status: componentDescription && componentDescription.trim().length > 0 ? 'pass' : 'warning',
+        suggestion: componentDescription && componentDescription.trim().length > 0
+          ? 'Component has description for MCP/AI context'
+          : 'Add a component description to help MCP and AI understand the component purpose and usage'
       }
     ]
   };
@@ -1758,8 +1801,9 @@ function generateFallbackMCPReadiness(data: {
   actualProperties: Array<{ name: string; values: string[]; default: string }>;
   actualStates: string[];
   tokens: any;
+  componentDescription?: string;
 }): any {
-  const { node, context, actualProperties, actualStates, tokens } = data;
+  const { node, context, actualProperties, actualStates, tokens, componentDescription } = data;
   const family = context.componentFamily || 'generic';
 
   // Analyze component structure to determine strengths
@@ -1769,6 +1813,14 @@ function generateFallbackMCPReadiness(data: {
 
 
   // Skip meaningless layer counting - focus on actual functionality instead
+
+  // Check for component description (important for MCP/AI understanding)
+  if (componentDescription && componentDescription.trim().length > 0) {
+    strengths.push('Has component description for better MCP/AI context');
+  } else {
+    gaps.push('Missing component description - AI cannot understand component purpose and intent');
+    recommendations.push('Add a descriptive explanation in component properties to help AI understand the component\'s purpose, behavior, and usage patterns');
+  }
 
   // Check for properties
   if (actualProperties.length > 0) {
@@ -1902,9 +1954,15 @@ function generateFallbackMCPReadiness(data: {
   const hasTokens = totalTokens > 0;
   const tokenUsageRatio = totalTokens > 0 ? totalTokens / (totalTokens + tokenCounts.hardCoded) : 0;
   
-  // Properties (25% - essential for component flexibility)
+  // Properties (22% - essential for component flexibility)
   if (hasProperties) {
-    score += 25;
+    score += 22;
+  }
+  
+  // Component description (3% - important for MCP/AI understanding)
+  const hasDescription = componentDescription && componentDescription.trim().length > 0;
+  if (hasDescription) {
+    score += 3;
   }
   
   // Design tokens (25% - essential for consistency)

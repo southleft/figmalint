@@ -2182,16 +2182,27 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const actualProperties = await extractActualComponentProperties(node, selectedNode);
     const actualStates = await extractActualComponentStates(node);
     const tokens = await extractDesignTokensFromNode(node);
+    let componentDescription = "";
+    if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+      componentDescription = node.description || "";
+    } else if (node.type === "INSTANCE") {
+      const instance = node;
+      const mainComponent = await instance.getMainComponentAsync();
+      if (mainComponent) {
+        componentDescription = mainComponent.description || "";
+      }
+    }
     console.log(`\u{1F4CA} [ANALYSIS] Extracted from Figma API:`);
     console.log(`  Properties: ${actualProperties.length}`);
     console.log(`  States: ${actualStates.length}`);
     console.log(`  Tokens: ${Object.keys(tokens).length} categories`);
+    console.log(`  Description: ${componentDescription ? "Present" : "Missing"}`);
     const mcpServerUrl = options.mcpServerUrl || "http://localhost:3000/mcp";
     const useMCP = options.useMCP !== false && mcpServerUrl;
     let analysisResult;
     if (useMCP) {
       console.log("\u{1F504} Using hybrid Claude + MCP approach...");
-      const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens);
+      const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
       const claudeResponse = await fetchClaude(claudePrompt, apiKey, model);
       const claudeData = extractJSONFromResponse(claudeResponse);
       if (!claudeData) {
@@ -2209,7 +2220,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         context,
         actualProperties,
         actualStates,
-        tokens
+        tokens,
+        componentDescription
       });
     } else {
       console.log("\u{1F4DD} Using Claude-only analysis...");
@@ -2223,7 +2235,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const filteredData = filterDevelopmentRecommendations(analysisResult);
     return await processAnalysisResult(filteredData, context, options);
   }
-  function createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens) {
+  function createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription) {
     var _a;
     const componentFamily = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
     return `Analyze this Figma component and extract its structure and patterns.
@@ -2232,6 +2244,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
 - Name: ${context.name}
 - Type: ${context.type}
 - Family: ${componentFamily}
+- Description: ${componentDescription || "No description provided"}
 
 **Actual Figma Properties (${actualProperties.length} total):**
 ${actualProperties.slice(0, 10).map((p) => `- ${p.name}: ${p.values.join(", ")} (default: ${p.default})`).join("\n")}
@@ -2372,6 +2385,9 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       tokenOpportunities: [],
       structureIssues: []
     };
+    if (!fallbackData.componentDescription || fallbackData.componentDescription.trim().length === 0) {
+      merged.audit.structureIssues.push("Component lacks description - Add a description in component properties to help MCP and AI understand the component's purpose and usage");
+    }
     if (mcpEnhancements == null ? void 0 : mcpEnhancements.success) {
       merged.mcpReadiness = generateMCPReadinessFromBestPractices(
         mcpEnhancements,
@@ -2467,6 +2483,16 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       }
       const actualProperties = await extractActualComponentProperties(node);
       const actualStates = await extractActualComponentStates(node);
+      let componentDescription = "";
+      if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+        componentDescription = node.description || "";
+      } else if (node.type === "INSTANCE") {
+        const instance = node;
+        const mainComponent = await instance.getMainComponentAsync();
+        if (mainComponent) {
+          componentDescription = mainComponent.description || "";
+        }
+      }
       let tokens = {
         colors: [],
         spacing: [],
@@ -2530,13 +2556,14 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
           context,
           actualProperties,
           actualStates,
-          tokens
+          tokens,
+          componentDescription
         })
       };
       console.log("\u{1F4E4} Sending to UI - metadata.props:", (_a = metadata.props) == null ? void 0 : _a.length);
       console.log("\u{1F4E4} Sending to UI - metadata.states:", metadata.states);
       console.log("\u{1F4E4} Sending to UI - metadata.mcpReadiness:", metadata.mcpReadiness);
-      const audit = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens);
+      const audit = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
       const recommendations = generatePropertyRecommendations(context.name, actualProperties);
       console.log("\u2705 Analysis result processed successfully");
       return {
@@ -2551,7 +2578,7 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       throw error;
     }
   }
-  function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens) {
+  function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription) {
     return {
       // Basic state checking
       states: actualStates.map((state) => ({
@@ -2564,17 +2591,28 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
           check: "Property configuration",
           status: actualProperties.length > 0 ? "pass" : "warning",
           suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
+        },
+        {
+          check: "Component description",
+          status: componentDescription && componentDescription.trim().length > 0 ? "pass" : "warning",
+          suggestion: componentDescription && componentDescription.trim().length > 0 ? "Component has description for MCP/AI context" : "Add a component description to help MCP and AI understand the component purpose and usage"
         }
       ]
     };
   }
   function generateFallbackMCPReadiness(data) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
-    const { node, context, actualProperties, actualStates, tokens } = data;
+    const { node, context, actualProperties, actualStates, tokens, componentDescription } = data;
     const family = context.componentFamily || "generic";
     const strengths = [];
     const gaps = [];
     const recommendations = [];
+    if (componentDescription && componentDescription.trim().length > 0) {
+      strengths.push("Has component description for better MCP/AI context");
+    } else {
+      gaps.push("Missing component description - AI cannot understand component purpose and intent");
+      recommendations.push("Add a descriptive explanation in component properties to help AI understand the component's purpose, behavior, and usage patterns");
+    }
     if (actualProperties.length > 0) {
       strengths.push(`Has ${actualProperties.length} configurable properties`);
     } else {
@@ -2678,7 +2716,11 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
     const hasTokens = totalTokens > 0;
     const tokenUsageRatio = totalTokens > 0 ? totalTokens / (totalTokens + tokenCounts.hardCoded) : 0;
     if (hasProperties) {
-      score += 25;
+      score += 22;
+    }
+    const hasDescription = componentDescription && componentDescription.trim().length > 0;
+    if (hasDescription) {
+      score += 3;
     }
     score += Math.round(25 * tokenUsageRatio);
     const needsStates = context.hasInteractiveElements && family !== "badge" && family !== "icon";
