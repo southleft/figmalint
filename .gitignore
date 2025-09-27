@@ -36,3 +36,23 @@ pids
 # Temporary files
 *.tmp
 *.temp
+*-backup.*
+*-old.*
+
+# Test files and development scripts
+src/__tests__/
+scripts/test-*.js
+*.test.ts
+*.test.js
+
+# Local configuration
+.claude/
+settings.local.json
+
+# Development UI files
+ui-enhanced.html
+
+# Personal/Internal documentation
+MCP_INTEGRATION_SUCCESS.md
+IMPORT_TO_FIGMA.md
+CONSISTENCY_FEATURES.md

@@ -7,11 +7,9 @@
     "build": "npm run bundle && npm run copy-assets",
     "bundle": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --global-name='' --loader:.ts=ts",
     "dev": "npm run bundle -- --watch",
-    "copy-assets": "cp ui-enhanced.html dist/ && cp manifest.json dist/",
+    "copy-assets": "cp ui.html dist/ && cp manifest.json dist/",
     "clean": "rm -rf dist",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:mcp": "node scripts/test-mcp-connection.js",
-    "test:mcp-integration": "node scripts/test-figma-plugin-mcp.js",
     "lint": "tsc --noEmit",
     "prebuild": "npm run clean"
   },

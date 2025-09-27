@@ -1,14 +1,16 @@
 # FigmaLint
 
-A Figma plugin that acts as an **audit and education tool** for design systems. It helps designers understand developer expectations and structure components properly for engineering handoff.
+A powerful Figma plugin that serves as an **intelligent design system auditor and educational companion**. FigmaLint bridges the gap between design and development by analyzing components against best practices and providing actionable feedback.
 
 ## 🎯 Mission
 
-This plugin **does not modify or generate components**. Instead, it analyzes existing Figma components and provides:
-- **Component audits** with recommendations
-- **Design token analysis** and suggestions
-- **Educational feedback** on component structure
-- **Metadata export** for development teams
+FigmaLint empowers designers to create development-ready components by providing real-time analysis and educational feedback. Unlike traditional plugins that modify your designs, FigmaLint acts as a knowledgeable reviewer that helps you understand and implement best practices.
+
+### Core Philosophy
+- **Educational First**: Learn while you design with contextual feedback
+- **Non-Destructive**: Analyzes without modifying your components
+- **Developer-Friendly**: Ensures components meet engineering requirements
+- **AI-Powered**: Leverages Claude AI for intelligent, context-aware analysis
 
 ## ✨ Core Features
 
@@ -35,23 +37,19 @@ This plugin **does not modify or generate components**. Instead, it analyzes exi
 - Shows available values for each property
 - Provides context for how properties should be used
 
-## Recent Updates
+## 🎨 Key Capabilities
 
-### Variable Detection & Display Fixes (Latest)
-- **Fixed Variable Access**: Updated from deprecated synchronous `figma.variables.getVariableById()` to proper async `figma.variables.getVariableByIdAsync()`
-- **Color Value Resolution**: Variables now show actual color values (hex codes) in swatches instead of just variable names
-- **Removed Hard-coded AI Suggestions**: Eliminated the persistent "semantic-color-primary" suggestion that appeared regardless of context
-- **Added Border Radius Detection**: Now properly detects hard-coded border radius values with context about which node they come from
-- **Enhanced Debug Context**: Hard-coded values now show detailed path information for complex components (e.g., "Found in variant: Hover, Checked=True, Focus=True → handle")
-- **Separated Stroke Weight from Border Radius**: Fixed confusion where stroke weights were incorrectly categorized as border radius values
-- **Fixed Interactive States Capitalization**: All states now display with consistent title case (e.g., "Idle state defined", "Hover state defined")
-- **Streamlined Developer Handoff**: Removed the unhelpful TypeScript interface export, keeping only JSON metadata and Markdown documentation options
-- **Better Error Handling**: Improved async handling and error recovery for variable processing
+### Smart Token Detection
+- **Comprehensive Analysis**: Automatically detects Figma Variables, Named Styles, and hard-coded values
+- **Contextual Recommendations**: Suggests semantic token names based on component context
+- **Visual Feedback**: Color swatches and visual previews for detected tokens
+- **Detailed Reporting**: Shows exactly where hard-coded values exist in your component hierarchy
 
-### Enhanced Token Analysis
-- **Comprehensive Variable Support**: Detects Figma Variables for colors, spacing, typography, borders, effects, and opacity
-- **Mixed Token Detection**: Combines Figma Variables, Named Styles, and hard-coded values in one analysis
-- **Contextual Information**: Shows which specific node contains hard-coded values for easier debugging
+### Intelligent Auditing
+- **State Completeness**: Identifies missing interactive states (hover, focus, disabled, etc.)
+- **Accessibility Validation**: Checks against WCAG guidelines and best practices
+- **Naming Conventions**: Suggests improvements for layer and component naming
+- **Component Structure**: Validates proper hierarchy and organization
 
 ## 🏗️ Architecture
 
@@ -68,51 +66,116 @@ src/
 └── ui.html                   # Plugin interface
 ```
 
-## 🚀 Usage
-
-1. **Select a component** in Figma (Frame, Component, Component Set, or Instance)
-2. **Open the plugin** from the Figma menu
-3. **Add your Claude API key** for AI-powered analysis
-4. **Click "Analyze Component"** to get detailed feedback
-5. **Review the audit results** and recommendations
-6. **Export metadata** for development handoff
-
-## 🔧 Development
-
-### Prerequisites
-- Node.js 16+
-- Claude API key from Anthropic
-
-### Build Commands
-```bash
-npm install          # Install dependencies
-npm run build        # Build for production
-npm run dev          # Watch mode for development
-npm run clean        # Clean build artifacts
-npm run lint         # TypeScript type checking
-```
+## 🚀 Getting Started
 
 ### Installation
-1. Run `npm run build` to generate the plugin files
-2. In Figma, go to Plugins → Development → Import plugin from manifest
-3. Select the `manifest.json` file from the project root
-4. The plugin will be available in your Figma plugins menu
 
-## 🎯 Use Cases
+#### From Figma Community (Coming Soon)
+1. Visit the FigmaLint plugin page in Figma Community
+2. Click "Install" to add to your Figma workspace
 
-- **New designers** learning design system patterns
-- **Design system audits** for existing components
-- **Developer handoff** with structured metadata
-- **Component documentation** and guidelines
-- **Design token migration** planning
+#### Manual Installation (Development)
+1. Clone this repository
+2. Run `npm install` to install dependencies
+3. Run `npm run build` to compile the plugin
+4. In Figma: Plugins → Development → Import plugin from manifest
+5. Select the `manifest.json` file from the project root
 
-## 🔒 Privacy & Security
+### Usage
 
-- API key is stored locally in Figma
-- No component data is stored externally
-- Analysis happens through Claude API with your key
-- Plugin only reads component data, never modifies it
+1. **Select a component** - Choose any Frame, Component, Component Set, or Instance
+2. **Launch FigmaLint** - Run from Plugins menu
+3. **Configure API** - Add your Claude API key (one-time setup)
+4. **Analyze** - Click "Analyze Component" for instant feedback
+5. **Review & Export** - Study recommendations and export metadata as needed
 
-## 📄 License
+## 🛠️ Development Setup
 
-ISC License - See package.json for details
+### Prerequisites
+- Node.js 16+ and npm
+- TypeScript knowledge helpful but not required
+- Claude API key from [Anthropic Console](https://console.anthropic.com)
+
+### Local Development
+```bash
+# Install dependencies
+npm install
+
+# Development build with watch mode
+npm run dev
+
+# Production build
+npm run build
+
+# Type checking
+npm run lint
+
+# Clean build artifacts
+npm run clean
+```
+
+### Project Structure
+- `src/core/` - Core analysis logic
+- `src/api/` - Claude AI integration
+- `src/ui/` - User interface components
+- `src/utils/` - Helper utilities
+- `dist/` - Compiled plugin files
+
+## 💡 Use Cases
+
+### For Designers
+- **Learning Tool**: Understand design system best practices
+- **Quality Assurance**: Validate components before handoff
+- **Documentation**: Generate component specifications automatically
+- **Consistency**: Ensure adherence to design system standards
+
+### For Design Teams
+- **Design System Audits**: Assess component library health
+- **Onboarding**: Help new team members learn standards
+- **Migration Planning**: Identify token adoption opportunities
+- **Quality Gates**: Establish component review standards
+
+### For Developer Handoff
+- **Metadata Export**: Structured JSON for development
+- **State Documentation**: Complete interaction specifications
+- **Token Mapping**: Clear design token references
+- **Accessibility Notes**: WCAG compliance information
+
+## 🔐 Privacy & Security
+
+FigmaLint is designed with privacy in mind:
+- **Local Storage**: API keys stored securely in Figma's local storage
+- **No Data Retention**: Component data is never stored externally
+- **Direct API Calls**: Analysis happens directly through Claude API
+- **Read-Only**: Plugin only reads components, never modifies them
+- **Open Source**: Full transparency through open source code
+
+## 🤝 Contributing
+
+Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built with [Claude AI](https://www.anthropic.com) by Anthropic
+- Inspired by the design systems community
+- Thanks to all contributors and users
+
+## 📧 Support
+
+- **Issues**: Report bugs and request features through GitHub Issues
+- **Discussions**: Share ideas and get help from the community
+- **Contributing**: See our Contributing section above
+
+---
+
+Made with ❤️ for the design community

@@ -50,6 +50,104 @@
       box-sizing: border-box;
     }
 
+    /* Tooltip System */
+    .tooltip-container {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .tooltip-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      background: var(--text-tertiary);
+      color: white;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: help;
+      margin-left: 4px;
+      transition: all var(--transition-fast);
+    }
+
+    .tooltip-icon:hover {
+      background: var(--text-secondary);
+      transform: scale(1.1);
+    }
+
+    .tooltip-content {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 220px;
+      padding: 10px 12px;
+      background: var(--text-primary);
+      color: white;
+      border-radius: 6px;
+      font-size: 11px;
+      line-height: 1.5;
+      box-shadow: var(--shadow-lg);
+      opacity: 0;
+      visibility: hidden;
+      transition: all var(--transition-fast);
+      pointer-events: none;
+      z-index: 1000;
+      white-space: normal;
+    }
+
+    /* Position tooltip to the right to avoid left edge cutoff */
+    .tooltip-container.tooltip-right .tooltip-content {
+      left: -10px;
+      transform: translateX(0);
+    }
+
+    /* Fallback: if near right edge, show on left */
+    .tooltip-container.tooltip-left .tooltip-content {
+      left: auto;
+      right: -10px;
+      transform: translateX(0);
+    }
+
+    .tooltip-content::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid var(--text-primary);
+    }
+
+    /* Adjust arrow for right-positioned tooltip */
+    .tooltip-container.tooltip-right .tooltip-content::after {
+      left: 26px;
+    }
+
+    /* Adjust arrow for left-positioned tooltip */
+    .tooltip-container.tooltip-left .tooltip-content::after {
+      left: auto;
+      right: 26px;
+    }
+
+    .tooltip-container:hover .tooltip-content {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    /* Inline tooltip styles for headers */
+    .section-header-with-tooltip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
       margin: 0;
@@ -2295,7 +2393,17 @@
       // Accessibility Audit
       if (audit.accessibility && audit.accessibility.length > 0) {
         html += '<div class="audit-section">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Accessibility</h4>';
+        html += `
+          <div class="section-header-with-tooltip" style="margin-bottom: 8px;">
+            <h4 style="font-size: 12px; font-weight: 600; margin: 0;">Accessibility</h4>
+            <span class="tooltip-container tooltip-right">
+              <span class="tooltip-icon">ⓘ</span>
+              <span class="tooltip-content">
+                Check if your component works for users with disabilities. This includes proper color contrast for readability, keyboard navigation support, screen reader compatibility, and touch target sizes. Following accessibility guidelines (WCAG) ensures your design is inclusive and often legally required.
+              </span>
+            </span>
+          </div>
+        `;
 
         audit.accessibility.forEach(item => {
           totalCount++;
@@ -2423,8 +2531,18 @@
       // Display token summary if available
       if (currentTokenSummary) {
         html += '<div class="token-summary" style="background: var(--surface-secondary); padding: 12px; border-radius: 8px; margin-bottom: 16px;">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📊 Token Analysis Summary</h4>';
-        html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px;">';
+        html += `
+          <div class="section-header-with-tooltip" style="margin-bottom: 8px;">
+            <h4 style="font-size: 12px; font-weight: 600; margin: 0;">📊 Design Token Usage</h4>
+            <span class="tooltip-container tooltip-right">
+              <span class="tooltip-icon">ⓘ</span>
+              <span class="tooltip-content">
+                Design tokens are reusable values (colors, spacing, typography) that maintain consistency across your design system. Using tokens instead of hard-coded values makes designs more maintainable and ensures consistency when implementing in code.
+              </span>
+            </span>
+          </div>
+        `;
+        html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px; margin-top: 8px;">';
         html += `<div><strong>Total Items:</strong> ${currentTokenSummary.totalTokens}</div>`;
         html += `<div><strong>Design Tokens:</strong> <span style="color: var(--success)">${currentTokenSummary.actualTokens}</span></div>`;
         html += `<div><strong>Hard-coded:</strong> <span style="color: var(--warning)">${currentTokenSummary.hardCodedValues}</span></div>`;
