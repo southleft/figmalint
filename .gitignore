@@ -50,7 +50,7 @@ scripts/test-*.js
 settings.local.json
 
 # Development UI files
-ui-enhanced.html
+# ui-enhanced.html is now our main UI file, not a dev file
 
 # Personal/Internal documentation
 MCP_INTEGRATION_SUCCESS.md

@@ -1,0 +1,4448 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>FigmaLint</title>
+  <style>
+    /* Modern UI Design System for FigmaLint */
+    :root {
+      /* Color Palette - Figma-inspired */
+      --primary: #18A0FB;
+      --primary-hover: #0090F0;
+      --primary-light: #E6F4FF;
+      --secondary: #5E6470;
+      --background: #FFFFFF;
+      --surface: #F5F5F5;
+      --surface-hover: #EBEBEB;
+      --border: #E1E1E1;
+      --text-primary: #1C1C1C;
+      --text-secondary: #5E6470;
+      --text-tertiary: #8B8B8B;
+      --success: #06C167;
+      --error: #F24822;
+      --warning: #FFAA00;
+      --info: #18A0FB;
+
+      /* Spacing System */
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+
+      /* Border Radius */
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+      --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.1);
+
+      /* Transitions */
+      --transition-fast: 150ms ease;
+      --transition-base: 250ms ease;
+      --transition-slow: 350ms ease;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--background);
+      color: var(--text-primary);
+      font-size: 13px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: var(--background);
+    }
+
+    /* Header Section */
+    .header {
+      padding: var(--space-md) var(--space-md) var(--space-sm);
+      background: var(--background);
+      border-bottom: 1px solid var(--border);
+      min-height: 60px;
+      position: relative;
+      z-index: 10;
+      margin-bottom: var(--space-sm);
+    }
+
+    /* Ensure header bottom padding is maintained */
+    .header::after {
+      content: '';
+      display: block;
+      height: 1px;
+      clear: both;
+    }
+
+    .plugin-title {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xs);
+    }
+
+    .plugin-icon {
+      width: 20px;
+      height: 20px;
+      background: var(--primary);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    .plugin-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .plugin-description {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    /* Tabs Navigation */
+    .tabs-navigation {
+      display: flex;
+      padding: 0 var(--space-md) var(--space-xs);
+      border-bottom: 1px solid var(--border);
+      background: var(--background);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+
+    /* Main Content */
+    .content {
+      flex: 1;
+      padding: var(--space-md);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    /* Card Component */
+    .card {
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-md);
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition-base);
+    }
+
+    .card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--primary-light);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-sm);
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 0;
+    }
+
+    .card-subtitle {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin: var(--space-xs) 0 0 0;
+    }
+
+    /* Collapsible Sections */
+    .collapsible {
+      margin-bottom: var(--space-md);
+    }
+
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-sm) var(--space-md);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      user-select: none;
+    }
+
+    .collapsible-header:hover {
+      background: var(--surface-hover);
+    }
+
+    .collapsible-header.active {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .collapsible-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .collapsible-title > .tooltip {
+      left: -8px;
+    }
+
+    .collapsible-icon {
+      transition: transform var(--transition-fast);
+    }
+
+    .collapsible-header.active .collapsible-icon {
+      transform: rotate(90deg);
+    }
+
+    .collapsible-content {
+      display: none;
+      padding: var(--space-md);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-bottom-left-radius: var(--radius-md);
+      border-bottom-right-radius: var(--radius-md);
+    }
+
+    .collapsible-content.active {
+      display: block;
+    }
+
+    /* Form Elements */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+
+    label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-family: inherit;
+      background: var(--background);
+      color: var(--text-primary);
+      transition: all var(--transition-fast);
+      min-height: 30px;
+    }
+
+    textarea {
+      min-height: 80px !important;
+      resize: vertical;
+    }
+
+    input:hover, textarea:hover, select:hover {
+      border-color: var(--text-tertiary);
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: var(--text-tertiary);
+    }
+
+    .input-icon {
+      position: absolute;
+      right: var(--space-sm);
+      color: var(--text-tertiary);
+      pointer-events: none;
+    }
+
+    /* Button Styles */
+    .button {
+      padding: 6px 14px;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+      min-height: 30px;
+    }
+
+    .button-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .button-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .button-primary:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .button-secondary {
+      background: var(--surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .button-secondary:hover:not(:disabled) {
+      background: var(--surface-hover);
+      border-color: var(--text-tertiary);
+    }
+
+    .button-ghost {
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid var(--surface-hover);
+    }
+
+    .button-ghost:hover:not(:disabled) {
+      background: var(--primary-light);
+      border-color: var(--surface-hover);
+    }
+
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .button-group {
+      display: flex;
+      gap: var(--space-sm);
+      align-items: center;
+      margin-bottom: var(--space-md);
+    }
+
+    .button-icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Status Messages */
+    .status-banner {
+      padding: var(--space-sm) var(--space-md);
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      transition: all var(--transition-base);
+    }
+
+    .status-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .status-info {
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+
+    .status-success {
+      background: #E7F9F0;
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+
+    .status-error {
+      background: #FFEBE7;
+      color: var(--error);
+      border: 1px solid var(--error);
+    }
+
+    .status-warning {
+      background: #FFF4E0;
+      color: var(--warning);
+      border: 1px solid var(--warning);
+    }
+
+    /* Audit View Styles */
+    .audit-section:not(:last-child) {
+      margin-bottom: var(--space-lg);
+    }
+
+    .audit-item {
+      display: flex;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-sm);
+      gap: var(--space-sm);
+    }
+
+    .audit-status {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .audit-status.pass {
+      color: var(--success);
+    }
+
+    .audit-status.fail {
+      color: var(--error);
+    }
+
+    .audit-status.warning {
+      color: var(--warning);
+    }
+
+    .audit-label {
+      flex: 1;
+      font-size: 12px;
+      color: var(--text-primary);
+    }
+
+    .audit-action {
+      font-size: 11px;
+      color: var(--primary);
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .audit-action:hover {
+      text-decoration: underline;
+    }
+
+    .audit-action-button {
+      font-size: 11px;
+      color: var(--primary);
+      background: transparent;
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-sm);
+      padding: 2px 8px;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .audit-action-button:hover {
+      background: var(--primary-light);
+      transform: translateY(-1px);
+    }
+
+    /* Property Cheat Sheet */
+    .property-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .property-table th {
+      text-align: left;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+
+    .property-table td {
+      padding: var(--space-sm);
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    .property-table tr:hover {
+      background: var(--surface);
+    }
+
+    .property-value {
+      display: inline-block;
+      padding: 2px 6px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      margin-right: var(--space-xs);
+    }
+
+    /* Token Analysis */
+    .token-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: var(--space-sm);
+    }
+
+    .token-item {
+      padding: var(--space-sm);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .token-item:hover {
+      background: var(--surface-hover);
+      border-color: var(--primary);
+    }
+
+    .token-preview {
+      width: 100%;
+      height: 24px;
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+    }
+
+    /* Enhanced Token Display */
+    .token-item-enhanced {
+      display: flex;
+      align-items: center;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+      gap: var(--space-sm);
+      border: 1px solid var(--border);
+      transition: all var(--transition-base);
+    }
+
+    .token-item-enhanced:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .token-item-enhanced.suggestion {
+      background: var(--primary-light);
+      border-color: var(--primary);
+    }
+
+    /* Compact Token Display */
+    .token-item-compact {
+      display: flex;
+      padding: 8px;
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      gap: 8px;
+      transition: all var(--transition-fast);
+    }
+
+    .token-item-compact:hover {
+      background: var(--surface);
+      border-color: var(--primary);
+    }
+
+    .token-item-compact.warning {
+      background: #FFF8F0;
+      border-color: var(--warning);
+    }
+
+    .token-item-compact.suggestion {
+      background: #F0F4FF;
+      border-color: var(--primary);
+    }
+
+    .token-swatch-spacing {
+      height: 12px;
+      border-radius: 2px;
+      background: var(--primary);
+      flex-shrink: 0;
+    }
+
+    .token-preview-effect {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .token-preview-border {
+      width: 20px;
+      height: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .token-preview-text {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 2px;
+      background: var(--surface);
+      flex-shrink: 0;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .token-info {
+      flex: 1;
+    }
+
+    .token-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .token-usage {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-bottom: 2px;
+    }
+
+    .token-value {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    }
+
+    .token-preview-spacing {
+      max-width: 40px;
+      min-height: 8px;
+      border-radius: 2px;
+    }
+
+    .token-preview-text {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+    }
+
+    /* Compact Token Layout */
+    .token-item-compact {
+      display: flex;
+      padding: var(--space-sm);
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+      gap: var(--space-sm);
+      border: 1px solid var(--border);
+      transition: all var(--transition-base);
+    }
+
+    .token-item-compact:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .token-item-compact.warning {
+      background: rgba(255, 244, 224, 0.3);
+      border-color: var(--warning);
+    }
+
+    .token-item-compact.suggestion {
+      background: var(--primary-light);
+      border-color: var(--primary);
+    }
+
+    .token-swatch {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: transform var(--transition-fast);
+    }
+
+    .token-swatch:hover {
+      transform: scale(1.1);
+    }
+
+    .token-swatch-spacing {
+      height: 12px;
+      min-width: 8px;
+      max-width: 40px;
+      border-radius: 2px;
+      border: 1px solid rgba(0,0,0,0.1);
+      flex-shrink: 0;
+    }
+
+    .token-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .token-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .token-usage {
+      font-size: 10px;
+      color: var(--text-secondary);
+      line-height: 1.3;
+      word-wrap: break-word;
+    }
+
+    /* Playground Grid */
+    .playground-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: var(--space-md);
+      padding: var(--space-md);
+      background: var(--surface);
+      border-radius: var(--radius-md);
+    }
+
+    .playground-item {
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-md);
+      text-align: center;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-sm);
+    }
+
+    .playground-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Documentation Frame */
+    .doc-preview {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      min-height: 200px;
+    }
+
+    .doc-section {
+      margin-bottom: var(--space-lg);
+    }
+
+    .doc-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .doc-heading {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-sm);
+    }
+
+    .doc-content {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+
+    /* Export Options */
+    .export-options {
+      display: flex;
+      gap: var(--space-md);
+      align-items: stretch;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      min-width: 0;
+    }
+
+    .export-options .button {
+      font-size: 12px;
+      padding: 6px 16px;
+      min-height: 30px;
+      flex: 0 0 auto;
+    }
+
+    .export-options select {
+      font-size: 12px;
+      padding: 6px 12px;
+      min-height: 30px;
+    }
+
+    .export-select {
+      min-width: 120px;
+      font-size: 12px;
+    }
+
+    /* Batch Mode */
+    .batch-toggle {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm);
+      background: var(--warning);
+      color: white;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      margin-bottom: var(--space-md);
+    }
+
+    .batch-list {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm);
+    }
+
+    .batch-item {
+      display: flex;
+      align-items: center;
+      padding: var(--space-xs) var(--space-sm);
+      font-size: 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+
+    .batch-item:hover {
+      background: var(--surface);
+    }
+
+    .batch-item.selected {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    /* Loading States */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hover) 50%, var(--surface) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.5s infinite;
+      border-radius: var(--radius-sm);
+      height: 16px;
+      margin: var(--space-xs) 0;
+    }
+
+    @keyframes skeleton-loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--surface);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Footer Links */
+    .footer-links {
+      padding: var(--space-sm);
+      text-align: center;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      margin-top: auto;
+    }
+
+    .footer-link {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: all var(--transition-fast);
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-sm);
+      display: inline-block;
+      background: transparent;
+      border: 1px solid transparent;
+    }
+
+    .footer-link:hover {
+      color: var(--primary);
+      text-decoration: none;
+      background: var(--primary-light);
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    /* Utility Classes */
+    .hidden {
+      display: none !important;
+    }
+
+    /* Tooltip Styles */
+    .tooltip {
+      position: relative;
+      display: inline-block;
+      cursor: help;
+      margin-left: 4px;
+    }
+
+    .tooltip .tooltiptext {
+      visibility: hidden;
+      width: 280px;
+      background-color: var(--text-primary);
+      color: var(--background);
+      text-align: left;
+      border-radius: var(--radius-md);
+      padding: var(--space-sm);
+      position: absolute;
+      z-index: 1000;
+      bottom: 125%;
+      left: 50%;
+      margin-left: -140px;
+      opacity: 0;
+      transition: opacity var(--transition-base);
+      font-size: 11px;
+      line-height: 1.4;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .tooltip .tooltiptext::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: var(--text-primary) transparent transparent transparent;
+    }
+
+    /* Special positioning ONLY for Accessibility tooltip to prevent left edge cutoff */
+    /* We'll add a specific class to the Accessibility tooltip in the HTML */
+    .accessibility-tooltip .tooltiptext {
+      left: -10px;
+      margin-left: 0;
+    }
+
+    .accessibility-tooltip .tooltiptext::after {
+      left: 20px;
+    }
+
+    .tooltip:hover .tooltiptext {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .info-icon {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--text-tertiary);
+      color: var(--background);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+
+    .mt-sm { margin-top: var(--space-sm); }
+    .mt-md { margin-top: var(--space-md); }
+    .mb-sm { margin-bottom: var(--space-sm); }
+    .mb-md { margin-bottom: var(--space-md); }
+
+    /* Responsive Design */
+    @media (max-height: 600px) {
+      .header {
+        padding: var(--space-sm) var(--space-md);
+      }
+
+      .content {
+        padding: var(--space-sm) var(--space-md);
+      }
+    }
+
+    /* Toggle Switch */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--border);
+      transition: var(--transition-fast);
+      border-radius: 22px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: var(--transition-fast);
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+      background-color: var(--primary);
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(18px);
+    }
+
+    /* Quick Actions Bar */
+    .quick-actions-bar {
+      display: flex;
+      gap: var(--space-sm);
+      padding: var(--space-md);
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .quick-actions-bar .button {
+      flex: 1;
+    }
+
+    .quick-actions-bar .button-ghost {
+      flex: 0 0 auto;
+    }
+
+    /* Tabs Navigation */
+    .tabs-navigation {
+      display: flex;
+      padding: 0 var(--space-md) 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--background);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .tab-button {
+      padding: var(--space-sm) var(--space-md) calc(var(--space-sm) + 1px);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      position: relative;
+      margin-bottom: -1px;
+    }
+
+    .tab-button:hover:not(.active) {
+      color: var(--text-primary);
+      background: var(--surface);
+      border-bottom-color: var(--primary);
+    }
+
+    .tab-button.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    .tab-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Tab Content */
+    .tab-content {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Chat Interface Styles - Cleaner Layout */
+    .chat-wrapper {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 200px);
+      max-height: 600px;
+    }
+
+    .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 0 var(--space-sm);
+      border-bottom: 1px solid var(--border);
+      background: var(--background);
+      min-height: 40px;
+    }
+
+    .chat-title h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text-primary);
+    }
+
+    .component-context {
+      background: var(--primary-light);
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm);
+      margin: var(--space-sm) 0;
+    }
+
+    .context-badge {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: var(--space-xs);
+    }
+
+    .context-info {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .chat-empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-md);
+    }
+
+    .chat-empty-content {
+      text-align: center;
+      max-width: 350px;
+    }
+
+    .chat-empty-icon {
+      font-size: 36px;
+      opacity: 0.2;
+      display: block;
+      margin-bottom: var(--space-sm);
+    }
+
+    .chat-empty-text h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 var(--space-xs) 0;
+      color: var(--text-primary);
+    }
+
+    .chat-empty-text p {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin: 0 0 var(--space-md) 0;
+      line-height: 1.4;
+    }
+
+    .chat-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+      justify-content: center;
+    }
+
+    .chat-suggestion {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: var(--space-xs) var(--space-sm);
+      font-size: 11px;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .chat-suggestion:hover {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--space-md) 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .chat-message {
+      display: flex;
+      flex-direction: column;
+      max-width: 85%;
+      animation: fadeInUp 0.3s ease;
+    }
+
+    .chat-message.user {
+      align-self: flex-end;
+    }
+
+    .chat-message.assistant {
+      align-self: flex-start;
+    }
+
+    .chat-message-content {
+      padding: var(--space-sm) var(--space-md);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      line-height: 1.5;
+      word-wrap: break-word;
+    }
+
+    .chat-message.user .chat-message-content {
+      background: var(--primary);
+      color: white;
+      border-bottom-right-radius: var(--radius-sm);
+    }
+
+    .chat-message.assistant .chat-message-content {
+      background: var(--surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: var(--radius-sm);
+    }
+
+    .chat-message-meta {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: var(--space-xs);
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .chat-message.user .chat-message-meta {
+      justify-content: flex-end;
+    }
+
+    .chat-message.assistant .chat-message-meta {
+      justify-content: flex-start;
+    }
+
+    .chat-sources {
+      margin-top: var(--space-sm);
+      padding: var(--space-sm);
+      background: var(--primary-light);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+    }
+
+    .chat-sources-title {
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: var(--space-xs);
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .chat-source {
+      padding: var(--space-xs);
+      margin-bottom: var(--space-xs);
+      background: white;
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--primary);
+    }
+
+    .chat-source:last-child {
+      margin-bottom: 0;
+    }
+
+    .chat-source-title {
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+      font-size: 11px;
+    }
+
+    .chat-source-content {
+      color: var(--text-secondary);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .chat-input-container {
+      border-top: 2px solid var(--border);
+      padding: var(--space-md) 0 0;
+    }
+
+    .chat-input-wrapper {
+      display: flex;
+      gap: var(--space-sm);
+      align-items: flex-end;
+    }
+
+    .chat-input-wrapper textarea {
+      flex: 1;
+      min-height: 36px;
+      max-height: 120px;
+      resize: none;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--background);
+      transition: all var(--transition-fast);
+      font-family: inherit;
+    }
+
+    .chat-input-wrapper textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
+
+    .chat-input-wrapper textarea:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .chat-send-button {
+      padding: 8px;
+      min-width: 36px;
+      height: 36px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .chat-send-button:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .chat-send-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .chat-status {
+      margin-top: var(--space-sm);
+      padding: var(--space-xs) var(--space-sm);
+      background: var(--primary-light);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .chat-status::before {
+      content: '';
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--primary);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    /* Standard Article/Prose Styling for Chat Content */
+    .chat-article {
+      line-height: 1.5;
+    }
+
+    .chat-article h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0.9em 0 0.65em 0;
+      color: var(--text-primary);
+    }
+
+    .chat-article h3 {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0.85em 0 0.6em 0;
+      color: var(--text-primary);
+    }
+
+    .chat-article h4 {
+      font-size: 12px;
+      font-weight: 600;
+      margin: 0.6em 0 0.3em 0;
+      color: var(--text-primary);
+    }
+
+    .chat-article ul,
+    .chat-article ol {
+      margin: 0.2em 0;
+      padding-left: 1.8em;
+    }
+
+    .chat-article li {
+      margin-bottom: 0.1em;
+    }
+
+    .chat-article code {
+      background: rgba(0, 0, 0, 0.08);
+      padding: 0.1em 0.3em;
+      border-radius: 2px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      font-size: 0.9em;
+    }
+
+    .chat-article strong {
+      font-weight: 600;
+    }
+
+    .chat-article p {
+      margin: 0.4em 0 0.6em;
+    }
+
+    /* Remove top margin from first element and bottom margin from last element */
+    .chat-article > *:first-child {
+      margin-top: 0;
+    }
+
+    .chat-article > *:last-child {
+      margin-bottom: 0;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes dots {
+      0%, 20% { opacity: 0; }
+      50% { opacity: 1; }
+      80%, 100% { opacity: 0; }
+    }
+
+    @keyframes chatLoadingDot {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      40% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .loading-dots {
+      display: inline-flex;
+      gap: 2px;
+    }
+
+    .loading-dots span {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--text-tertiary);
+      animation: dots 1.4s infinite ease-in-out;
+    }
+
+    .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0s; }
+
+    /* Chat suggestion and loading styles */
+    .chat-suggestion {
+      padding: var(--space-xs) var(--space-sm);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 11px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .chat-suggestion:hover {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Select node button styles */
+    .select-node-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 6px;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 26px;
+      height: 26px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .select-node-btn:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .select-node-btn:active {
+      transform: translateY(0);
+    }
+
+    .select-node-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Update token item layout to accommodate select button */
+    .token-item-compact {
+      display: flex;
+      gap: var(--space-sm);
+      padding: var(--space-xs);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-xs);
+    }
+
+    .token-item-compact .token-details {
+      flex: 1;
+      min-width: 0; /* Allow text to truncate */
+    }
+
+    .chat-loading {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      padding: var(--space-sm) var(--space-md);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      border-bottom-left-radius: var(--radius-sm);
+    }
+
+    .chat-loading-dots {
+      display: flex;
+      gap: 3px;
+    }
+
+    .chat-loading-dot {
+      width: 4px;
+      height: 4px;
+      background: var(--text-tertiary);
+      border-radius: 50%;
+      animation: chatLoadingDot 1.4s ease-in-out infinite both;
+    }
+
+    .chat-loading-dot:nth-child(1) { animation-delay: -0.32s; }
+    .chat-loading-dot:nth-child(2) { animation-delay: -0.16s; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="plugin-title">
+        <div class="plugin-icon">FL</div>
+        <h1 class="plugin-name">FigmaLint</h1>
+      </div>
+      <p class="plugin-description">AI-powered component analysis and design systems chat.</p>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tabs-navigation">
+      <button class="tab-button active" id="tab-analyze" onclick="switchTab('analyze')">
+        Analyze
+      </button>
+      <button class="tab-button" id="tab-chat" onclick="switchTab('chat')">
+        Chat
+      </button>
+    </div>
+
+        <!-- Tab Content: Analyze -->
+    <div class="tab-content active" id="content-analyze">
+      <div class="content">
+        <!-- Quick Actions Bar (shown when API key is saved) -->
+        <div class="quick-actions-bar" id="quick-actions" style="display: none;">
+          <button id="quick-analyze-component" class="button button-primary">
+            <span>Analyze Component</span>
+          </button>
+          <button id="show-config" class="button button-ghost" title="Show configuration">
+            <svg width="16" height="16" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M424.5,216.5h-15.2c-12.4,0-22.8-10.7-22.8-23.4c0-6.4,2.7-12.2,7.5-16.5l9.8-9.6c9.7-9.6,9.7-25.3,0-34.9l-22.3-22.1  c-4.4-4.4-10.9-7-17.5-7c-6.6,0-13,2.6-17.5,7l-9.4,9.4c-4.5,5-10.5,7.7-17,7.7c-12.8,0-23.5-10.4-23.5-22.7V89.1  c0-13.5-10.9-25.1-24.5-25.1h-30.4c-13.6,0-24.4,11.5-24.4,25.1v15.2c0,12.3-10.7,22.7-23.5,22.7c-6.4,0-12.3-2.7-16.6-7.4l-9.7-9.6  c-4.4-4.5-10.9-7-17.5-7s-13,2.6-17.5,7L110,132c-9.6,9.6-9.6,25.3,0,34.8l9.4,9.4c5,4.5,7.8,10.5,7.8,16.9  c0,12.8-10.4,23.4-22.8,23.4H89.2c-13.7,0-25.2,10.7-25.2,24.3V256v15.2c0,13.5,11.5,24.3,25.2,24.3h15.2  c12.4,0,22.8,10.7,22.8,23.4c0,6.4-2.8,12.4-7.8,16.9l-9.4,9.3c-9.6,9.6-9.6,25.3,0,34.8l22.3,22.2c4.4,4.5,10.9,7,17.5,7  c6.6,0,13-2.6,17.5-7l9.7-9.6c4.2-4.7,10.2-7.4,16.6-7.4c12.8,0,23.5,10.4,23.5,22.7v15.2c0,13.5,10.8,25.1,24.5,25.1h30.4  c13.6,0,24.4-11.5,24.4-25.1v-15.2c0-12.3,10.7-22.7,23.5-22.7c6.4,0,12.4,2.8,17,7.7l9.4,9.4c4.5,4.4,10.9,7,17.5,7  c6.6,0,13-2.6,17.5-7l22.3-22.2c9.6-9.6,9.6-25.3,0-34.9l-9.8-9.6c-4.8-4.3-7.5-10.2-7.5-16.5c0-12.8,10.4-23.4,22.8-23.4h15.2  c13.6,0,23.3-10.7,23.3-24.3V256v-15.2C447.8,227.2,438.1,216.5,424.5,216.5z M336.8,256L336.8,256c0,44.1-35.7,80-80,80  c-44.3,0-80-35.9-80-80l0,0l0,0c0-44.1,35.7-80,80-80C301.1,176,336.8,211.9,336.8,256L336.8,256z" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- API Key Configuration -->
+        <div class="card" id="api-key-card">
+          <div class="card-header">
+            <h2 class="card-title">Configuration</h2>
+            <button id="hide-config" class="button button-ghost" style="display: none; padding: 4px 8px; font-size: 11px;">
+              <span>Hide</span>
+            </button>
+          </div>
+
+          <div id="config-content">
+            <div class="form-group">
+              <label for="api-key">Claude API Key</label>
+              <div class="input-wrapper">
+                <input
+                  type="password"
+                  id="api-key"
+                  placeholder="sk-ant-..."
+                  autocomplete="off"
+                >
+                <span class="input-icon">🔐</span>
+              </div>
+              <p class="card-subtitle">Your API key is stored securely in this session</p>
+            </div>
+
+            <div class="form-group">
+              <label for="model-select">Claude Model</label>
+              <select id="model-select">
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Recommended - High Performance)</option>
+                <option value="claude-opus-4-20250514">Claude Opus 4 (Most Capable)</option>
+                <option value="claude-3-7-sonnet-20250219">Claude Sonnet 3.7 (With Extended Thinking)</option>
+                <option value="claude-3-5-sonnet-20241022">Claude Sonnet 3.5 (Previous Version)</option>
+                <option value="claude-3-5-haiku-20241022">Claude Haiku 3.5 (Fastest)</option>
+                <option value="claude-3-opus-20240229">Claude Opus 3 (Complex Tasks)</option>
+                <option value="claude-3-haiku-20240307">Claude Haiku 3 (Fast & Compact)</option>
+              </select>
+              <p class="card-subtitle">Choose the Claude model that works best for your component analysis</p>
+            </div>
+
+            <div class="button-group mt-md">
+              <button id="save-key" class="button button-secondary">
+                <span>Save Key</span>
+              </button>
+              <button id="analyze-component" class="button button-primary" disabled>
+                <span>Analyze Component</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Status Message -->
+          <div id="status-container" class="hidden">
+            <div class="status-banner" id="status">
+              <span class="status-icon" id="status-icon"></span>
+              <span id="status-text">Ready to analyze</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Batch Mode Toggle (shown when multiple components selected) -->
+        <div class="batch-toggle hidden" id="batch-mode-toggle">
+          <span>🎯</span>
+          <span>Multiple components selected</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="batch-mode-switch">
+            <span class="toggle-slider"></span>
+          </label>
+          <span>Batch Mode</span>
+        </div>
+
+        <!-- Analysis Results -->
+        <div id="analysis-results" class="hidden">
+          <!-- Audit View -->
+          <div class="collapsible">
+            <div class="collapsible-header active" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Component Audit</span>
+                <div class="tooltip">
+                  <div class="info-icon">i</div>
+                  <span class="tooltiptext">
+                    <strong>Component Audit</strong><br>
+                    Analyzes your component for common issues that can cause problems during development. Checks for missing interactive states, accessibility compliance, naming clarity, and design system consistency.
+                  </span>
+                </div>
+              </div>
+              <span id="audit-score" class="status-banner status-info" style="padding: 2px 8px; font-size: 11px;">
+                <span>Score: --</span>
+              </span>
+            </div>
+            <div class="collapsible-content active" id="audit-content">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 80%;"></div>
+              <div class="skeleton" style="width: 60%;"></div>
+            </div>
+          </div>
+
+
+
+          <!-- Property Cheat Sheet -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Property Cheat Sheet</span>
+                <div class="tooltip">
+                  <div class="info-icon">i</div>
+                  <span class="tooltiptext">
+                    <strong>Property Cheat Sheet</strong><br>
+                    Shows the actual properties (variants) your component has and their available values. This helps developers understand exactly what options the component supports and what the default values should be.
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="collapsible-content" id="property-cheatsheet">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 70%;"></div>
+            </div>
+          </div>
+
+          <!-- Token Analysis -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Token Analysis</span>
+                <div class="tooltip">
+                  <div class="info-icon">i</div>
+                  <span class="tooltiptext">
+                    <strong>Token Analysis</strong><br>
+                    Analyzes colors, spacing, typography, and effects to show which use design tokens versus hard-coded values. Design tokens make your components more consistent, maintainable, and easier to theme or rebrand.
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="collapsible-content" id="token-suggestions">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 90%;"></div>
+            </div>
+          </div>
+
+          <!-- MCP Readiness -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>MCP Server Readiness</span>
+                <div class="tooltip">
+                  <div class="info-icon">i</div>
+                  <span class="tooltiptext">
+                    <strong>MCP Server Readiness</strong><br>
+                    Evaluates how well your component is structured for automated code generation through MCP (Model Context Protocol) servers. A higher score means AI tools can better understand and generate accurate code from your design.
+                  </span>
+                </div>
+              </div>
+              <span id="mcp-score" class="status-banner status-info" style="padding: 2px 8px; font-size: 11px;">
+                <span>Score: --</span>
+              </span>
+            </div>
+            <div class="collapsible-content" id="mcp-readiness">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 75%;"></div>
+              <div class="skeleton" style="width: 90%;"></div>
+            </div>
+          </div>
+
+          <!-- Component Metadata (moved up one position) -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Component Metadata</span>
+              </div>
+            </div>
+            <div class="collapsible-content" id="metadata-content">
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 85%;"></div>
+            </div>
+          </div>
+
+          <!-- Developer Handoff (moved to bottom) -->
+          <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+              <div class="collapsible-title">
+                <span class="collapsible-icon">▶</span>
+                <span>Developer Handoff</span>
+                <div class="tooltip">
+                  <div class="info-icon">i</div>
+                  <span class="tooltiptext">
+                    <strong>Developer Handoff</strong><br>
+                    Provides structured component documentation in formats developers expect (JSON, TypeScript, documentation). This speeds up implementation and reduces back-and-forth communication during the design-to-code process.
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="collapsible-content" id="developer-export">
+              <div class="export-options" style="margin-bottom: var(--space-md);">
+                <select id="export-format" class="w-full">
+                  <option value="json">JSON: Complete component metadata</option>
+                  <option value="markdown" selected>Markdown: Developer documentation</option>
+                </select>
+                <button class="button button-secondary" id="export-metadata" disabled>
+                  Export for Developers
+                </button>
+              </div>
+              <div class="skeleton"></div>
+              <div class="skeleton" style="width: 80%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Content: Chat -->
+    <div class="tab-content" id="content-chat">
+      <div class="content">
+        <div class="chat-wrapper">
+          <!-- Chat Header -->
+          <div class="chat-header">
+            <div class="chat-title">
+              <h2>Design Systems Chat</h2>
+            </div>
+            <button class="button button-ghost" id="clear-chat" title="Clear chat history">
+              🗑️ Clear
+            </button>
+          </div>
+
+          <!-- Component Context (if available) -->
+          <div id="component-context-indicator" class="hidden component-context">
+            <div class="context-badge">
+              🎯 Component Context Available
+            </div>
+            <div id="current-component-info" class="context-info">
+              <!-- Component info will be injected here -->
+            </div>
+          </div>
+
+          <!-- Chat Empty State -->
+          <div id="chat-empty" class="chat-empty">
+            <div class="chat-empty-content">
+              <span class="chat-empty-icon">💬</span>
+              <div class="chat-empty-text">
+                <h3>Ask me about design systems!</h3>
+                <p>I have access to comprehensive design systems knowledge and can help with components, tokens, patterns, and best practices.</p>
+              </div>
+
+              <!-- Simplified Suggestions -->
+              <div id="chat-suggestions" class="chat-suggestions">
+                <!-- Suggestions will be populated by JavaScript -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Messages Container -->
+          <div id="chat-container" class="chat-container hidden">
+            <div id="chat-messages" class="chat-messages">
+              <!-- Chat messages will be added here -->
+            </div>
+          </div>
+
+          <!-- Chat Input -->
+          <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+              <textarea
+                id="chat-input"
+                placeholder="Ask about design systems, components, tokens, or best practices..."
+                rows="1"
+                disabled
+              ></textarea>
+              <button id="send-chat" class="chat-send-button" disabled title="Send message">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22,2 15,22 11,13 2,9"></polygon>
+                </svg>
+              </button>
+            </div>
+            <div id="chat-status" class="chat-status hidden">
+              <span class="chat-status-text">Thinking...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer-links">
+      <a href="#" id="clear-api-key" class="footer-link hidden">Clear saved API key</a>
+    </div>
+  </div>
+
+  <!-- Enhanced JavaScript -->
+  <script>
+    console.log('Enhanced UI JavaScript loading...');
+
+    // Shared utility functions
+    function toTitleCase(str) {
+      return str
+        .replace(/([A-Z])/g, ' $1') // Add space before capital letters
+        .split(/[\s_-]+/) // Split on spaces, underscores, or hyphens
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+        .trim();
+    }
+
+    // Filter out wrapper/boundary elements from token scoring
+    function filterWrapperElements(tokenSummary) {
+      // For now, apply a conservative filter that reduces hard-coded penalties
+      // for likely wrapper elements. This is a heuristic-based approach.
+
+      // If we have token data available, try to identify wrapper patterns
+      if (window.currentAnalysisData && window.currentAnalysisData.tokens) {
+        let wrapperTokenCount = 0;
+        const tokens = window.currentAnalysisData.tokens;
+
+        // Look for patterns that suggest wrapper/boundary elements:
+        // 1. Dashed/dotted strokes (common for component boundaries)
+        // 2. Arbitrary border radius on containers
+        // 3. Specific color patterns that suggest organizational use
+
+        ['colors', 'borders', 'effects'].forEach(category => {
+          if (tokens[category]) {
+            tokens[category].forEach(token => {
+              // Check if this looks like a wrapper element
+              if (isLikelyWrapperElement(token)) {
+                wrapperTokenCount++;
+              }
+            });
+          }
+        });
+
+        console.log(`🔍 [WRAPPER FILTER] Identified ${wrapperTokenCount} likely wrapper tokens`);
+
+        // Reduce hard-coded count by estimated wrapper elements, but be conservative
+        const filteredHardCoded = Math.max(0, tokenSummary.hardCodedValues - Math.min(wrapperTokenCount, Math.floor(tokenSummary.hardCodedValues * 0.3)));
+        const filteredTotal = Math.max(1, tokenSummary.totalTokens - Math.min(wrapperTokenCount, Math.floor(tokenSummary.totalTokens * 0.3)));
+
+        return {
+          hardCodedValues: filteredHardCoded,
+          totalTokens: filteredTotal,
+          actualTokens: tokenSummary.actualTokens,
+          wrapperElementsFiltered: wrapperTokenCount
+        };
+      }
+
+      // Fallback: no filtering if we can't detect patterns
+      return {
+        hardCodedValues: tokenSummary.hardCodedValues,
+        totalTokens: tokenSummary.totalTokens,
+        actualTokens: tokenSummary.actualTokens,
+        wrapperElementsFiltered: 0
+      };
+    }
+
+        // Heuristic to detect wrapper/boundary elements
+    function isLikelyWrapperElement(token) {
+      const context = token.context || {};
+      const value = token.value || '';
+
+      // Handle context as object (which it actually is)
+      const contextStr = typeof context === 'string' ? context :
+        `${context.nodeType || ''} ${context.nodeName || ''} ${context.property || ''}`.toLowerCase();
+
+      // Check for dashed/dotted borders (common wrapper pattern)
+      if (contextStr.includes('stroke') && (contextStr.includes('dashed') || contextStr.includes('dotted'))) {
+        return true;
+      }
+
+      // Check for arbitrary border radius on outer containers
+      if (contextStr.includes('radius') && contextStr.includes('corner') && !token.isActualToken) {
+        return true;
+      }
+
+      // Check for specific color values that suggest organizational use
+      if (contextStr.includes('stroke') || contextStr.includes('border')) {
+        // Common wrapper colors: grays, light colors, transparency
+        const colorValue = value.toLowerCase();
+        if (colorValue.includes('gray') || colorValue.includes('#f0f0f0') || colorValue.includes('#e0e0e0') ||
+            colorValue.includes('rgba') || colorValue.includes('transparent')) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    // UI State Management
+    let currentTab = 'analyze';
+    let apiKeySaved = false;
+    let currentMetadata = null;
+    let currentAuditResults = null;
+    let currentTokenSummary = null;
+    let batchMode = false;
+    let selectedComponents = [];
+
+    // Track the current analysis data for scoring purposes
+    let currentAnalysisData = null;
+
+    // Chat State Management
+    let chatHistory = [];
+    let chatSessionId = 'session-' + Date.now();
+    let isWaitingForResponse = false;
+
+    // DOM Elements
+    const apiKeyInput = document.getElementById('api-key');
+    const modelSelect = document.getElementById('model-select');
+    const saveKeyButton = document.getElementById('save-key');
+    const analyzeButton = document.getElementById('analyze-component');
+    const statusContainer = document.getElementById('status-container');
+    const statusDiv = document.getElementById('status');
+    const statusIcon = document.getElementById('status-icon');
+    const statusText = document.getElementById('status-text');
+    const clearApiKeyLink = document.getElementById('clear-api-key');
+
+    // Configuration UI Elements
+    const apiKeyCard = document.getElementById('api-key-card');
+    const quickActions = document.getElementById('quick-actions');
+    const quickAnalyzeButton = document.getElementById('quick-analyze-component');
+    const showConfigButton = document.getElementById('show-config');
+    const hideConfigButton = document.getElementById('hide-config');
+
+    // Batch Mode Elements
+    const batchModeToggle = document.getElementById('batch-mode-toggle');
+    const batchModeSwitch = document.getElementById('batch-mode-switch');
+
+    // Analysis Results Elements
+    const analysisResults = document.getElementById('analysis-results');
+    const auditContent = document.getElementById('audit-content');
+    const propertyCheatsheet = document.getElementById('property-cheatsheet');
+    const tokenSuggestions = document.getElementById('token-suggestions');
+    const metadataContent = document.getElementById('metadata-content');
+    const auditScore = document.getElementById('audit-score');
+    const mcpReadiness = document.getElementById('mcp-readiness');
+    const mcpScore = document.getElementById('mcp-score');
+    const exportMetadataButton = document.getElementById('export-metadata');
+
+    // Playground elements
+    const generatePlaygroundButton = document.getElementById('generate-playground');
+    const playgroundEmpty = document.getElementById('playground-empty');
+    const playgroundContent = document.getElementById('playground-content');
+    const playgroundGrid = document.getElementById('playground-grid');
+
+    // Documentation elements
+    const exportDocsButton = document.getElementById('export-docs');
+    const generateDocsFrameButton = document.getElementById('generate-docs-frame');
+    const saveNotesButton = document.getElementById('save-notes');
+    const docsEmpty = document.getElementById('docs-empty');
+    const docsPreview = document.getElementById('docs-preview');
+    const collabNotes = document.getElementById('collab-notes');
+    // Note: export-format element is created dynamically, so we get it in the handler function
+
+    // Chat Elements
+    const chatEmpty = document.getElementById('chat-empty');
+    const chatContainer = document.getElementById('chat-container');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+    const sendChatButton = document.getElementById('send-chat');
+    const clearChatButton = document.getElementById('clear-chat');
+    const chatStatus = document.getElementById('chat-status');
+
+
+    // Status Icons
+    const statusIcons = {
+      info: 'ℹ️',
+      success: '✅',
+      error: '❌',
+      warning: '⚠️'
+    };
+
+    // Initialize UI
+    function initializeUI() {
+      console.log('Initializing enhanced UI...');
+
+      // Event Listeners
+      saveKeyButton.addEventListener('click', handleSaveApiKey);
+      analyzeButton.addEventListener('click', handleAnalyzeComponent);
+      quickAnalyzeButton.addEventListener('click', handleAnalyzeComponent);
+      apiKeyInput.addEventListener('input', handleApiKeyChange);
+      apiKeyInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && apiKeyInput.value.trim()) {
+          handleSaveApiKey();
+        }
+      });
+
+      // Model selection handling
+      modelSelect.addEventListener('change', handleModelChange);
+
+      clearApiKeyLink.addEventListener('click', handleClearApiKey);
+      batchModeSwitch.addEventListener('change', handleBatchModeToggle);
+
+      // Configuration visibility toggles
+      showConfigButton.addEventListener('click', () => {
+        apiKeyCard.style.display = 'block';
+        quickActions.style.display = 'none';
+      });
+
+      hideConfigButton.addEventListener('click', () => {
+        if (apiKeySaved) {
+          apiKeyCard.style.display = 'none';
+          quickActions.style.display = 'flex';
+        }
+      });
+
+      // Export functionality
+      if (exportMetadataButton) {
+        exportMetadataButton.addEventListener('click', handleExportMetadata);
+      }
+
+      // Playground and documentation buttons (with null checks)
+      if (generatePlaygroundButton) {
+        generatePlaygroundButton.addEventListener('click', handleGeneratePlayground);
+      }
+      if (exportDocsButton) {
+        exportDocsButton.addEventListener('click', handleExportDocs);
+      }
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.addEventListener('click', handleGenerateDocsFrame);
+      }
+      if (saveNotesButton) {
+        saveNotesButton.addEventListener('click', handleSaveNotes);
+      }
+
+      // Chat Event Listeners
+      if (sendChatButton) {
+        sendChatButton.addEventListener('click', handleSendChat);
+      }
+      if (clearChatButton) {
+        clearChatButton.addEventListener('click', handleClearChat);
+      }
+      if (chatInput) {
+        chatInput.addEventListener('keydown', handleChatKeydown);
+        chatInput.addEventListener('input', handleChatInputChange);
+      }
+
+      // Listen for messages from plugin
+      window.addEventListener('message', handlePluginMessage);
+
+      // Request current API key status
+      sendMessageToPlugin('check-api-key', {});
+    }
+
+    // Handle Export Metadata
+    function handleExportMetadata() {
+      if (!currentMetadata) {
+        updateStatus('No analysis results available', 'error');
+        return;
+      }
+
+      const exportFormatSelect = document.getElementById('export-format');
+      if (!exportFormatSelect) {
+        updateStatus('Export format not selected', 'error');
+        return;
+      }
+
+      const format = exportFormatSelect.value;
+      let content = '';
+
+      if (format === 'json') {
+        content = JSON.stringify(currentMetadata, null, 2);
+      } else if (format === 'markdown') {
+        content = generateMarkdownDocumentation(currentMetadata);
+      }
+
+      if (content) {
+        // Download file
+        const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentMetadata.component || 'component'}-${format.toLowerCase()}.${format === 'json' ? 'json' : 'md'}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        updateStatus(`${format.toUpperCase()} exported successfully!`, 'success');
+      } else {
+        updateStatus('No content to export', 'error');
+      }
+    }
+
+    // Generate Markdown Documentation
+    function generateMarkdownDocumentation(metadata) {
+      let content = `# ${metadata.component}\n\n`;
+      content += `${metadata.description}\n\n`;
+
+      if (metadata.usage) {
+        content += `## Usage\n\n${metadata.usage}\n\n`;
+      }
+
+      if (metadata.props && metadata.props.length > 0) {
+        content += `## Properties\n\n`;
+        content += `| Property | Type | Default | Required | Description |\n`;
+        content += `|----------|------|---------|----------|-------------|\n`;
+        metadata.props.forEach(prop => {
+          content += `| ${prop.name} | \`${prop.type}\` | \`${prop.defaultValue}\` | ${prop.required ? 'Yes' : 'No'} | ${prop.description} |\n`;
+        });
+        content += `\n`;
+      }
+
+      if (metadata.states && metadata.states.length > 0) {
+        content += `## States\n\n`;
+        metadata.states.forEach(state => {
+          content += `- \`${state}\`\n`;
+        });
+        content += `\n`;
+      }
+
+      if (metadata.mcpReadiness) {
+        content += `## MCP Server Readiness\n\n`;
+        content += `**Score:** ${metadata.mcpReadiness.score}/100\n\n`;
+        if (metadata.mcpReadiness.recommendations.length > 0) {
+          content += `**Recommendations:**\n`;
+          metadata.mcpReadiness.recommendations.forEach(rec => {
+            content += `- ${rec}\n`;
+          });
+          content += `\n`;
+        }
+      }
+
+      return content;
+    }
+
+    // Tab Switching
+    function switchTab(tabName) {
+      // Update active tab button
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+
+      // Update active tab content
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.getElementById(`content-${tabName}`).classList.add('active');
+
+      currentTab = tabName;
+
+      // Update tab-specific UI
+      if (tabName === 'chat') {
+        updateChatInputState();
+        updateChatComponentContext();
+      }
+    }
+
+    // Collapsible Sections
+    function toggleCollapsible(header) {
+      header.classList.toggle('active');
+      const content = header.nextElementSibling;
+      content.classList.toggle('active');
+    }
+
+    // Handle API Key Changes
+    function handleApiKeyChange() {
+      const hasApiKey = apiKeyInput.value.trim().length > 0;
+      if (hasApiKey && apiKeySaved) {
+        updateAnalyzeButtonState(true);
+      }
+    }
+
+    // Handle Save API Key
+    function handleSaveApiKey() {
+      const apiKey = apiKeyInput.value.trim();
+      const selectedModel = modelSelect.value;
+
+      if (!apiKey) {
+        updateStatus('Please enter an API key', 'error');
+        return;
+      }
+
+      saveKeyButton.disabled = true;
+      updateStatus('Saving API key and model selection...', 'info');
+      sendMessageToPlugin('save-api-key', {
+        apiKey,
+        model: selectedModel
+      });
+    }
+
+    // Handle Model Change
+    function handleModelChange() {
+      const selectedModel = modelSelect.value;
+      console.log('Model changed to:', selectedModel);
+
+      // If API key is saved, update the model immediately
+      if (apiKeySaved) {
+        sendMessageToPlugin('update-model', { model: selectedModel });
+        updateStatus(`Model updated to ${selectedModel.includes('sonnet-4') ? 'Claude Sonnet 4' :
+                      selectedModel.includes('opus-4') ? 'Claude Opus 4' :
+                      selectedModel.includes('3-7-sonnet') ? 'Claude Sonnet 3.7' :
+                      selectedModel.includes('3-5-sonnet') ? 'Claude Sonnet 3.5' :
+                      selectedModel.includes('3-5-haiku') ? 'Claude Haiku 3.5' :
+                      selectedModel.includes('3-opus') ? 'Claude Opus 3' : 'Claude Haiku 3'}`, 'success');
+      }
+    }
+
+    // Handle Analyze Component
+    function handleAnalyzeComponent() {
+      if (!apiKeySaved) {
+        updateStatus('Please save API key first', 'error');
+        return;
+      }
+
+      analyzeButton.disabled = true;
+      updateStatus('Analyzing selected component...', 'info');
+
+      // Reset scores immediately to avoid showing stale data
+      auditScore.innerHTML = '<span>Score: --</span>';
+      auditScore.className = 'status-banner status-info';
+      mcpScore.innerHTML = '<span>Score: --</span>';
+
+      // Show analysis results with loading state
+      analysisResults.classList.remove('hidden');
+      showLoadingState();
+
+      sendMessageToPlugin('analyze-enhanced', {
+        batchMode: batchMode,
+        includeAudit: true,
+        includeTokens: true,
+        includeValidation: true
+      });
+    }
+
+    // Handle Clear API Key
+    function handleClearApiKey(e) {
+      e.preventDefault();
+      if (confirm('Are you sure you want to clear the saved API key?')) {
+        sendMessageToPlugin('clear-api-key', {});
+        apiKeyInput.value = '';
+        apiKeyInput.placeholder = 'sk-ant-...';
+        clearApiKeyLink.classList.add('hidden');
+        apiKeySaved = false;
+        updateAnalyzeButtonState(false);
+        updateStatus('API key cleared', 'info');
+
+        // Show config and hide quick actions
+        apiKeyCard.style.display = 'block';
+        quickActions.style.display = 'none';
+      }
+    }
+
+    // Handle Batch Mode Toggle
+    function handleBatchModeToggle() {
+      batchMode = batchModeSwitch.checked;
+      updateStatus(batchMode ? 'Batch mode enabled' : 'Batch mode disabled', 'info');
+    }
+
+    // Handle Generate Playground
+    function handleGeneratePlayground() {
+      if (!currentMetadata) {
+        updateStatus('No analysis results available', 'error');
+        return;
+      }
+
+      if (generatePlaygroundButton) {
+        generatePlaygroundButton.disabled = true;
+      }
+      updateStatus('Generating playground instances...', 'info');
+      sendMessageToPlugin('generate-playground', { metadata: currentMetadata });
+    }
+
+    // Handle Export Documentation
+    function handleExportDocs() {
+      if (!currentMetadata) {
+        updateStatus('No analysis results available', 'error');
+        return;
+      }
+
+      const format = exportFormat.value;
+      if (format === 'markdown') {
+        exportAsMarkdown();
+      } else if (format === 'json') {
+        exportAsJSON();
+      }
+    }
+
+    // Handle Generate Docs Frame
+    function handleGenerateDocsFrame() {
+      if (!currentMetadata) {
+        updateStatus('No analysis results available', 'error');
+        return;
+      }
+
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.disabled = true;
+      }
+      updateStatus('Generating documentation frame...', 'info');
+      sendMessageToPlugin('generate-docs-frame', {
+        metadata: currentMetadata,
+        notes: collabNotes && collabNotes.value ? collabNotes.value : ''
+      });
+    }
+
+    // Handle Save Notes
+    function handleSaveNotes() {
+      const notes = collabNotes.value.trim();
+      if (!notes) {
+        updateStatus('Please enter some notes', 'warning');
+        return;
+      }
+
+      sendMessageToPlugin('save-collab-notes', { notes });
+      updateStatus('Notes saved', 'success');
+    }
+
+    // Handle Plugin Messages
+    function handlePluginMessage(event) {
+      const { type, data } = event.data.pluginMessage || {};
+
+      switch (type) {
+        case 'api-key-saved':
+          handleApiKeySaved(data.success);
+          break;
+        case 'api-key-status':
+          handleApiKeyStatus(data.hasKey);
+          break;
+        case 'enhanced-analysis-result':
+          handleEnhancedAnalysisResult(data);
+          break;
+        case 'metadata-result':
+          // Handle old message format for backward compatibility
+          handleEnhancedAnalysisResult({
+            metadata: data.metadata,
+            audit: null,
+            properties: [],
+            tokens: {}
+          });
+          break;
+        case 'analysis-complete':
+          // Handle old message format - do nothing as the data is already displayed
+          if (data.success) {
+            console.log('Analysis completed:', data.message);
+          }
+          break;
+        case 'playground-generated':
+          handlePlaygroundGenerated(data);
+          break;
+        case 'docs-frame-generated':
+          handleDocsFrameGenerated(data);
+          break;
+        case 'batch-selection-update':
+          handleBatchSelectionUpdate(data);
+          break;
+        case 'analysis-error':
+          handleAnalysisError(data.error);
+          break;
+        case 'variants-generated':
+          handlePlaygroundGenerated(data);
+          break;
+        case 'docs-generated':
+          handleDocsFrameGenerated(data);
+          break;
+        case 'notes-saved':
+          if (data.success) {
+            updateStatus('Notes saved with visual indicator!', 'success');
+          } else {
+            updateStatus(`Failed to save notes: ${data.error}`, 'error');
+          }
+          break;
+        case 'state-added':
+          if (data.success) {
+            updateStatus(`${data.state} state added successfully!`, 'success');
+          } else {
+            updateStatus(`Failed to add state: ${data.error}`, 'error');
+          }
+          break;
+        case 'accessibility-fixed':
+          if (data.success) {
+            updateStatus(`Accessibility issue fixed!`, 'success');
+          } else {
+            updateStatus(`Failed to fix accessibility: ${data.error}`, 'error');
+          }
+          break;
+        case 'naming-fixed':
+          if (data.success) {
+            updateStatus(`Layer renamed successfully!`, 'success');
+          } else {
+            updateStatus(`Failed to rename layer: ${data.error}`, 'error');
+          }
+          break;
+        case 'chat-response':
+          handleChatResponse(data.response);
+          break;
+        case 'chat-response-loading':
+          handleChatLoading(data.isLoading);
+          break;
+        case 'chat-error':
+          handleChatError(data.error);
+          break;
+        case 'chat-history-cleared':
+          handleChatHistoryCleared();
+          break;
+        default:
+          console.log('Unknown message type:', type);
+      }
+    }
+
+    // Handle API Key Saved
+    function handleApiKeySaved(success) {
+      saveKeyButton.disabled = false;
+      if (success) {
+        apiKeySaved = true;
+        updateStatus('API key saved successfully!', 'success');
+        updateAnalyzeButtonState(true);
+        clearApiKeyLink.classList.remove('hidden');
+        apiKeyInput.value = '';
+        apiKeyInput.placeholder = 'API key saved ✓';
+
+        // Show quick actions and hide config
+        apiKeyCard.style.display = 'none';
+        quickActions.style.display = 'flex';
+        hideConfigButton.style.display = 'inline-flex';
+
+        // Update chat input state
+        updateChatInputState();
+      } else {
+        updateStatus('Failed to save API key', 'error');
+      }
+    }
+
+    // Handle API Key Status
+    function handleApiKeyStatus(hasKey) {
+      apiKeySaved = hasKey;
+      if (hasKey) {
+        updateStatus('API key is configured', 'success');
+        updateAnalyzeButtonState(true);
+        clearApiKeyLink.classList.remove('hidden');
+        apiKeyInput.placeholder = 'API key saved ✓';
+
+        // Show quick actions and hide config
+        apiKeyCard.style.display = 'none';
+        quickActions.style.display = 'flex';
+        hideConfigButton.style.display = 'inline-flex';
+
+        // Enable chat tab
+        const chatTabButton = document.getElementById('tab-chat');
+        if (chatTabButton) {
+          chatTabButton.disabled = false;
+        }
+      } else {
+        updateStatus('Enter API key to get started', 'info');
+        updateAnalyzeButtonState(false);
+        clearApiKeyLink.classList.add('hidden');
+
+        // Show config and hide quick actions
+        apiKeyCard.style.display = 'block';
+        quickActions.style.display = 'none';
+
+        // Disable chat tab and switch back to analyze if currently on chat
+        const chatTabButton = document.getElementById('tab-chat');
+        if (chatTabButton) {
+          chatTabButton.disabled = true;
+          if (currentTab === 'chat') {
+            switchTab('analyze');
+          }
+        }
+      }
+
+      // Update chat input state
+      updateChatInputState();
+    }
+
+    // Handle Enhanced Analysis Result
+    function handleEnhancedAnalysisResult(data) {
+      // Debug logging
+      console.log('UI received enhanced analysis result:', data);
+      console.log('Audit data received in UI:', data.audit);
+      console.log('Token summary received in UI:', data.tokens ? data.tokens.summary : undefined);
+
+      // Store analysis data globally for scoring
+      currentAnalysisData = data;
+      window.currentAnalysisData = data;
+
+      analyzeButton.disabled = false;
+      quickAnalyzeButton.disabled = false;
+      currentMetadata = data.metadata;
+      currentAuditResults = data.audit;
+      currentTokenSummary = data.tokens ? data.tokens.summary : undefined;
+
+      // Update Audit View
+      if (data.audit) {
+        updateAuditView(data.audit);
+      } else {
+        // Show realistic audit with actual issues instead of fake passing scores
+        const basicAudit = {
+          states: [
+            { name: 'default', found: true },
+            { name: 'hover', found: false },
+            { name: 'focus', found: false },
+            { name: 'disabled', found: false },
+            { name: 'pressed', found: false },
+            { name: 'active', found: false }
+          ],
+          accessibility: [
+            { check: 'Focus indicator', status: 'fail', suggestion: 'Add focus indicator for keyboard navigation' },
+            { check: 'ARIA labels', status: 'warning', suggestion: 'Consider adding ARIA labels for screen readers' }
+          ],
+          naming: []
+        };
+        console.log('Using fallback basic audit with real issues:', basicAudit);
+        updateAuditView(basicAudit);
+      }
+
+      // Update Property Cheat Sheet
+      if (data.properties && data.properties.length > 0) {
+        console.log('UI: Using data.properties:', data.properties);
+        updatePropertyCheatSheet(data.properties, data.recommendations);
+      } else if (data.metadata && data.metadata.propertyCheatSheet && data.metadata.propertyCheatSheet.length > 0) {
+        console.log('UI: Using data.metadata.propertyCheatSheet:', data.metadata.propertyCheatSheet);
+        updatePropertyCheatSheet(data.metadata.propertyCheatSheet, data.recommendations);
+      } else if (data.metadata && data.metadata.props && data.metadata.props.length > 0) {
+        console.log('UI: Falling back to data.metadata.props:', data.metadata.props);
+        // Create basic properties from metadata props
+        const basicProperties = data.metadata.props.map(prop => {
+          // Handle both object format and string format
+          if (typeof prop === 'string') {
+            return {
+              name: prop,
+              values: ['true', 'false'],
+              default: 'false'
+            };
+          } else if (typeof prop === 'object' && prop !== null) {
+            return {
+              name: prop.name || 'Unknown',
+              values: prop.values || ['true', 'false'],
+              default: prop.default || prop.defaultValue || 'false'
+            };
+          } else {
+            return {
+              name: String(prop),
+              values: ['true', 'false'],
+              default: 'false'
+            };
+          }
+        });
+        updatePropertyCheatSheet(basicProperties, data.recommendations);
+      } else {
+        console.log('UI: No properties found, checking for recommendations only');
+        updatePropertyCheatSheet([], data.recommendations);
+      }
+
+      // Update Token Analysis
+      if (data.tokens && Object.keys(data.tokens).length > 0) {
+        updateTokenSuggestions(data.tokens);
+      } else {
+        // Show empty state for tokens
+        tokenSuggestions.innerHTML = '<p style="color: var(--text-tertiary); text-align: center;">No design tokens detected</p>';
+      }
+
+      // Update MCP Readiness
+      if (data.metadata && data.metadata.mcpReadiness) {
+        updateMCPReadiness(data.metadata.mcpReadiness);
+      } else {
+        mcpReadiness.innerHTML = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">MCP readiness analysis not available</p>';
+        mcpScore.innerHTML = '<span>Score: --</span>';
+      }
+
+      // Update Developer Export Section
+      updateDeveloperExport(data.metadata);
+
+      // Update Original Metadata
+      if (data.metadata) {
+        updateMetadataDisplay(data.metadata);
+      }
+
+      // Enable relevant buttons
+      updateUIButtonStates();
+
+      // Update chat component context if we're on chat tab or switching to it
+      updateChatComponentContext();
+
+      updateStatus('Analysis complete!', 'success');
+    }
+
+    // Update Audit View
+    function updateAuditView(audit) {
+      let html = '';
+      let passCount = 0;
+      let totalCount = 0;
+      let weightedPassScore = 0;
+      let weightedTotalScore = 0;
+
+      // START WITH BASELINE POSITIVE SCORING - Award points for good practices
+      console.log('🔍 [SCORING] Starting with baseline positive scoring...');
+
+      // Baseline points for just having a component (5 points)
+      weightedTotalScore += 5;
+      weightedPassScore += 5;
+      console.log('🔍 [SCORING] +5 points for having a component structure');
+
+      // Check for design token usage and award points
+      if (currentTokenSummary && currentTokenSummary.actualTokens > 0) {
+        const tokenBonus = Math.min(currentTokenSummary.actualTokens * 2, 10); // Up to 10 bonus points for tokens
+        weightedTotalScore += tokenBonus;
+        weightedPassScore += tokenBonus;
+        console.log(`🔍 [SCORING] +${tokenBonus} points for using ${currentTokenSummary.actualTokens} design tokens`);
+      }
+
+      // Check for properties and award points
+      if (window.currentAnalysisData && window.currentAnalysisData.properties && window.currentAnalysisData.properties.length > 0) {
+        const propertyBonus = Math.min(window.currentAnalysisData.properties.length * 3, 15); // Up to 15 points for properties
+        weightedTotalScore += propertyBonus;
+        weightedPassScore += propertyBonus;
+        console.log(`🔍 [SCORING] +${propertyBonus} points for having ${window.currentAnalysisData.properties.length} component properties`);
+      }
+
+      // Award points for component structure quality
+      if (audit.naming || audit.consistency) {
+        weightedTotalScore += 5;
+        weightedPassScore += 5;
+        console.log('🔍 [SCORING] +5 points for good component structure');
+      }
+
+      // DESIGN TOKEN USAGE SCORING - High impact on overall score
+      let tokenPassCount = 0;
+      let tokenTotalCount = 0;
+      if (currentTokenSummary && currentTokenSummary.totalTokens > 0) {
+        // Filter out likely wrapper/boundary elements from scoring
+        const filteredHardCoded = filterWrapperElements(currentTokenSummary);
+        const scorableHardCoded = filteredHardCoded.hardCodedValues;
+        const scorableTotal = filteredHardCoded.totalTokens;
+
+        console.log(`🔍 [TOKEN SCORING] Original: ${currentTokenSummary.hardCodedValues} hard-coded, ${currentTokenSummary.totalTokens} total`);
+        console.log(`🔍 [TOKEN SCORING] After filtering: ${scorableHardCoded} hard-coded, ${scorableTotal} total`);
+
+        if (scorableTotal > 0) {
+          // Each token-able property gets weighted scoring (2x weight - important for design systems)
+          tokenTotalCount = scorableTotal;
+          tokenPassCount = currentTokenSummary.actualTokens; // Only count actual tokens as passing
+
+          const tokenWeight = 2; // High importance for design system compliance
+          weightedTotalScore += tokenTotalCount * tokenWeight;
+          weightedPassScore += tokenPassCount * tokenWeight;
+
+          console.log(`🔍 [TOKEN SCORING] Added ${tokenTotalCount * tokenWeight} total token points, ${tokenPassCount * tokenWeight} passing token points`);
+        }
+      }
+
+      // States Audit
+      if (audit.states && audit.states.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Interactive States</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Interactive States</strong><br>
+                Components that users can interact with (buttons, inputs, links) need different visual states to provide feedback. This includes hover (when cursor is over), focus (when selected via keyboard), active (when being clicked), and disabled states. Missing states can confuse users and hurt accessibility.
+              </span>
+            </div>
+          </div>
+        `;
+
+        // Check if this is a non-interactive component (like badge) with only default state
+        const hasOnlyDefaultState = audit.states.length === 1 &&
+          audit.states[0].name === 'default' &&
+          audit.states[0].found === true;
+
+        if (hasOnlyDefaultState) {
+          // Show positive message for non-interactive components
+          html += `
+            <div class="audit-item">
+              <span class="audit-status pass">✅</span>
+              <span class="audit-label">No interactive states needed for this component</span>
+            </div>
+          `;
+          totalCount++;
+          passCount++;
+          // High weight for states (3x) - critical for MCP compatibility
+          weightedTotalScore += 3;
+          weightedPassScore += 3;
+        } else {
+          // Show standard state audit for interactive components
+          audit.states.forEach(state => {
+            totalCount++;
+            const status = state.found ? 'pass' : 'fail';
+            if (state.found) passCount++;
+
+            // High weight for states (3x) - critical for MCP compatibility
+            weightedTotalScore += 3;
+            if (state.found) weightedPassScore += 3;
+
+            html += `
+              <div class="audit-item">
+                ${state.found
+                  ? '<span class="audit-status pass">✓</span>'
+                  : '<span class="audit-status fail">✗</span>'}
+                <span class="audit-label">${state.name.charAt(0).toUpperCase() + state.name.slice(1).toLowerCase()} state ${state.found ? 'defined' : 'missing'}</span>
+              </div>
+            `;
+          });
+        }
+        html += '</div>';
+      }
+
+      // Design Token Usage Audit - Show token analysis in audit format
+      if (currentTokenSummary && currentTokenSummary.totalTokens > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Design Token Usage</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Design Token Usage</strong><br>
+                Components should use design tokens (variables and styles) instead of hard-coded values for colors, spacing, typography, etc. This ensures consistency, makes updates easier, and improves maintainability. Hard-coded values make it difficult to maintain design consistency across your product.
+              </span>
+            </div>
+          </div>
+        `;
+
+        // Show overall token usage summary
+        const tokenUsagePercentage = currentTokenSummary.totalTokens > 0
+          ? Math.round((currentTokenSummary.actualTokens / currentTokenSummary.totalTokens) * 100)
+          : 0;
+
+        html += `
+          <div class="audit-item">
+            <span class="audit-status ${tokenUsagePercentage >= 80 ? 'pass' : tokenUsagePercentage >= 50 ? 'warning' : 'fail'}">${
+              tokenUsagePercentage >= 80 ? '✅' : tokenUsagePercentage >= 50 ? '⚠️' : '❌'
+            }</span>
+            <span class="audit-label">Token usage: ${currentTokenSummary.actualTokens}/${currentTokenSummary.totalTokens} properties (${tokenUsagePercentage}%)</span>
+          </div>
+        `;
+
+        // Show hard-coded values as individual failures
+        if (currentTokenSummary.hardCodedValues > 0) {
+          html += `
+            <div class="audit-item">
+              <span class="audit-status fail">❌</span>
+              <span class="audit-label">${currentTokenSummary.hardCodedValues} hard-coded values found (should use design tokens)</span>
+            </div>
+          `;
+
+          // Show breakdown by category if available
+          if (currentTokenSummary.byCategory) {
+            Object.entries(currentTokenSummary.byCategory).forEach(([category, stats]) => {
+              if (stats.hardCoded > 0) {
+                html += `
+                  <div class="audit-item" style="margin-left: 20px; opacity: 0.8;">
+                    <span class="audit-status fail">→</span>
+                    <span class="audit-label">${toTitleCase(category)}: ${stats.hardCoded} hard-coded</span>
+                  </div>
+                `;
+              }
+            });
+          }
+        } else {
+          html += `
+            <div class="audit-item">
+              <span class="audit-status pass">✅</span>
+              <span class="audit-label">All properties use design tokens</span>
+            </div>
+          `;
+        }
+
+
+        html += '</div>';
+
+        // Update pass/total counts for this section
+        totalCount += 1; // Overall token usage check
+        if (tokenUsagePercentage >= 50) passCount += 1; // Pass if >= 50% token usage
+
+        if (currentTokenSummary.hardCodedValues > 0) {
+          totalCount += 1; // Hard-coded values check
+          // This always fails if there are hard-coded values
+        } else {
+          totalCount += 1; // Hard-coded values check
+          passCount += 1; // Pass if no hard-coded values
+        }
+      }
+
+      // Accessibility Audit
+      if (audit.accessibility && audit.accessibility.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Accessibility</h4>
+            <div class="tooltip accessibility-tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Accessibility</strong><br>
+                Checks if your component works for users with disabilities. This includes proper color contrast for readability, keyboard navigation support, screen reader compatibility, and touch target sizes. Following accessibility guidelines (WCAG) ensures your design is inclusive and often legally required.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.accessibility.forEach(item => {
+          totalCount++;
+          const status = item.status;
+          if (status === 'pass') passCount++;
+
+          // Medium-high weight for accessibility (2x) - important for compliance
+          weightedTotalScore += 2;
+          if (status === 'pass') weightedPassScore += 2;
+
+          html += `
+            <div class="audit-item">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? '✅' : status === 'warning' ? '⚠️' : '❌'
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion && status === 'fail' ? `<button class="audit-action-button" onclick="handleFixAccessibility('${item.check.replace(/'/g, "\\'")}')" title="Click to fix ${item.check}">Fix</button>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+
+
+      auditContent.innerHTML = html;
+
+      // Update audit score using weighted scoring for MCP compatibility focus
+      const score = weightedTotalScore > 0 ? Math.round((weightedPassScore / weightedTotalScore) * 100) : 0;
+      console.log(`Audit scoring: ${weightedPassScore} weighted points out of ${weightedTotalScore} total = ${score}% (simple: ${passCount}/${totalCount})`);
+
+      auditScore.innerHTML = `<span>Score: ${score}%</span>`;
+      auditScore.className = `status-banner ${
+        score >= 80 ? 'status-success' : score >= 60 ? 'status-warning' : 'status-error'
+      }`;
+      auditScore.style.cssText = 'padding: 2px 8px; font-size: 11px;';
+    }
+
+    // Update Property Cheat Sheet
+    function updatePropertyCheatSheet(properties, recommendations) {
+      let html = '';
+
+      if (properties && properties.length > 0) {
+        html += '<table class="property-table">';
+        html += '<thead><tr><th>Property</th><th>Values</th><th>Default</th></tr></thead>';
+        html += '<tbody>';
+
+        properties.forEach(prop => {
+          html += '<tr>';
+          html += `<td>${toTitleCase(prop.name)}</td>`;
+          html += '<td>';
+          prop.values.forEach(value => {
+            html += `<span class="property-value">${value}</span>`;
+          });
+          html += '</td>';
+          html += `<td>${prop.default || '-'}</td>`;
+          html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+      }
+
+      // Use only property recommendations (no slots)
+      let allRecommendations = recommendations ? [...recommendations] : [];
+
+      console.log('🔧 Property recommendations only (slots excluded):', allRecommendations.length);
+
+      // Add recommendations section if available
+      if (allRecommendations && allRecommendations.length > 0) {
+        if (html) html += '<div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px;"></div>';
+
+        html += '<div class="recommendations-section">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 12px; margin-top: 0; color: var(--primary);">💡 Recommended Properties</h4>';
+        html += '<p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;">Consider adding these properties that developers typically expect for this component type:</p>';
+
+        allRecommendations.forEach(rec => {
+          const typeColor = rec.type === 'slot' ? 'var(--warning)' : 'var(--primary)';
+          const typeIcon = rec.type === 'slot' ? '📦' : '⚙️';
+
+          html += `
+            <div style="background: var(--surface-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <span style="font-weight: 500; font-size: 12px;">${typeIcon} ${rec.name}</span>
+                <span style="background: ${typeColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase;">${rec.type}</span>
+              </div>
+              <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">${rec.description}</p>
+              <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                ${rec.examples.map(example => `<span class="property-value" style="background: var(--surface); font-size: 10px;">${example}</span>`).join('')}
+              </div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+      }
+
+      // Show fallback content when no properties and no recommendations
+      if (!html) {
+        html = `
+          <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
+            <div style="font-size: 24px; margin-bottom: var(--space-sm);">📋</div>
+            <p>This component has no configurable properties</p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">Simple components may not have customizable props</p>
+          </div>
+        `;
+      }
+
+      propertyCheatsheet.innerHTML = html;
+    }
+
+    // Enhanced Token Analysis Display
+    function updateTokenSuggestions(tokens) {
+      console.log('UI updateTokenSuggestions called with:', tokens);
+
+      let html = '';
+
+      // Display token summary if available
+      if (currentTokenSummary) {
+        html += '<div class="token-summary" style="background: var(--surface-secondary); border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; margin-top: 0;">📊 Token Analysis Summary</h4>';
+        html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px;">';
+        html += `<div><strong>Total Items:</strong> ${currentTokenSummary.totalTokens}</div>`;
+        html += `<div><strong>Design Tokens:</strong> <span style="color: var(--success)">${currentTokenSummary.actualTokens}</span></div>`;
+        html += `<div><strong>Hard-coded:</strong> <span style="color: var(--warning)">${currentTokenSummary.hardCodedValues}</span></div>`;
+        html += `<div><strong>AI Suggestions:</strong> <span style="color: var(--primary)">${currentTokenSummary.aiSuggestions}</span></div>`;
+        html += '</div>';
+
+        // Show breakdown by category
+        if (currentTokenSummary.byCategory) {
+          html += '<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">';
+          html += '<div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 4px;">By Category:</div>';
+          html += '<div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 10px;">';
+          Object.entries(currentTokenSummary.byCategory).forEach(([category, stats]) => {
+            if (stats.total > 0) {
+              html += `<div><strong>${category}:</strong> ${stats.tokens}/${stats.total}</div>`;
+            }
+          });
+          html += '</div>';
+          html += '</div>';
+        }
+
+
+        html += '</div>';
+      }
+
+      // Colors - Enhanced with comprehensive analysis
+      if (tokens.colors && Array.isArray(tokens.colors) && tokens.colors.length > 0) {
+        console.log('Processing color tokens:', tokens.colors);
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🎨 Color Tokens</h4>';
+
+        // Separate actual tokens from hard-coded values
+        console.log('Color tokens before filtering:', tokens.colors);
+        const actualTokens = tokens.colors.filter(token => token.isActualToken);
+        const hardCodedTokens = tokens.colors.filter(token => !token.isActualToken && token.source === 'hard-coded' && !token.isDefaultVariantStyle);
+        const defaultVariantTokens = tokens.colors.filter(token => !token.isActualToken && token.source === 'hard-coded' && token.isDefaultVariantStyle);
+        const aiSuggestions = tokens.colors.filter(token => token.source === 'ai-suggestion');
+
+        console.log('Filtered results:', {
+          actualTokens: actualTokens.length,
+          hardCodedTokens: hardCodedTokens.length,
+          aiSuggestions: aiSuggestions.length,
+          hardCodedDetails: hardCodedTokens
+        });
+
+        // Show actual design tokens first
+        if (actualTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Design Tokens in Use</h5>';
+          actualTokens.forEach(token => {
+            const usageIcon = token.usage === 'background' ? '🎨' : '🔲';
+            html += `
+              <div class="token-item-compact">
+                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">${usageIcon} ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        // Show hard-coded colors with enhanced context
+        if (hardCodedTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Colors</h5>';
+          hardCodedTokens.forEach(token => {
+            const usageIcon = token.usage === 'background' ? '🎨' : '🔲';
+            const contextInfo = token.context ?
+              `${token.context.nodeType} in "${token.context.nodeName}"${token.context.isInteractive ? ' (Interactive)' : ''}` :
+              'Unknown context';
+
+            const selectButton = token.context?.nodeId ?
+              `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                </svg>
+              </button>` : '';
+
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">${usageIcon} ${token.value}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                </div>
+                ${selectButton}
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        // Show AI suggested tokens
+        if (aiSuggestions.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--primary); margin-bottom: 6px;">💡 AI Suggested Tokens</h5>';
+          aiSuggestions.forEach(token => {
+            html += `
+              <div class="token-item-compact suggestion">
+                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">💡 ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation || token.suggestion || 'AI suggested token'}">${token.recommendation || token.suggestion || 'AI suggested token'}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+
+        html += '</div>';
+      }
+
+      // Effects - New comprehensive section
+      if (tokens.effects && Array.isArray(tokens.effects) && tokens.effects.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">✨ Effect Tokens</h4>';
+
+        const actualEffectTokens = tokens.effects.filter(token => token.isActualToken);
+        const hardCodedEffects = tokens.effects.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
+
+        if (actualEffectTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Effect Tokens in Use</h5>';
+          actualEffectTokens.forEach(token => {
+            html += `
+              <div class="token-item-compact">
+                <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">✨ ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedEffects.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Effects</h5>';
+          hardCodedEffects.forEach(token => {
+            const contextInfo = token.context ? `${token.context.nodeType} in "${token.context.nodeName}"` : 'Unknown context';
+
+            const selectButton = token.context?.nodeId ?
+              `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                </svg>
+              </button>` : '';
+
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">✨ ${token.type}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                </div>
+                ${selectButton}
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Borders - New comprehensive section
+      if (tokens.borders && Array.isArray(tokens.borders) && tokens.borders.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🔲 Border Tokens</h4>';
+
+        const actualBorderTokens = tokens.borders.filter(token => token.isActualToken);
+        const hardCodedBorders = tokens.borders.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
+        const defaultBorders = tokens.borders.filter(token => !token.isActualToken && token.isDefaultVariantStyle);
+
+        if (actualBorderTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Border Tokens in Use</h5>';
+          actualBorderTokens.forEach(token => {
+            html += `
+              <div class="token-item-compact">
+                <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};" title="${token.value}"></div>
+                <div class="token-details">
+                  <div class="token-name">🔲 ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedBorders.length > 0) {
+          // Separate stroke weights from border radius
+          const strokeWeights = hardCodedBorders.filter(token =>
+            token.type === 'stroke-weight' ||
+            (token.context && token.context.property === 'strokeWeight')
+          );
+          const borderRadius = hardCodedBorders.filter(token =>
+            token.type !== 'stroke-weight' &&
+            !(token.context && token.context.property === 'strokeWeight')
+          );
+
+          // Stroke Weight Section
+          if (strokeWeights.length > 0) {
+            html += '<div style="margin-bottom: 12px;">';
+            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Stroke Weight</h5>';
+            strokeWeights.forEach(token => {
+              // Use the enhanced debug context for better information
+              let contextInfo = 'Unknown location';
+              if (token.context) {
+                if (token.context.description) {
+                  contextInfo = token.context.description;
+                } else if (token.context.path) {
+                  contextInfo = `Found in: ${token.context.path}`;
+                } else {
+                  contextInfo = `${token.context.nodeType} in "${token.context.nodeName}"`;
+                }
+
+                // Add property information if available
+                if (token.context.property) {
+                  contextInfo += ` (${token.context.property})`;
+                }
+              }
+
+              const selectButton = token.context?.nodeId ?
+                `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                  </svg>
+                </button>` : '';
+
+              html += `
+                <div class="token-item-compact warning">
+                  <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: ${token.value} solid var(--border);"></div>
+                  <div class="token-details">
+                    <div class="token-name">📏 ${token.value}</div>
+                    <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
+                    <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">Use appropriate stroke weight token (e.g., stroke.thin, stroke.medium)</div>
+                  </div>
+                  ${selectButton}
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+
+          // Border Radius Section
+          if (borderRadius.length > 0) {
+            html += '<div>';
+            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Border Radius</h5>';
+            borderRadius.forEach(token => {
+              // Use the enhanced debug context for better information
+              let contextInfo = 'Unknown location';
+              if (token.context) {
+                if (token.context.description) {
+                  contextInfo = token.context.description;
+                } else if (token.context.path) {
+                  contextInfo = `Found in: ${token.context.path}`;
+                } else {
+                  contextInfo = `${token.context.nodeType} in "${token.context.nodeName}"`;
+                }
+
+                // Add property information if available
+                if (token.context.property) {
+                  contextInfo += ` (${token.context.property})`;
+                }
+              }
+
+              const selectButton = token.context?.nodeId ?
+                `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                  </svg>
+                </button>` : '';
+
+              html += `
+                <div class="token-item-compact warning">
+                  <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};"></div>
+                  <div class="token-details">
+                    <div class="token-name">🔲 ${token.value}</div>
+                    <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
+                    <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion}</div>
+                  </div>
+                  ${selectButton}
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+        }
+
+
+        html += '</div>';
+      }
+
+      // Spacing - Enhanced with better context
+      if (tokens.spacing && Array.isArray(tokens.spacing) && tokens.spacing.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📏 Spacing Tokens</h4>';
+
+        const actualSpacingTokens = tokens.spacing.filter(token => token.isActualToken);
+        const hardCodedSpacing = tokens.spacing.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
+        const defaultSpacing = tokens.spacing.filter(token => !token.isActualToken && token.isDefaultVariantStyle);
+
+        if (actualSpacingTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Spacing Tokens in Use</h5>';
+          actualSpacingTokens.forEach(token => {
+            html += `
+              <div class="token-item-compact">
+                <div class="token-details">
+                  <div class="token-name">${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedSpacing.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Spacing</h5>';
+          hardCodedSpacing.forEach(token => {
+            // Use the enhanced debug context for better information
+            let contextInfo = 'Unknown location';
+            if (token.context) {
+              if (token.context.description) {
+                contextInfo = token.context.description;
+              } else if (token.context.path) {
+                contextInfo = `Found in: ${token.context.path}`;
+              } else {
+                contextInfo = `${token.context.paddingType || token.type} on "${token.context.nodeName}" (${token.context.nodeType})`;
+              }
+
+              // Add property information if available
+              if (token.context.property) {
+                contextInfo += ` (${token.context.property})`;
+              }
+            }
+
+            const selectButton = token.context?.nodeId ?
+              `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                </svg>
+              </button>` : '';
+
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-details">
+                  <div class="token-name">${token.value}</div>
+                  <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
+                  <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion || 'Create or use existing spacing token'}</div>
+                </div>
+                ${selectButton}
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+
+        html += '</div>';
+      }
+
+      // Typography - Enhanced with better context
+      if (tokens.typography && Array.isArray(tokens.typography) && tokens.typography.length > 0) {
+        html += '<div>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Typography Tokens</h4>';
+
+        const actualTypographyTokens = tokens.typography.filter(token => token.isActualToken);
+        const hardCodedTypography = tokens.typography.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
+
+        if (actualTypographyTokens.length > 0) {
+          html += '<div style="margin-bottom: 12px;">';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Typography Tokens in Use</h5>';
+          actualTypographyTokens.forEach(token => {
+            const typeIcon = token.type === 'font-size' ? '📝' :
+                           token.type === 'line-height' ? '📏' : '📝';
+            html += `
+              <div class="token-item-compact">
+                <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
+                <div class="token-details">
+                  <div class="token-name">${typeIcon} ${token.name}</div>
+                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        if (hardCodedTypography.length > 0) {
+          html += '<div>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Typography</h5>';
+          hardCodedTypography.forEach(token => {
+            const typeIcon = token.type === 'font-size' ? '📝' :
+                           token.type === 'line-height' ? '📏' : '📝';
+            const contextInfo = token.context ?
+              `${token.context.fontFamily} in "${token.context.textContent || 'text element'}"` :
+              'Unknown context';
+
+            const selectButton = token.context?.nodeId ?
+              `<button class="select-node-btn" onclick="selectFigmaNode('${token.context.nodeId}')" title="Select this node in Figma">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                </svg>
+              </button>` : '';
+
+            html += `
+              <div class="token-item-compact warning">
+                <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
+                <div class="token-details">
+                  <div class="token-name">${typeIcon} ${token.value}</div>
+                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                </div>
+                ${selectButton}
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      // Show comprehensive summary if no tokens found
+      if (html === '') {
+        html = `
+          <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
+            <div style="font-size: 24px; margin-bottom: var(--space-sm);">🎨</div>
+            <p><strong>No design tokens detected</strong></p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">This component uses simple styling without extractable design tokens.</p>
+            <p style="font-size: 11px; margin-top: var(--space-xs);">Consider using Figma variables for colors, spacing, and typography to improve consistency.</p>
+          </div>
+        `;
+      } else {
+        // Add summary statistics
+        const allTokens = [
+          ...(tokens.colors || []),
+          ...(tokens.spacing || []),
+          ...(tokens.typography || []),
+          ...(tokens.effects || []),
+          ...(tokens.borders || [])
+        ];
+
+        // Exclude default variant styles from counts
+        const nonDefaultTokens = allTokens.filter(token => !token.isDefaultVariantStyle);
+        const totalTokens = nonDefaultTokens.length;
+        const actualTokensCount = nonDefaultTokens.filter(token => token.isActualToken).length;
+        const hardCodedCount = nonDefaultTokens.filter(token => !token.isActualToken && token.source === 'hard-coded').length;
+
+        // Removed redundant compact token summary - detailed summary above provides better info
+      }
+
+      tokenSuggestions.innerHTML = html;
+    }
+
+    // Update Metadata Display
+    function updateMetadataDisplay(metadata) {
+      let html = '';
+
+      // Component Info
+      html += `<div class="mb-md">`;
+      html += `<h3 style="font-size: 13px; font-weight: 600; margin-top: 0;">${metadata.component}</h3>`;
+      html += `<p style="color: var(--text-secondary);">${metadata.description}</p>`;
+      html += `</div>`;
+
+      // Properties
+      if (metadata.props && metadata.props.length > 0) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Properties</h4>';
+                html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+
+        metadata.props.forEach(prop => {
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          const formattedPropName = toTitleCase(propName);
+          html += `<span class="property-value">${formattedPropName}</span>`;
+        });
+        html += '</div></div>';
+      }
+
+      // States (deduplicated and cleaned)
+      if (metadata.states && metadata.states.length > 0) {
+        // Remove duplicates and empty values
+        const uniqueStates = [...new Set(metadata.states)]
+          .filter(state => state && typeof state === 'string' && state.trim() !== '')
+          .map(state => state.trim());
+
+        if (uniqueStates.length > 0) {
+          html += '<div class="mb-md">';
+          html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">States</h4>';
+          html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+          uniqueStates.forEach(state => {
+            html += `<span class="property-value" style="background: #E7F9F0; color: var(--success);">${state}</span>`;
+          });
+          html += '</div></div>';
+        }
+      }
+
+      // Slots (temporarily removed from metadata display - will be moved to property recommendations)
+      // if (metadata.slots && metadata.slots.length > 0) {
+      //   html += '<div class="mb-md">';
+      //   html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Slots</h4>';
+      //   html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
+      //   metadata.slots.forEach(slot => {
+      //     const slotName = typeof slot === 'string' ? slot : (slot.name || 'Unnamed Slot');
+      //     html += `<span class="property-value" style="background: #FFF4E0; color: var(--warning);">${slotName}</span>`;
+      //   });
+      //   html += '</div></div>';
+      // }
+
+      metadataContent.innerHTML = html;
+    }
+
+    // Update MCP Readiness Section
+    function updateMCPReadiness(mcpData) {
+      console.log('🔍 [DEBUG] MCP readiness data received:', mcpData);
+
+      if (!mcpData) {
+        mcpReadiness.innerHTML = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">MCP readiness analysis not available</p>';
+        mcpScore.innerHTML = '<span>Score: --</span>';
+        return;
+      }
+
+      // Update score with color coding
+      const score = mcpData.score || 0;
+      let scoreColor = 'var(--error)';
+      if (score >= 80) scoreColor = 'var(--success)';
+      else if (score >= 60) scoreColor = 'var(--warning)';
+
+      mcpScore.innerHTML = `<span style="color: ${scoreColor}">Score: ${score}/100</span>`;
+
+      let html = '';
+
+      // Strengths
+      if (mcpData.strengths && mcpData.strengths.length > 0) {
+        console.log('✅ Found strengths:', mcpData.strengths);
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--success); margin-top: 0;">✅ Strengths</h4>';
+        mcpData.strengths.forEach(strength => {
+          html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${strength}</div>`;
+        });
+        html += '</div>';
+      } else {
+        console.warn('⚠️ No strengths found in MCP data');
+      }
+
+      // Gaps
+      if (mcpData.gaps && mcpData.gaps.length > 0) {
+        console.log('❌ Found gaps:', mcpData.gaps);
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--error);">❌ Gaps</h4>';
+        mcpData.gaps.forEach(gap => {
+          html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${gap}</div>`;
+        });
+        html += '</div>';
+      } else {
+        console.warn('⚠️ No gaps found in MCP data');
+      }
+
+      // Recommendations
+      if (mcpData.recommendations && mcpData.recommendations.length > 0) {
+        console.log('💡 Found recommendations:', mcpData.recommendations);
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--primary);">💡 Recommendations</h4>';
+        mcpData.recommendations.forEach(rec => {
+          html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${rec}</div>`;
+        });
+        html += '</div>';
+      } else {
+        console.warn('⚠️ No recommendations found in MCP data');
+      }
+
+      // Implementation Notes
+      if (mcpData.implementationNotes) {
+        html += '<div class="mb-md">';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Implementation Notes</h4>';
+        html += `<div style="font-size: 12px; background: var(--surface); padding: 12px; border-radius: 6px; color: var(--text-secondary);">${mcpData.implementationNotes}</div>`;
+        html += '</div>';
+      }
+
+      // Show fallback if no content
+      if (!html) {
+        html = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">MCP readiness data incomplete</p>';
+      }
+
+      mcpReadiness.innerHTML = html;
+    }
+
+    // Update Developer Export Section
+    function updateDeveloperExport(metadata) {
+      const developerExportSection = document.getElementById('developer-export');
+
+      if (!metadata) {
+        exportMetadataButton.disabled = true;
+        developerExportSection.innerHTML = `
+          <div class="export-options" style="margin-bottom: var(--space-md);">
+            <select id="export-format" class="w-full">
+              <option value="json">JSON: Complete component metadata</option>
+              <option value="markdown" selected>Markdown: Developer documentation</option>
+            </select>
+            <button class="button button-secondary" id="export-metadata" disabled>
+              Export for Developers
+            </button>
+          </div>
+          <p style="color: var(--text-tertiary); text-align: center; padding: 20px;">No analysis results available</p>
+        `;
+        return;
+      }
+
+      exportMetadataButton.disabled = false;
+
+      // Clear existing content and show proper preview
+      const previewHtml = `
+        <div class="export-options" style="margin-bottom: var(--space-md);">
+          <select id="export-format" class="w-full">
+            <option value="json">JSON: Complete component metadata</option>
+            <option value="markdown" selected>Markdown: Developer documentation</option>
+          </select>
+          <button class="button button-secondary" id="export-metadata">
+            Export for Developers
+          </button>
+        </div>
+        <div style="font-size: 12px; color: var(--text-secondary);">
+          <div style="margin-bottom: 8px;"><strong>Available exports:</strong></div>
+          <div style="margin-bottom: 4px;">• JSON: Complete component metadata</div>
+          <div style="margin-bottom: 4px;">• Markdown: Developer documentation</div>
+        </div>
+      `;
+
+      developerExportSection.innerHTML = previewHtml;
+
+      // Re-attach event listener since we replaced the button
+      const newExportButton = document.getElementById('export-metadata');
+      if (newExportButton) {
+        newExportButton.addEventListener('click', handleExportMetadata);
+      }
+    }
+
+    // Update Playground Tab
+    function updatePlaygroundTab() {
+      if (!currentMetadata) return;
+
+      if (playgroundEmpty) {
+        playgroundEmpty.classList.add('hidden');
+      }
+      if (playgroundContent) {
+        playgroundContent.classList.remove('hidden');
+      }
+
+      // Update playground preview
+      if (playgroundGrid) {
+        let html = '';
+        const hasContent = (currentMetadata.states && currentMetadata.states.length > 0) ||
+                          (currentMetadata.variants && Object.keys(currentMetadata.variants).length > 0);
+
+        if (hasContent) {
+          html = '<p style="text-align: center; color: var(--text-secondary); margin-bottom: 16px;">Click "Generate Instances" to create a visual playground of all component variations</p>';
+        } else {
+          html = '<p style="text-align: center; color: var(--text-tertiary);">No variants or states detected for this component</p>';
+        }
+
+        playgroundGrid.innerHTML = html;
+      }
+    }
+
+    // Update Documentation Tab
+    function updateDocumentationTab() {
+      if (!currentMetadata) return;
+
+      if (docsEmpty) {
+        docsEmpty.classList.add('hidden');
+      }
+      if (docsPreview) {
+        docsPreview.classList.remove('hidden');
+        // Generate documentation preview
+        const docsHtml = generateDocumentationHTML(currentMetadata);
+        docsPreview.innerHTML = docsHtml;
+      }
+
+      // Enable buttons with null checks
+      if (exportDocsButton) {
+        exportDocsButton.disabled = false;
+      }
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.disabled = false;
+      }
+      if (saveNotesButton) {
+        saveNotesButton.disabled = false;
+      }
+    }
+
+    // Generate Documentation HTML
+    function generateDocumentationHTML(metadata) {
+      let html = '';
+
+      html += '<div class="doc-section">';
+      html += `<h2 class="doc-heading">${metadata.component}</h2>`;
+      html += `<p class="doc-content">${metadata.description}</p>`;
+      html += '</div>';
+
+      if (metadata.props && metadata.props.length > 0) {
+        html += '<div class="doc-section">';
+        html += '<h3 class="doc-heading">Properties</h3>';
+        html += '<ul class="doc-content">';
+        metadata.props.forEach(prop => {
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          html += `<li>${propName}</li>`;
+        });
+        html += '</ul>';
+        html += '</div>';
+      }
+
+      if (metadata.states && metadata.states.length > 0) {
+        html += '<div class="doc-section">';
+        html += '<h3 class="doc-heading">States</h3>';
+        html += '<ul class="doc-content">';
+        metadata.states.forEach(state => {
+          html += `<li>${state}</li>`;
+        });
+        html += '</ul>';
+        html += '</div>';
+      }
+
+      if (metadata.usage) {
+        html += '<div class="doc-section">';
+        html += '<h3 class="doc-heading">Usage Guidelines</h3>';
+        html += `<p class="doc-content">${metadata.usage}</p>`;
+        html += '</div>';
+      }
+
+      if (metadata.accessibility) {
+        html += '<div class="doc-section">';
+        html += '<h3 class="doc-heading">Accessibility</h3>';
+        html += `<p class="doc-content">${metadata.accessibility}</p>`;
+        html += '</div>';
+      }
+
+      return html;
+    }
+
+    // Export as Markdown
+    function exportAsMarkdown() {
+      if (!currentMetadata) return;
+
+      let markdown = `# ${currentMetadata.component}\n\n`;
+      markdown += `${currentMetadata.description}\n\n`;
+
+      if (currentMetadata.props && currentMetadata.props.length > 0) {
+        markdown += `## Properties\n\n`;
+        currentMetadata.props.forEach(prop => {
+          // Handle both object format and string format
+          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
+          markdown += `- ${propName}\n`;
+        });
+        markdown += '\n';
+      }
+
+      if (currentMetadata.states && currentMetadata.states.length > 0) {
+        markdown += `## States\n\n`;
+        currentMetadata.states.forEach(state => {
+          markdown += `- ${state}\n`;
+        });
+        markdown += '\n';
+      }
+
+      if (currentMetadata.slots && currentMetadata.slots.length > 0) {
+        markdown += `## Slots\n\n`;
+        currentMetadata.slots.forEach(slot => {
+          markdown += `- ${slot}\n`;
+        });
+        markdown += '\n';
+      }
+
+      if (currentMetadata.usage) {
+        markdown += `## Usage Guidelines\n\n${currentMetadata.usage}\n\n`;
+      }
+
+      if (currentMetadata.accessibility) {
+        markdown += `## Accessibility\n\n${currentMetadata.accessibility}\n\n`;
+      }
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(markdown).then(() => {
+        updateStatus('Markdown copied to clipboard!', 'success');
+      });
+    }
+
+    // Export as JSON
+    function exportAsJSON() {
+      if (!currentMetadata) return;
+
+      const jsonStr = JSON.stringify(currentMetadata, null, 2);
+
+      // Copy to clipboard
+      navigator.clipboard.writeText(jsonStr).then(() => {
+        updateStatus('JSON copied to clipboard!', 'success');
+      });
+    }
+
+    // Show Loading State
+    function showLoadingState() {
+      auditContent.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="width: 80%;"></div><div class="skeleton" style="width: 60%;"></div>';
+      propertyCheatsheet.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="width: 70%;"></div>';
+      tokenSuggestions.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="width: 90%;"></div>';
+      metadataContent.innerHTML = '<div class="skeleton"></div><div class="skeleton" style="width: 85%;"></div>';
+    }
+
+    // Update UI Button States
+    function updateUIButtonStates() {
+      const hasMetadata = currentMetadata !== null;
+
+      if (generatePlaygroundButton) {
+        generatePlaygroundButton.disabled = !hasMetadata;
+      }
+      if (exportDocsButton) {
+        exportDocsButton.disabled = !hasMetadata;
+      }
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.disabled = !hasMetadata;
+      }
+      if (saveNotesButton) {
+        saveNotesButton.disabled = !hasMetadata;
+      }
+    }
+
+    // Handle Playground Generated
+    function handlePlaygroundGenerated(data) {
+      if (generatePlaygroundButton) {
+        generatePlaygroundButton.disabled = false;
+      }
+      if (data.success) {
+        updateStatus(data.message || 'Playground generated successfully!', 'success');
+        // Switch to playground tab
+        switchTab('playground');
+      } else {
+        updateStatus(`Failed to generate playground: ${data.error}`, 'error');
+      }
+    }
+
+    // Handle Docs Frame Generated
+    function handleDocsFrameGenerated(data) {
+      if (generateDocsFrameButton) {
+        generateDocsFrameButton.disabled = false;
+      }
+      if (data.success) {
+        updateStatus('Documentation frame generated in Figma!', 'success');
+      } else {
+        updateStatus(`Failed to generate docs: ${data.error}`, 'error');
+      }
+    }
+
+    // Handle Batch Selection Update
+    function handleBatchSelectionUpdate(data) {
+      selectedComponents = data.components || [];
+      if (selectedComponents.length > 1) {
+        batchModeToggle.classList.remove('hidden');
+      } else {
+        batchModeToggle.classList.add('hidden');
+        batchMode = false;
+        batchModeSwitch.checked = false;
+      }
+    }
+
+    // Handle Analysis Error
+    function handleAnalysisError(error) {
+      analyzeButton.disabled = false;
+      quickAnalyzeButton.disabled = false;
+      updateStatus(`Error: ${error}`, 'error');
+      analysisResults.classList.add('hidden');
+    }
+
+
+
+    // Handle Fix Accessibility Button Click
+    window.handleFixAccessibility = function(issue) {
+      sendMessageToPlugin('fix-accessibility', {
+        issue: issue,
+        metadata: currentMetadata
+      });
+      updateStatus(`Fixing ${issue}...`, 'info');
+    }
+
+        // Helper function to extract clean suggestion name for display
+    function getCleanSuggestionName(suggestion) {
+      let actualName = suggestion;
+
+      // Handle "renamed to X" format
+      if (suggestion.includes('renamed to ')) {
+        actualName = suggestion.split('renamed to ')[1].trim();
+      }
+      // Handle "should be X" format
+      else if (suggestion.includes('should be ')) {
+        actualName = suggestion.split('should be ')[1].trim();
+      }
+      // Handle "→ X" format
+      else if (suggestion.startsWith('→ ')) {
+        actualName = suggestion.substring(2).trim();
+      }
+
+      // Remove any quotes that might be around the name
+      return actualName.replace(/['"]/g, '').trim();
+    }
+
+    // Handle Fix Naming Button Click
+    window.handleFixNaming = function(layerName, suggestion) {
+      // Parse the actual suggested name from various formats
+      const actualName = getCleanSuggestionName(suggestion);
+
+      sendMessageToPlugin('fix-naming', {
+        layer: layerName,
+        newName: actualName,
+        metadata: currentMetadata
+      });
+      updateStatus(`Renaming ${layerName} to ${actualName}...`, 'info');
+    }
+
+    // Update Analyze Button State
+    function updateAnalyzeButtonState(enabled) {
+      analyzeButton.disabled = !enabled;
+      quickAnalyzeButton.disabled = !enabled;
+    }
+
+    // Update Status Message
+    function updateStatus(message, type = 'info') {
+      statusContainer.classList.remove('hidden');
+      statusText.textContent = message;
+      statusIcon.textContent = statusIcons[type] || statusIcons.info;
+
+      statusDiv.classList.remove('status-info', 'status-success', 'status-error', 'status-warning');
+      statusDiv.classList.add(`status-${type}`);
+
+      if (type === 'success') {
+        setTimeout(() => {
+          statusContainer.classList.add('hidden');
+        }, 5000);
+      }
+    }
+
+    // Send Message to Plugin
+    function sendMessageToPlugin(type, data) {
+      console.log('Sending message to plugin:', type, data);
+      try {
+        parent.postMessage({
+          pluginMessage: { type, data }
+        }, '*');
+      } catch (error) {
+        console.error('Failed to send message to plugin:', error);
+      }
+    }
+
+    // Select a specific node in Figma
+    function selectFigmaNode(nodeId) {
+      console.log('🎯 Selecting Figma node:', nodeId);
+      sendMessageToPlugin('select-node', { nodeId });
+      updateStatus('Selecting node in Figma...', 'info');
+    }
+
+    // ==================== CHAT FUNCTIONALITY ====================
+
+    // Chat Event Handlers
+    function handleSendChat() {
+      if (isWaitingForResponse) return;
+
+      const message = chatInput.value.trim();
+      if (!message) return;
+
+      // Check API key
+      if (!apiKeySaved) {
+        updateStatus('Please save your Claude API key first', 'error');
+        return;
+      }
+
+      // Add user message to chat
+      addChatMessage('user', message);
+
+      // Clear input and disable
+      chatInput.value = '';
+      chatInput.disabled = true;
+      sendChatButton.disabled = true;
+      isWaitingForResponse = true;
+
+      // Show container and hide empty state
+      chatContainer.classList.remove('hidden');
+      chatEmpty.classList.add('hidden');
+
+      // Show loading state
+      showChatLoading(true);
+
+      // Send to plugin
+      sendMessageToPlugin('chat-message', {
+        message: message,
+        history: chatHistory
+      });
+    }
+
+    function handleClearChat() {
+      if (confirm('Clear chat history?')) {
+        sendMessageToPlugin('chat-clear-history', {});
+      }
+    }
+
+    function handleChatKeydown(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        handleSendChat();
+      }
+    }
+
+    function handleChatInputChange() {
+      // Auto-resize textarea
+      chatInput.style.height = 'auto';
+      chatInput.style.height = chatInput.scrollHeight + 'px';
+    }
+
+    // Chat Message Handlers
+    function handleChatResponse(response) {
+      showChatLoading(false);
+
+      if (response && response.message) {
+        addChatMessage('assistant', response.message, response.sources);
+      }
+
+      // Re-enable input
+      chatInput.disabled = false;
+      sendChatButton.disabled = false;
+      isWaitingForResponse = false;
+      chatInput.focus();
+    }
+
+    function handleChatLoading(isLoading) {
+      showChatLoading(isLoading);
+    }
+
+    function handleChatError(error) {
+      showChatLoading(false);
+
+      addChatMessage('assistant', `Sorry, I encountered an error: ${error}`);
+
+      // Re-enable input
+      chatInput.disabled = false;
+      sendChatButton.disabled = false;
+      isWaitingForResponse = false;
+      chatInput.focus();
+    }
+
+    function handleChatHistoryCleared() {
+      chatHistory = [];
+      chatMessages.innerHTML = '';
+      chatContainer.classList.add('hidden');
+      chatEmpty.classList.remove('hidden');
+      updateChatComponentContext();
+      updateStatus('Chat history cleared', 'success');
+    }
+
+    // Chat UI Functions
+    function addChatMessage(role, content, sources = null) {
+      const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+      const message = {
+        id: messageId,
+        role: role,
+        content: content,
+        timestamp: Date.now(),
+        sources: sources
+      };
+
+      chatHistory.push(message);
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chat-message ${role}`;
+      messageDiv.dataset.messageId = messageId;
+
+      let messageHTML = `
+        <div class="chat-message-content">${formatChatContent(content)}</div>
+        <div class="chat-message-meta">
+          <span>${formatTimestamp(message.timestamp)}</span>
+        </div>
+      `;
+
+      // Add sources if available
+      if (sources && sources.length > 0) {
+        // Filter out empty or duplicate sources
+        const validSources = sources.filter(source =>
+          source &&
+          source.title &&
+          source.content &&
+          source.title.trim() !== '' &&
+          source.content.trim() !== ''
+        );
+
+        // Remove duplicates based on title
+        const uniqueSources = validSources.filter((source, index, arr) =>
+          arr.findIndex(s => s.title === source.title) === index
+        );
+
+        if (uniqueSources.length > 0) {
+          messageHTML += `
+            <div class="chat-sources">
+              <div class="chat-sources-title">
+                📚 Sources
+              </div>
+              ${uniqueSources.map(source => `
+                <div class="chat-source">
+                  <div class="chat-source-title">${source.title}</div>
+                  <div class="chat-source-content">${source.content.substring(0, 150)}${source.content.length > 150 ? '...' : ''}</div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+      }
+
+      messageDiv.innerHTML = messageHTML;
+      chatMessages.appendChild(messageDiv);
+
+      // Scroll to bottom
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function showChatLoading(isLoading) {
+      // Always remove existing loading indicator first
+      const existingLoading = document.getElementById('chat-loading');
+      if (existingLoading) {
+        existingLoading.remove();
+      }
+
+      if (isLoading) {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'chat-message assistant';
+        loadingDiv.id = 'chat-loading';
+        loadingDiv.innerHTML = `
+          <div class="chat-message-content">
+            <div class="loading-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        `;
+        chatMessages.appendChild(loadingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }
+
+    function formatChatContent(content) {
+      // Simple markdown-to-HTML converter that handles common patterns correctly
+      
+      // Convert markdown to HTML using a simple state machine
+      const lines = content.split('\n');
+      const htmlLines = [];
+      let currentBlock = null;
+      let currentBlockContent = [];
+      
+      const closeCurrentBlock = () => {
+        if (currentBlock === 'paragraph' && currentBlockContent.length > 0) {
+          htmlLines.push(`<p>${currentBlockContent.join(' ')}</p>`);
+        } else if (currentBlock === 'ol') {
+          htmlLines.push('</ol>');
+        } else if (currentBlock === 'ul') {
+          htmlLines.push('</ul>');
+        }
+        currentBlock = null;
+        currentBlockContent = [];
+      };
+      
+      // Process inline markdown (bold, italic, code)
+      function processInlineMarkdown(text) {
+        return text
+          // Code spans (do this first to avoid conflicts)
+          .replace(/`([^`]+)`/g, '<code>$1</code>')
+          // Bold
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+          // Italic (avoid matching list markers)
+          .replace(/(\s|^)\*([^*\s][^*]*)\*(\s|$)/g, '$1<em>$2</em>$3');
+      }
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmedLine = line.trim();
+        
+        // Empty line - close current block
+        if (trimmedLine === '') {
+          closeCurrentBlock();
+          continue;
+        }
+        
+        // Headers
+        const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+        if (headerMatch) {
+          closeCurrentBlock();
+          const level = Math.min(headerMatch[1].length + 1, 6); // Offset by 1 for better hierarchy
+          htmlLines.push(`<h${level}>${processInlineMarkdown(headerMatch[2])}</h${level}>`);
+          continue;
+        }
+        
+        // Ordered list
+        const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.+)$/);
+        if (orderedMatch) {
+          const [, indent, num, content] = orderedMatch;
+          const indentLevel = indent.length;
+          
+          // Check if we need to start a new list
+          if (currentBlock !== 'ol') {
+            closeCurrentBlock();
+            htmlLines.push('<ol>');
+            currentBlock = 'ol';
+          }
+          
+          // Add list item - check for nested content
+          let itemHtml = `<li>${processInlineMarkdown(content)}`;
+          
+          // Look ahead for nested lists
+          let j = i + 1;
+          const nestedItems = [];
+          while (j < lines.length && lines[j].match(/^\s+[-*]\s+/)) {
+            const nestedMatch = lines[j].match(/^\s*[-*]\s+(.+)$/);
+            if (nestedMatch) {
+              nestedItems.push(nestedMatch[1]);
+            }
+            j++;
+          }
+          
+          if (nestedItems.length > 0) {
+            itemHtml += '\n<ul>';
+            nestedItems.forEach(item => {
+              itemHtml += `\n<li>${processInlineMarkdown(item)}</li>`;
+            });
+            itemHtml += '\n</ul>';
+            i = j - 1; // Skip the nested items we just processed
+          }
+          
+          itemHtml += '</li>';
+          htmlLines.push(itemHtml);
+          continue;
+        }
+        
+        // Unordered list
+        const unorderedMatch = line.match(/^(\s*)[-*]\s+(.+)$/);
+        if (unorderedMatch) {
+          const [, indent, content] = unorderedMatch;
+          
+          // Check if we're at root level (not nested)
+          if (indent.length === 0) {
+            if (currentBlock !== 'ul') {
+              closeCurrentBlock();
+              htmlLines.push('<ul>');
+              currentBlock = 'ul';
+            }
+            htmlLines.push(`<li>${processInlineMarkdown(content)}</li>`);
+            continue;
+          }
+        }
+        
+        // Regular paragraph text
+        if (currentBlock !== 'paragraph') {
+          closeCurrentBlock();
+          currentBlock = 'paragraph';
+        }
+        currentBlockContent.push(processInlineMarkdown(trimmedLine));
+      }
+      
+      // Close any remaining block
+      closeCurrentBlock();
+      
+      return '<div class="chat-article">' + htmlLines.join('\n') + '</div>';
+    }
+
+    function formatTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Update chat input state based on API key
+    function updateChatInputState() {
+      if (chatInput && sendChatButton) {
+        chatInput.disabled = !apiKeySaved;
+        sendChatButton.disabled = !apiKeySaved;
+
+        if (apiKeySaved) {
+          chatInput.placeholder = "Ask about design systems, components, tokens, or best practices...";
+        } else {
+          chatInput.placeholder = "Save your Claude API key first to start chatting...";
+        }
+      }
+    }
+
+    // Update chat component context display
+    function updateChatComponentContext() {
+      const contextIndicator = document.getElementById('component-context-indicator');
+      const componentInfo = document.getElementById('current-component-info');
+      const chatSuggestions = document.getElementById('chat-suggestions');
+
+      if (!contextIndicator || !componentInfo || !chatSuggestions) return;
+
+      // Check if we have current component metadata
+      const hasComponent = currentMetadata !== null;
+
+      if (hasComponent && currentMetadata) {
+        // Show component context
+        contextIndicator.classList.remove('hidden');
+        componentInfo.innerHTML = `Currently analyzing: <strong>${currentMetadata.component}</strong>`;
+
+        // Update suggestions for component-specific questions
+        chatSuggestions.innerHTML = `
+          <button class="chat-suggestion" onclick="sendChatSuggestion('What issues does this component have?')">Issues</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('How can I improve this component?')">Improvements</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('What design tokens should I use?')">Tokens</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('Is this component accessible?')">Accessibility</button>
+        `;
+      } else {
+        // Hide component context and show general suggestions
+        contextIndicator.classList.add('hidden');
+        chatSuggestions.innerHTML = `
+          <button class="chat-suggestion" onclick="sendChatSuggestion('What are design system best practices?')">Best Practices</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('How do I organize design tokens?')">Tokens</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('What makes a good component API?')">Components</button>
+          <button class="chat-suggestion" onclick="sendChatSuggestion('How do I ensure accessibility?')">Accessibility</button>
+        `;
+      }
+    }
+
+    // Send chat suggestion
+    window.sendChatSuggestion = function(suggestion) {
+      if (chatInput) {
+        chatInput.value = suggestion;
+        handleSendChat();
+      }
+    };
+
+    // Initialize when DOM is loaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeUI);
+    } else {
+      initializeUI();
+    }
+  </script>
+</body>
+</html>
