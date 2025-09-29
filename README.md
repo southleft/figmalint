@@ -70,8 +70,8 @@ src/
 
 ### Installation
 
-#### From Figma Community (Coming Soon)
-1. Visit the FigmaLint plugin page in Figma Community
+#### From Figma Community
+1. Visit [FigmaLint on Figma Community](https://www.figma.com/community/plugin/1521241390290871981/figmalint)
 2. Click "Install" to add to your Figma workspace
 
 #### Manual Installation (Development)
