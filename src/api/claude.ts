@@ -4,13 +4,12 @@ import { ClaudeAPIRequest, ClaudeAPIResponse, ComponentContext } from '../types'
 
 // Claude API Configuration
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const DEFAULT_MODEL = 'claude-3-sonnet-20240229';
+const DEFAULT_MODEL = 'claude-sonnet-4-5-20250929'; // Claude Sonnet 4.5 (Latest)
 const MAX_TOKENS = 2048;
 
 // Deterministic settings for consistency
 const DETERMINISTIC_CONFIG = {
   temperature: 0.1, // Low temperature for consistency
-  top_p: 0.1,      // Low top_p for deterministic responses
 };
 
 /**

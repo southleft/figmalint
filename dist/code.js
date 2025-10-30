@@ -699,13 +699,11 @@
 
   // src/api/claude.ts
   var ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-  var DEFAULT_MODEL = "claude-3-sonnet-20240229";
+  var DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
   var MAX_TOKENS = 2048;
   var DETERMINISTIC_CONFIG = {
-    temperature: 0.1,
+    temperature: 0.1
     // Low temperature for consistency
-    top_p: 0.1
-    // Low top_p for deterministic responses
   };
   async function fetchClaude(prompt, apiKey, model = DEFAULT_MODEL, isDeterministic = true) {
     var _a, _b;
@@ -3714,7 +3712,9 @@ ${scoringCriteria}
 
   // src/ui/message-handler.ts
   var storedApiKey = null;
-  var selectedModel = "claude-3-sonnet-20240229";
+  var selectedModel = "claude-sonnet-4-5-20250929";
+  var lastAnalyzedMetadata = null;
+  var lastAnalyzedNode = null;
   var consistencyEngine = new consistency_engine_default({
     enableCaching: true,
     enableMCPIntegration: true,
@@ -3868,8 +3868,8 @@ ${scoringCriteria}
         selectedModel,
         enhancedOptions
       );
-      globalThis.lastAnalyzedMetadata = result.metadata;
-      globalThis.lastAnalyzedNode = selectedNode;
+      lastAnalyzedMetadata = result.metadata;
+      lastAnalyzedNode = selectedNode;
       sendMessageToUI("enhanced-analysis-result", result);
       figma.notify("Enhanced analysis complete! Check the results panel.", { timeout: 3e3 });
     } catch (error) {
@@ -4102,8 +4102,8 @@ ${scoringCriteria}
   }
   function getCurrentComponentContext() {
     try {
-      const lastMetadata = globalThis.lastAnalyzedMetadata;
-      const lastNode = globalThis.lastAnalyzedNode;
+      const lastMetadata = lastAnalyzedMetadata;
+      const lastNode = lastAnalyzedNode;
       if (!lastMetadata && !lastNode) {
         return null;
       }
@@ -4235,8 +4235,21 @@ Respond naturally and helpfully to the user's question.`;
       }
       const savedModel = await figma.clientStorage.getAsync("claude-model");
       if (savedModel) {
-        selectedModel = savedModel;
-        console.log("Loaded saved model:", selectedModel);
+        const validModels = [
+          "claude-sonnet-4-5-20250929",
+          "claude-haiku-4-5-20251001",
+          "claude-opus-4-1-20250805",
+          "claude-sonnet-4-20250514",
+          "claude-opus-4-20250514"
+        ];
+        if (validModels.includes(savedModel)) {
+          selectedModel = savedModel;
+          console.log("Loaded saved model:", selectedModel);
+        } else {
+          console.log("Saved model is deprecated, resetting to default:", savedModel);
+          selectedModel = "claude-sonnet-4-5-20250929";
+          await figma.clientStorage.setAsync("claude-model", selectedModel);
+        }
       }
       console.log("\u{1F504} Initializing design systems knowledge...");
       consistencyEngine.loadDesignSystemsKnowledge().then(() => {

@@ -9,7 +9,11 @@ import ComponentConsistencyEngine from '../core/consistency-engine';
 
 // Plugin state
 let storedApiKey: string | null = null;
-let selectedModel = 'claude-3-sonnet-20240229';
+let selectedModel = 'claude-sonnet-4-5-20250929'; // Claude Sonnet 4.5 (Latest)
+
+// Plugin-level state for storing last analyzed component
+let lastAnalyzedMetadata: any = null;
+let lastAnalyzedNode: any = null;
 
 // Initialize consistency engine
 const consistencyEngine = new ComponentConsistencyEngine({
@@ -221,8 +225,8 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     );
 
     // Store for later use
-    (globalThis as any).lastAnalyzedMetadata = result.metadata;
-    (globalThis as any).lastAnalyzedNode = selectedNode;
+    lastAnalyzedMetadata = result.metadata;
+    lastAnalyzedNode = selectedNode;
 
     // Send results to UI
     sendMessageToUI('enhanced-analysis-result', result);
@@ -582,9 +586,9 @@ async function searchMCPKnowledge(serverUrl: string, query: string, options: { c
  */
 function getCurrentComponentContext(): any {
   try {
-    // Get the last analyzed metadata and node from global state
-    const lastMetadata = (globalThis as any).lastAnalyzedMetadata;
-    const lastNode = (globalThis as any).lastAnalyzedNode;
+    // Get the last analyzed metadata and node from module state
+    const lastMetadata = lastAnalyzedMetadata;
+    const lastNode = lastAnalyzedNode;
 
     if (!lastMetadata && !lastNode) {
       return null;
@@ -749,8 +753,24 @@ export async function initializePlugin(): Promise<void> {
     // Load selected model from storage
     const savedModel = await figma.clientStorage.getAsync('claude-model');
     if (savedModel) {
-      selectedModel = savedModel;
-      console.log('Loaded saved model:', selectedModel);
+      // Valid models list
+      const validModels = [
+        'claude-sonnet-4-5-20250929',
+        'claude-haiku-4-5-20251001',
+        'claude-opus-4-1-20250805',
+        'claude-sonnet-4-20250514',
+        'claude-opus-4-20250514'
+      ];
+
+      // Only use saved model if it's still valid, otherwise reset to default
+      if (validModels.includes(savedModel)) {
+        selectedModel = savedModel;
+        console.log('Loaded saved model:', selectedModel);
+      } else {
+        console.log('Saved model is deprecated, resetting to default:', savedModel);
+        selectedModel = 'claude-sonnet-4-5-20250929';
+        await figma.clientStorage.setAsync('claude-model', selectedModel);
+      }
     }
 
     // Initialize design systems knowledge in background

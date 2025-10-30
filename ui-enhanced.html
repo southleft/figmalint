@@ -1718,13 +1718,11 @@
             <div class="form-group">
               <label for="model-select">Claude Model</label>
               <select id="model-select">
-                <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Recommended - High Performance)</option>
-                <option value="claude-opus-4-20250514">Claude Opus 4 (Most Capable)</option>
-                <option value="claude-3-7-sonnet-20250219">Claude Sonnet 3.7 (With Extended Thinking)</option>
-                <option value="claude-3-5-sonnet-20241022">Claude Sonnet 3.5 (Previous Version)</option>
-                <option value="claude-3-5-haiku-20241022">Claude Haiku 3.5 (Fastest)</option>
-                <option value="claude-3-opus-20240229">Claude Opus 3 (Complex Tasks)</option>
-                <option value="claude-3-haiku-20240307">Claude Haiku 3 (Fast & Compact)</option>
+                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended - Latest & Best)</option>
+                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fastest - October 2025)</option>
+                <option value="claude-opus-4-1-20250805">Claude Opus 4.1 (Most Capable - Advanced Reasoning)</option>
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (High Performance)</option>
+                <option value="claude-opus-4-20250514">Claude Opus 4 (Complex Analysis)</option>
               </select>
               <p class="card-subtitle">Choose the Claude model that works best for your component analysis</p>
             </div>
@@ -2774,37 +2772,21 @@
       console.log('🔍 [SCORING] Starting with baseline positive scoring...');
 
       // Baseline points for just having a component (5 points)
-      weightedTotalScore += 5;
-      weightedPassScore += 5;
-      console.log('🔍 [SCORING] +5 points for having a component structure');
+      // REMOVED: Unconditional bonus was allowing 100% scores despite warnings
+      // Components must now earn their score through actual quality checks
+      console.log('🔍 [SCORING] Baseline bonuses removed to make warnings count');
 
-      // Check for design token usage and award points
-      if (currentTokenSummary && currentTokenSummary.actualTokens > 0) {
-        const tokenBonus = Math.min(currentTokenSummary.actualTokens * 2, 10); // Up to 10 bonus points for tokens
-        weightedTotalScore += tokenBonus;
-        weightedPassScore += tokenBonus;
-        console.log(`🔍 [SCORING] +${tokenBonus} points for using ${currentTokenSummary.actualTokens} design tokens`);
-      }
-
-      // Check for properties and award points
-      if (window.currentAnalysisData && window.currentAnalysisData.properties && window.currentAnalysisData.properties.length > 0) {
-        const propertyBonus = Math.min(window.currentAnalysisData.properties.length * 3, 15); // Up to 15 points for properties
-        weightedTotalScore += propertyBonus;
-        weightedPassScore += propertyBonus;
-        console.log(`🔍 [SCORING] +${propertyBonus} points for having ${window.currentAnalysisData.properties.length} component properties`);
-      }
-
-      // Award points for component structure quality
-      if (audit.naming || audit.consistency) {
-        weightedTotalScore += 5;
-        weightedPassScore += 5;
-        console.log('🔍 [SCORING] +5 points for good component structure');
-      }
+      // Token and property bonuses removed to prevent grade inflation
+      // Score is now based purely on audit checks passing
+      // This ensures warnings properly reduce the score below 100%
 
       // DESIGN TOKEN USAGE SCORING - High impact on overall score
       let tokenPassCount = 0;
       let tokenTotalCount = 0;
+      console.log(`🔍 [TOKEN SCORING START] currentTokenSummary exists: ${!!currentTokenSummary}, totalTokens: ${currentTokenSummary ? currentTokenSummary.totalTokens : 'undefined'}`);
+
       if (currentTokenSummary && currentTokenSummary.totalTokens > 0) {
+        console.log(`🔍 [TOKEN SCORING] Entering token scoring block...`);
         // Filter out likely wrapper/boundary elements from scoring
         const filteredHardCoded = filterWrapperElements(currentTokenSummary);
         const scorableHardCoded = filteredHardCoded.hardCodedValues;
@@ -2814,16 +2796,25 @@
         console.log(`🔍 [TOKEN SCORING] After filtering: ${scorableHardCoded} hard-coded, ${scorableTotal} total`);
 
         if (scorableTotal > 0) {
+          console.log(`🔍 [TOKEN SCORING] scorableTotal > 0, proceeding with scoring...`);
           // Each token-able property gets weighted scoring (2x weight - important for design systems)
           tokenTotalCount = scorableTotal;
-          tokenPassCount = currentTokenSummary.actualTokens; // Only count actual tokens as passing
+          // IMPORTANT: Use scorable tokens for both numerator and denominator
+          // We can't give credit for filtered-out wrapper tokens
+          const scorableActualTokens = Math.min(currentTokenSummary.actualTokens, scorableTotal);
+          tokenPassCount = scorableActualTokens;
 
           const tokenWeight = 2; // High importance for design system compliance
           weightedTotalScore += tokenTotalCount * tokenWeight;
           weightedPassScore += tokenPassCount * tokenWeight;
 
           console.log(`🔍 [TOKEN SCORING] Added ${tokenTotalCount * tokenWeight} total token points, ${tokenPassCount * tokenWeight} passing token points`);
+          console.log(`🔍 [TOKEN SCORING] Running totals: ${weightedPassScore} / ${weightedTotalScore}`);
+        } else {
+          console.log(`🔍 [TOKEN SCORING] scorableTotal is 0 or negative, skipping token scoring`);
         }
+      } else {
+        console.log(`🔍 [TOKEN SCORING] Skipped - no currentTokenSummary or totalTokens is 0`);
       }
 
       // States Audit
@@ -2869,7 +2860,12 @@
 
             // High weight for states (3x) - critical for MCP compatibility
             weightedTotalScore += 3;
-            if (state.found) weightedPassScore += 3;
+            if (state.found) {
+              weightedPassScore += 3;
+              console.log(`🔍 [STATES] "${state.name}" = PASS → +3 points`);
+            } else {
+              console.log(`🔍 [STATES] "${state.name}" = FAIL → 0 points`);
+            }
 
             html += `
               <div class="audit-item">
@@ -2984,7 +2980,15 @@
 
           // Medium-high weight for accessibility (2x) - important for compliance
           weightedTotalScore += 2;
-          if (status === 'pass') weightedPassScore += 2;
+          if (status === 'pass') {
+            weightedPassScore += 2; // Full credit for pass
+            console.log(`🔍 [ACCESSIBILITY] "${item.check}" = PASS → +2 points`);
+          } else if (status === 'warning') {
+            console.log(`🔍 [ACCESSIBILITY] "${item.check}" = WARNING → 0 points (penalty)`);
+          } else {
+            console.log(`🔍 [ACCESSIBILITY] "${item.check}" = FAIL → 0 points`);
+          }
+          // Warnings and fails get 0 points - must fix to improve score
 
           html += `
             <div class="audit-item">
@@ -3004,7 +3008,10 @@
       auditContent.innerHTML = html;
 
       // Update audit score using weighted scoring for MCP compatibility focus
-      const score = weightedTotalScore > 0 ? Math.round((weightedPassScore / weightedTotalScore) * 100) : 0;
+      const rawPercentage = weightedTotalScore > 0 ? (weightedPassScore / weightedTotalScore) * 100 : 0;
+      const score = weightedTotalScore > 0 ? Math.min(100, Math.round(rawPercentage)) : 0;
+      console.log(`🔍 [FINAL SCORE] Raw calculation: ${weightedPassScore} / ${weightedTotalScore} = ${rawPercentage.toFixed(4)}%`);
+      console.log(`🔍 [FINAL SCORE] After Math.round(): ${score}%`);
       console.log(`Audit scoring: ${weightedPassScore} weighted points out of ${weightedTotalScore} total = ${score}% (simple: ${passCount}/${totalCount})`);
 
       auditScore.innerHTML = `<span>Score: ${score}%</span>`;
