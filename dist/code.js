@@ -21,10 +21,6 @@
   var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 
   // src/utils/figma-helpers.ts
-  function isValidApiKeyFormat(apiKey) {
-    const trimmedKey = apiKey.trim();
-    return trimmedKey.length > 40 && trimmedKey.startsWith("sk-ant-");
-  }
   function isValidNodeForAnalysis(node) {
     const validTypes = ["FRAME", "COMPONENT", "COMPONENT_SET", "INSTANCE", "GROUP"];
     if (!validTypes.includes(node.type)) {
@@ -698,109 +694,6 @@
   }
 
   // src/api/claude.ts
-  var ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-  var DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
-  var MAX_TOKENS = 2048;
-  var DETERMINISTIC_CONFIG = {
-    temperature: 0.1
-    // Low temperature for consistency
-  };
-  async function fetchClaude(prompt, apiKey, model = DEFAULT_MODEL, isDeterministic = true) {
-    var _a, _b;
-    if (!apiKey || typeof apiKey !== "string") {
-      throw new Error("API Key Required: Please provide a valid Claude API key in the plugin settings.");
-    }
-    const trimmedKey = apiKey.trim();
-    if (trimmedKey.length === 0) {
-      throw new Error("API Key Required: The Claude API key cannot be empty.");
-    }
-    if (!trimmedKey.startsWith("sk-ant-")) {
-      throw new Error('Invalid API Key Format: Claude API keys should start with "sk-ant-". Please check your API key.');
-    }
-    if (trimmedKey.length < 40) {
-      throw new Error("Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key.");
-    }
-    console.log("Making Claude API call with deterministic settings...");
-    const requestBody = __spreadValues({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: prompt.trim()
-        }
-      ],
-      max_tokens: MAX_TOKENS
-    }, isDeterministic ? DETERMINISTIC_CONFIG : {});
-    const headers = {
-      "content-type": "application/json",
-      "x-api-key": apiKey.trim(),
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    };
-    try {
-      console.log("Sending request to Claude API...");
-      const response = await fetch(ANTHROPIC_API_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody)
-      });
-      if (!response.ok) {
-        let errorText = "";
-        let errorDetails = {};
-        try {
-          errorText = await response.text();
-          errorDetails = JSON.parse(errorText);
-        } catch (e) {
-          errorDetails = { message: errorText };
-        }
-        console.error("Claude API error response:", {
-          status: response.status,
-          statusText: response.statusText,
-          errorText,
-          errorDetails
-        });
-        if (response.status === 400) {
-          const errorMsg = ((_a = errorDetails.error) == null ? void 0 : _a.message) || errorDetails.message || "Bad request";
-          throw new Error(`Claude API Error (400): ${errorMsg}. Please check your request format.`);
-        } else if (response.status === 401) {
-          throw new Error("Claude API Error (401): Invalid API key. Please check your Claude API key in settings.");
-        } else if (response.status === 403) {
-          throw new Error("Claude API Error (403): Access forbidden. Please check your API key permissions.");
-        } else if (response.status === 429) {
-          const retryAfter = response.headers.get("retry-after");
-          throw new Error(`Claude API Error (429): Rate limit exceeded. ${retryAfter ? `Please try again in ${retryAfter} seconds.` : "Please try again later."}`);
-        } else if (response.status === 500) {
-          throw new Error("Claude API Error (500): Server error. The Claude API is experiencing issues. Please try again later.");
-        } else if (response.status === 503) {
-          throw new Error("Claude API Error (503): Service unavailable. The Claude API is temporarily down. Please try again later.");
-        } else {
-          throw new Error(`Claude API Error (${response.status}): ${((_b = errorDetails.error) == null ? void 0 : _b.message) || errorDetails.message || response.statusText}`);
-        }
-      }
-      const data = await response.json();
-      console.log("Claude API response:", data);
-      if (data.content && data.content[0] && data.content[0].text) {
-        return data.content[0].text.trim();
-      } else {
-        throw new Error("Invalid response format from Claude API");
-      }
-    } catch (error) {
-      console.error("Error calling Claude API:", error);
-      if (error instanceof Error) {
-        if (error.message.includes("Claude API Error")) {
-          throw error;
-        }
-        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-          throw new Error("Network Error: Failed to connect to Claude API. Please check your internet connection and try again.");
-        } else if (error.message.includes("TypeError")) {
-          throw new Error("Request Error: Invalid request format. Please contact support if this persists.");
-        } else if (error.message.includes("timeout")) {
-          throw new Error("Timeout Error: Request to Claude API timed out. Please try again.");
-        }
-      }
-      throw new Error(`Unexpected error calling Claude API: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }
   function createEnhancedMetadataPrompt(componentContext) {
     return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
 
@@ -1280,7 +1173,2519 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     return filteredData;
   }
 
+  // src/api/providers/types.ts
+  var LLMError = class extends Error {
+    constructor(message, code, statusCode, retryAfter) {
+      super(message);
+      this.code = code;
+      this.statusCode = statusCode;
+      this.retryAfter = retryAfter;
+      this.name = "LLMError";
+    }
+  };
+  var DEFAULT_MODELS = {
+    anthropic: "claude-sonnet-4-5-20250929",
+    openai: "gpt-5.2",
+    google: "gemini-2.5-pro"
+  };
+
+  // src/api/providers/anthropic.ts
+  var ANTHROPIC_MODELS = [
+    {
+      id: "claude-opus-4-5-20251218",
+      name: "Claude Opus 4.5",
+      description: "Flagship model - Most capable, best for complex analysis and reasoning",
+      contextWindow: 2e5,
+      isDefault: false
+    },
+    {
+      id: "claude-sonnet-4-5-20250929",
+      name: "Claude Sonnet 4.5",
+      description: "Standard model - Balanced performance and cost, recommended for most tasks",
+      contextWindow: 2e5,
+      isDefault: true
+    },
+    {
+      id: "claude-haiku-4-5-20251001",
+      name: "Claude Haiku 4.5",
+      description: "Economy model - Fastest responses, ideal for quick analysis",
+      contextWindow: 2e5,
+      isDefault: false
+    }
+  ];
+  var AnthropicProvider = class {
+    constructor() {
+      this.name = "Anthropic";
+      this.id = "anthropic";
+      this.endpoint = "https://api.anthropic.com/v1/messages";
+      this.keyPrefix = "sk-ant-";
+      this.keyPlaceholder = "sk-ant-...";
+      this.models = ANTHROPIC_MODELS;
+    }
+    /**
+     * Format a request for the Anthropic API
+     */
+    formatRequest(config) {
+      const request = {
+        model: config.model,
+        messages: [
+          {
+            role: "user",
+            content: config.prompt.trim()
+          }
+        ],
+        max_tokens: config.maxTokens
+      };
+      if (config.temperature !== void 0) {
+        request.temperature = config.temperature;
+      }
+      if (config.additionalParams) {
+        Object.assign(request, config.additionalParams);
+      }
+      return request;
+    }
+    /**
+     * Parse Anthropic API response into standardized format
+     */
+    parseResponse(response) {
+      const anthropicResponse = response;
+      if (!anthropicResponse.content || !Array.isArray(anthropicResponse.content)) {
+        throw new LLMError(
+          "Invalid response format from Anthropic API: missing content array",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const textContent = anthropicResponse.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+      if (!textContent) {
+        throw new LLMError(
+          "Invalid response format from Anthropic API: no text content found",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      return {
+        content: textContent.trim(),
+        model: anthropicResponse.model,
+        usage: anthropicResponse.usage ? {
+          promptTokens: anthropicResponse.usage.input_tokens,
+          completionTokens: anthropicResponse.usage.output_tokens,
+          totalTokens: anthropicResponse.usage.input_tokens + anthropicResponse.usage.output_tokens
+        } : void 0,
+        metadata: {
+          id: anthropicResponse.id,
+          stopReason: anthropicResponse.stop_reason
+        }
+      };
+    }
+    /**
+     * Validate API key format for Anthropic
+     */
+    validateApiKey(apiKey) {
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          isValid: false,
+          error: "API Key Required: Please provide a valid Claude API key."
+        };
+      }
+      const trimmedKey = apiKey.trim();
+      if (trimmedKey.length === 0) {
+        return {
+          isValid: false,
+          error: "API Key Required: The Claude API key cannot be empty."
+        };
+      }
+      if (!trimmedKey.startsWith(this.keyPrefix)) {
+        return {
+          isValid: false,
+          error: `Invalid API Key Format: Claude API keys should start with "${this.keyPrefix}". Please check your API key.`
+        };
+      }
+      if (trimmedKey.length < 40) {
+        return {
+          isValid: false,
+          error: "Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key."
+        };
+      }
+      return { isValid: true };
+    }
+    /**
+     * Get HTTP headers for Anthropic API requests
+     */
+    getHeaders(apiKey) {
+      return {
+        "content-type": "application/json",
+        "x-api-key": apiKey.trim(),
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      };
+    }
+    /**
+     * Get the default model for Anthropic
+     */
+    getDefaultModel() {
+      const defaultModel = this.models.find((model) => model.isDefault);
+      return defaultModel || this.models[1];
+    }
+    /**
+     * Handle Anthropic-specific error responses
+     */
+    handleError(statusCode, response) {
+      var _a;
+      const errorResponse = response;
+      const errorMessage = ((_a = errorResponse == null ? void 0 : errorResponse.error) == null ? void 0 : _a.message) || (typeof response === "string" ? response : "Unknown error");
+      switch (statusCode) {
+        case 400:
+          return new LLMError(
+            `Claude API Error (400): ${errorMessage}. Please check your request format.`,
+            "INVALID_REQUEST" /* INVALID_REQUEST */,
+            400
+          );
+        case 401:
+          return new LLMError(
+            "Claude API Error (401): Invalid API key. Please check your Claude API key in settings.",
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            401
+          );
+        case 403:
+          return new LLMError(
+            "Claude API Error (403): Access forbidden. Please check your API key permissions.",
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            403
+          );
+        case 404:
+          return new LLMError(
+            `Claude API Error (404): ${errorMessage}. The requested model may not be available.`,
+            "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */,
+            404
+          );
+        case 429:
+          return new LLMError(
+            "Claude API Error (429): Rate limit exceeded. Please try again later.",
+            "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */,
+            429
+          );
+        case 500:
+          return new LLMError(
+            "Claude API Error (500): Server error. The Claude API is experiencing issues. Please try again later.",
+            "SERVER_ERROR" /* SERVER_ERROR */,
+            500
+          );
+        case 503:
+          return new LLMError(
+            "Claude API Error (503): Service unavailable. The Claude API is temporarily down. Please try again later.",
+            "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */,
+            503
+          );
+        default:
+          return new LLMError(
+            `Claude API Error (${statusCode}): ${errorMessage}`,
+            "UNKNOWN_ERROR" /* UNKNOWN_ERROR */,
+            statusCode
+          );
+      }
+    }
+  };
+  var anthropicProvider = new AnthropicProvider();
+
+  // src/api/providers/openai.ts
+  var OPENAI_MODELS = [
+    {
+      id: "gpt-5.2",
+      name: "GPT-5.2",
+      description: "Flagship model with advanced reasoning capabilities",
+      contextWindow: 128e3,
+      isDefault: true
+    },
+    {
+      id: "gpt-5.2-pro",
+      name: "GPT-5.2 Pro",
+      description: "Premium model with extended reasoning for complex tasks",
+      contextWindow: 128e3,
+      isDefault: false
+    },
+    {
+      id: "gpt-5-mini",
+      name: "GPT-5 Mini",
+      description: "Economy model - fast and cost-effective",
+      contextWindow: 128e3,
+      isDefault: false
+    }
+  ];
+  var OpenAIProviderClass = class {
+    constructor() {
+      this.name = "OpenAI";
+      this.id = "openai";
+      this.endpoint = "https://api.openai.com/v1/chat/completions";
+      this.keyPrefix = "sk-";
+      this.keyPlaceholder = "sk-...";
+      this.models = OPENAI_MODELS;
+    }
+    /**
+     * Format a request for OpenAI's chat completions API
+     */
+    formatRequest(config) {
+      const request = {
+        model: config.model,
+        messages: [
+          {
+            role: "user",
+            content: config.prompt
+          }
+        ],
+        max_completion_tokens: config.maxTokens,
+        temperature: config.temperature
+      };
+      if (config.additionalParams) {
+        Object.assign(request, config.additionalParams);
+      }
+      return request;
+    }
+    /**
+     * Parse OpenAI's response into standardized format
+     */
+    parseResponse(response) {
+      const openaiResponse = response;
+      if (!openaiResponse.choices || openaiResponse.choices.length === 0) {
+        throw new LLMError(
+          "Invalid response format: no choices returned",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const choice = openaiResponse.choices[0];
+      if (!choice.message || typeof choice.message.content !== "string") {
+        throw new LLMError(
+          "Invalid response format: missing message content",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const result = {
+        content: choice.message.content.trim(),
+        model: openaiResponse.model
+      };
+      if (openaiResponse.usage) {
+        result.usage = {
+          promptTokens: openaiResponse.usage.prompt_tokens,
+          completionTokens: openaiResponse.usage.completion_tokens,
+          totalTokens: openaiResponse.usage.total_tokens
+        };
+      }
+      result.metadata = {
+        id: openaiResponse.id,
+        finishReason: choice.finish_reason,
+        created: openaiResponse.created
+      };
+      return result;
+    }
+    /**
+     * Validate OpenAI API key format
+     */
+    validateApiKey(apiKey) {
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          isValid: false,
+          error: "API Key Required: Please provide a valid OpenAI API key."
+        };
+      }
+      const trimmedKey = apiKey.trim();
+      if (trimmedKey.length === 0) {
+        return {
+          isValid: false,
+          error: "API Key Required: The OpenAI API key cannot be empty."
+        };
+      }
+      if (!trimmedKey.startsWith(this.keyPrefix)) {
+        return {
+          isValid: false,
+          error: `Invalid API Key Format: OpenAI API keys should start with "${this.keyPrefix}". Please check your API key.`
+        };
+      }
+      if (trimmedKey.length < 20) {
+        return {
+          isValid: false,
+          error: "Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key."
+        };
+      }
+      return { isValid: true };
+    }
+    /**
+     * Get headers required for OpenAI API requests
+     */
+    getHeaders(apiKey) {
+      return {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey.trim()}`
+      };
+    }
+    /**
+     * Get the default model for OpenAI
+     */
+    getDefaultModel() {
+      const defaultModel = this.models.find((model) => model.isDefault);
+      return defaultModel || this.models[0];
+    }
+    /**
+     * Handle OpenAI-specific error responses
+     */
+    handleError(statusCode, response) {
+      var _a;
+      const errorResponse = response;
+      const errorMessage = ((_a = errorResponse == null ? void 0 : errorResponse.error) == null ? void 0 : _a.message) || (errorResponse == null ? void 0 : errorResponse.message) || "Unknown error occurred";
+      switch (statusCode) {
+        case 400:
+          if (errorMessage.toLowerCase().includes("context_length_exceeded") || errorMessage.toLowerCase().includes("maximum context length")) {
+            return new LLMError(
+              `OpenAI API Error (400): Context length exceeded. ${errorMessage}`,
+              "CONTEXT_LENGTH_EXCEEDED" /* CONTEXT_LENGTH_EXCEEDED */,
+              statusCode
+            );
+          }
+          return new LLMError(
+            `OpenAI API Error (400): ${errorMessage}. Please check your request format.`,
+            "INVALID_REQUEST" /* INVALID_REQUEST */,
+            statusCode
+          );
+        case 401:
+          return new LLMError(
+            "OpenAI API Error (401): Invalid API key. Please check your OpenAI API key in settings.",
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            statusCode
+          );
+        case 403:
+          return new LLMError(
+            "OpenAI API Error (403): Access forbidden. Please check your API key permissions or account status.",
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            statusCode
+          );
+        case 404:
+          return new LLMError(
+            `OpenAI API Error (404): Model not found. ${errorMessage}`,
+            "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */,
+            statusCode
+          );
+        case 429:
+          const retryMatch = errorMessage.match(/try again in (\d+)/i);
+          const retryAfter = retryMatch ? parseInt(retryMatch[1], 10) : void 0;
+          return new LLMError(
+            `OpenAI API Error (429): Rate limit exceeded. ${retryAfter ? `Please try again in ${retryAfter} seconds.` : "Please try again later."}`,
+            "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */,
+            statusCode,
+            retryAfter
+          );
+        case 500:
+          return new LLMError(
+            "OpenAI API Error (500): Server error. The OpenAI API is experiencing issues. Please try again later.",
+            "SERVER_ERROR" /* SERVER_ERROR */,
+            statusCode
+          );
+        case 502:
+          return new LLMError(
+            "OpenAI API Error (502): Bad gateway. The OpenAI API is temporarily unavailable. Please try again later.",
+            "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */,
+            statusCode
+          );
+        case 503:
+          return new LLMError(
+            "OpenAI API Error (503): Service unavailable. The OpenAI API is temporarily down. Please try again later.",
+            "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */,
+            statusCode
+          );
+        case 504:
+          return new LLMError(
+            "OpenAI API Error (504): Gateway timeout. The request took too long. Please try again.",
+            "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */,
+            statusCode
+          );
+        default:
+          return new LLMError(
+            `OpenAI API Error (${statusCode}): ${errorMessage}`,
+            "UNKNOWN_ERROR" /* UNKNOWN_ERROR */,
+            statusCode
+          );
+      }
+    }
+  };
+  var OpenAIProvider = new OpenAIProviderClass();
+
+  // src/api/providers/google.ts
+  var GOOGLE_MODELS = [
+    {
+      id: "gemini-3-pro-preview",
+      name: "Gemini 3 Pro",
+      description: "Flagship model with advanced reasoning and multimodal capabilities",
+      contextWindow: 1e6,
+      isDefault: true
+    },
+    {
+      id: "gemini-2.5-pro",
+      name: "Gemini 2.5 Pro",
+      description: "Standard reasoning model with excellent performance",
+      contextWindow: 1e6,
+      isDefault: false
+    },
+    {
+      id: "gemini-2.5-flash",
+      name: "Gemini 2.5 Flash",
+      description: "Economy model optimized for speed and efficiency",
+      contextWindow: 1e6,
+      isDefault: false
+    }
+  ];
+  var GoogleProvider = class {
+    constructor() {
+      this.name = "Google";
+      this.id = "google";
+      this.endpoint = "https://generativelanguage.googleapis.com/v1beta/models";
+      this.keyPrefix = "AIza";
+      this.keyPlaceholder = "AIza...";
+      this.models = GOOGLE_MODELS;
+    }
+    /**
+     * Format a request for the Gemini API
+     *
+     * Gemini uses a different request structure than OpenAI/Anthropic:
+     * - contents: Array of content objects with parts
+     * - generationConfig: Configuration for the generation
+     *
+     * @param config - Request configuration
+     * @returns Formatted request body for Gemini API
+     */
+    formatRequest(config) {
+      const request = {
+        contents: [
+          {
+            parts: [
+              {
+                text: config.prompt
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          maxOutputTokens: config.maxTokens,
+          temperature: config.temperature
+        }
+      };
+      if (config.additionalParams) {
+        const { topP, topK, stopSequences } = config.additionalParams;
+        if (topP !== void 0) {
+          request.generationConfig.topP = topP;
+        }
+        if (topK !== void 0) {
+          request.generationConfig.topK = topK;
+        }
+        if (stopSequences !== void 0) {
+          request.generationConfig.stopSequences = stopSequences;
+        }
+      }
+      return request;
+    }
+    /**
+     * Parse Gemini API response into standardized format
+     *
+     * Gemini response structure:
+     * {
+     *   candidates: [{
+     *     content: {
+     *       parts: [{ text: "..." }]
+     *     }
+     *   }],
+     *   usageMetadata: { ... }
+     * }
+     *
+     * @param response - Raw API response
+     * @returns Standardized LLM response
+     * @throws Error if response format is invalid
+     */
+    parseResponse(response) {
+      var _a;
+      const geminiResponse = response;
+      if (geminiResponse.error) {
+        throw new LLMError(
+          geminiResponse.error.message || "Unknown Gemini API error",
+          this.mapErrorCodeToLLMErrorCode(geminiResponse.error.code, geminiResponse.error.status),
+          geminiResponse.error.code
+        );
+      }
+      if (!geminiResponse.candidates || geminiResponse.candidates.length === 0) {
+        throw new LLMError(
+          "No candidates returned in Gemini response",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const candidate = geminiResponse.candidates[0];
+      if (candidate.finishReason === "SAFETY") {
+        throw new LLMError(
+          "Response blocked due to safety filters",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const parts = (_a = candidate.content) == null ? void 0 : _a.parts;
+      if (!parts || parts.length === 0 || !parts[0].text) {
+        throw new LLMError(
+          "No text content in Gemini response",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const text = parts[0].text;
+      const llmResponse = {
+        content: text,
+        model: "gemini"
+        // Model info not always returned in response
+      };
+      if (geminiResponse.usageMetadata) {
+        llmResponse.usage = {
+          promptTokens: geminiResponse.usageMetadata.promptTokenCount || 0,
+          completionTokens: geminiResponse.usageMetadata.candidatesTokenCount || 0,
+          totalTokens: geminiResponse.usageMetadata.totalTokenCount || 0
+        };
+      }
+      return llmResponse;
+    }
+    /**
+     * Validate Google API key format
+     *
+     * Google API keys:
+     * - Start with 'AIza'
+     * - Are typically 39 characters long
+     * - Contain alphanumeric characters and underscores
+     *
+     * @param apiKey - The API key to validate
+     * @returns Validation result
+     */
+    validateApiKey(apiKey) {
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          isValid: false,
+          error: "API key is required"
+        };
+      }
+      const trimmedKey = apiKey.trim();
+      if (trimmedKey.length === 0) {
+        return {
+          isValid: false,
+          error: "API key cannot be empty"
+        };
+      }
+      if (!trimmedKey.startsWith(this.keyPrefix)) {
+        return {
+          isValid: false,
+          error: `Google API keys should start with "${this.keyPrefix}". Please check your API key.`
+        };
+      }
+      if (trimmedKey.length < 30 || trimmedKey.length > 50) {
+        return {
+          isValid: false,
+          error: "API key appears to have an invalid length. Please verify you copied the complete key."
+        };
+      }
+      if (!/^[A-Za-z0-9_-]+$/.test(trimmedKey)) {
+        return {
+          isValid: false,
+          error: "API key contains invalid characters"
+        };
+      }
+      return { isValid: true };
+    }
+    /**
+     * Get headers for API requests
+     *
+     * Note: Google uses URL-based authentication, so the API key is not
+     * included in headers. It is appended to the URL instead.
+     *
+     * @param _apiKey - The API key (not used in headers for Google)
+     * @returns Request headers
+     */
+    getHeaders(_apiKey) {
+      return {
+        "Content-Type": "application/json"
+      };
+    }
+    /**
+     * Get the full endpoint URL for a specific model and API key
+     *
+     * Google's API uses URL-based authentication:
+     * https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}
+     *
+     * @param model - The model ID to use
+     * @param apiKey - The API key for authentication
+     * @returns Full endpoint URL with API key
+     */
+    getEndpoint(model, apiKey) {
+      const trimmedKey = apiKey.trim();
+      return `${this.endpoint}/${model}:generateContent?key=${trimmedKey}`;
+    }
+    /**
+     * Get the default model for this provider
+     *
+     * @returns The default Gemini model
+     */
+    getDefaultModel() {
+      const defaultModel = this.models.find((m) => m.isDefault);
+      return defaultModel || this.models[0];
+    }
+    /**
+     * Handle provider-specific error responses
+     *
+     * @param statusCode - HTTP status code
+     * @param response - Error response body
+     * @returns Formatted LLMError
+     */
+    handleError(statusCode, response) {
+      var _a, _b;
+      const errorResponse = response;
+      const errorInfo = errorResponse == null ? void 0 : errorResponse.error;
+      const message = (errorInfo == null ? void 0 : errorInfo.message) || "Unknown Google API error";
+      const status = errorInfo == null ? void 0 : errorInfo.status;
+      const code = (errorInfo == null ? void 0 : errorInfo.code) || statusCode;
+      const llmErrorCode = this.mapErrorCodeToLLMErrorCode(code, status);
+      let retryAfter;
+      if (statusCode === 429) {
+        retryAfter = 6e4;
+        const retryDetail = (_a = errorInfo == null ? void 0 : errorInfo.details) == null ? void 0 : _a.find(
+          (d) => {
+            var _a2;
+            return (_a2 = d["@type"]) == null ? void 0 : _a2.includes("RetryInfo");
+          }
+        );
+        if ((_b = retryDetail == null ? void 0 : retryDetail.metadata) == null ? void 0 : _b.retryDelay) {
+          const delayMatch = retryDetail.metadata.retryDelay.match(/(\d+)s/);
+          if (delayMatch) {
+            retryAfter = parseInt(delayMatch[1], 10) * 1e3;
+          }
+        }
+      }
+      let userMessage = message;
+      switch (llmErrorCode) {
+        case "INVALID_API_KEY" /* INVALID_API_KEY */:
+          userMessage = "Google API Error: Invalid API key. Please check your API key in settings.";
+          break;
+        case "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */:
+          userMessage = `Google API Error: Rate limit exceeded. ${retryAfter ? `Please try again in ${Math.ceil(retryAfter / 1e3)} seconds.` : "Please try again later."}`;
+          break;
+        case "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */:
+          userMessage = "Google API Error: Model not found. Please select a valid model.";
+          break;
+        case "CONTEXT_LENGTH_EXCEEDED" /* CONTEXT_LENGTH_EXCEEDED */:
+          userMessage = "Google API Error: Input too long. Please reduce the size of your request.";
+          break;
+        case "SERVER_ERROR" /* SERVER_ERROR */:
+          userMessage = "Google API Error: Server error. Please try again later.";
+          break;
+        case "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */:
+          userMessage = "Google API Error: Service temporarily unavailable. Please try again later.";
+          break;
+      }
+      return new LLMError(userMessage, llmErrorCode, statusCode, retryAfter);
+    }
+    /**
+     * Map Google error codes/status to LLMErrorCode
+     *
+     * @param code - HTTP status code or Google error code
+     * @param status - Google error status string
+     * @returns Appropriate LLMErrorCode
+     */
+    mapErrorCodeToLLMErrorCode(code, status) {
+      if (status) {
+        const statusUpper = status.toUpperCase();
+        if (statusUpper === "INVALID_ARGUMENT") {
+          return "INVALID_REQUEST" /* INVALID_REQUEST */;
+        }
+        if (statusUpper === "PERMISSION_DENIED" || statusUpper === "UNAUTHENTICATED") {
+          return "INVALID_API_KEY" /* INVALID_API_KEY */;
+        }
+        if (statusUpper === "NOT_FOUND") {
+          return "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */;
+        }
+        if (statusUpper === "RESOURCE_EXHAUSTED") {
+          return "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */;
+        }
+        if (statusUpper === "UNAVAILABLE") {
+          return "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */;
+        }
+      }
+      switch (code) {
+        case 400:
+          return "INVALID_REQUEST" /* INVALID_REQUEST */;
+        case 401:
+        case 403:
+          return "INVALID_API_KEY" /* INVALID_API_KEY */;
+        case 404:
+          return "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */;
+        case 429:
+          return "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */;
+        case 500:
+          return "SERVER_ERROR" /* SERVER_ERROR */;
+        case 503:
+          return "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */;
+        default:
+          return "UNKNOWN_ERROR" /* UNKNOWN_ERROR */;
+      }
+    }
+  };
+  var googleProvider = new GoogleProvider();
+
+  // src/api/providers/index.ts
+  var providers = {
+    anthropic: anthropicProvider,
+    openai: OpenAIProvider,
+    google: googleProvider
+  };
+  function getProvider(providerId) {
+    const provider = providers[providerId];
+    if (!provider) {
+      throw new LLMError(
+        `Unknown provider: ${providerId}`,
+        "INVALID_REQUEST" /* INVALID_REQUEST */,
+        400
+      );
+    }
+    return provider;
+  }
+  async function callProvider(providerId, apiKey, config) {
+    const provider = getProvider(providerId);
+    const validation = provider.validateApiKey(apiKey);
+    if (!validation.isValid) {
+      throw new LLMError(
+        validation.error || "Invalid API key format",
+        "INVALID_API_KEY" /* INVALID_API_KEY */,
+        401
+      );
+    }
+    const requestBody = provider.formatRequest(config);
+    const headers = provider.getHeaders(apiKey);
+    let endpoint = provider.endpoint;
+    if (providerId === "google") {
+      endpoint = `${provider.endpoint}/${config.model}:generateContent?key=${apiKey.trim()}`;
+    }
+    try {
+      console.log(`Making ${provider.name} API call to ${endpoint}...`);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody)
+      });
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = await response.text();
+        }
+        throw provider.handleError(response.status, errorData);
+      }
+      const data = await response.json();
+      return provider.parseResponse(data);
+    } catch (error) {
+      if (error instanceof LLMError) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          throw new LLMError(
+            `Network error connecting to ${provider.name}. Please check your internet connection.`,
+            "NETWORK_ERROR" /* NETWORK_ERROR */
+          );
+        }
+      }
+      throw new LLMError(
+        `Unexpected error calling ${provider.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "UNKNOWN_ERROR" /* UNKNOWN_ERROR */
+      );
+    }
+  }
+  var STORAGE_KEYS = {
+    /** Selected provider ID */
+    SELECTED_PROVIDER: "selected-provider",
+    /** Selected model ID */
+    SELECTED_MODEL: "selected-model",
+    /** API key storage (per provider) */
+    apiKey: (providerId) => `${providerId}-api-key`,
+    /** Legacy Claude key (for migration) */
+    LEGACY_CLAUDE_KEY: "claude-api-key",
+    LEGACY_CLAUDE_MODEL: "claude-model"
+  };
+  var DEFAULTS = {
+    provider: "anthropic",
+    model: DEFAULT_MODELS.anthropic
+  };
+  async function checkLegacyMigration() {
+    try {
+      const legacyKey = await figma.clientStorage.getAsync(STORAGE_KEYS.LEGACY_CLAUDE_KEY);
+      const legacyModel = await figma.clientStorage.getAsync(STORAGE_KEYS.LEGACY_CLAUDE_MODEL);
+      if (legacyKey) {
+        return {
+          needsMigration: true,
+          legacyKey,
+          legacyModel
+        };
+      }
+      return { needsMigration: false };
+    } catch (e) {
+      return { needsMigration: false };
+    }
+  }
+  async function migrateLegacyStorage() {
+    const migration = await checkLegacyMigration();
+    if (!migration.needsMigration) {
+      return;
+    }
+    console.log("Migrating legacy Claude storage to multi-provider format...");
+    if (migration.legacyKey) {
+      await figma.clientStorage.setAsync(STORAGE_KEYS.apiKey("anthropic"), migration.legacyKey);
+    }
+    await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_PROVIDER, "anthropic");
+    if (migration.legacyModel) {
+      await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_MODEL, migration.legacyModel);
+    }
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.LEGACY_CLAUDE_KEY);
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.LEGACY_CLAUDE_MODEL);
+    console.log("Migration complete");
+  }
+  async function loadProviderConfig() {
+    await migrateLegacyStorage();
+    const providerId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_PROVIDER) || DEFAULTS.provider;
+    const modelId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_MODEL) || DEFAULT_MODELS[providerId];
+    const apiKey = await figma.clientStorage.getAsync(STORAGE_KEYS.apiKey(providerId));
+    return { providerId, modelId, apiKey };
+  }
+  async function saveProviderConfig(providerId, modelId, apiKey) {
+    await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_PROVIDER, providerId);
+    await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_MODEL, modelId);
+    if (apiKey !== void 0) {
+      await figma.clientStorage.setAsync(STORAGE_KEYS.apiKey(providerId), apiKey);
+    }
+  }
+  async function clearProviderKey(providerId) {
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.apiKey(providerId));
+  }
+
+  // src/core/consistency-engine.ts
+  var ComponentConsistencyEngine = class {
+    constructor(config = {}) {
+      this.cache = /* @__PURE__ */ new Map();
+      this.designSystemsKnowledge = null;
+      this.config = __spreadValues({
+        enableCaching: true,
+        enableMCPIntegration: true,
+        mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp",
+        consistencyThreshold: 0.95
+      }, config);
+    }
+    /**
+     * Generate a deterministic hash for a component based on its structure
+     */
+    generateComponentHash(context, tokens) {
+      var _a, _b;
+      const hashInput = {
+        name: context.name,
+        type: context.type,
+        hierarchy: this.normalizeHierarchy(context.hierarchy),
+        frameStructure: context.frameStructure,
+        detectedStyles: context.detectedStyles,
+        tokenFingerprint: this.generateTokenFingerprint(tokens),
+        // Don't include dynamic context that could vary
+        staticProperties: {
+          hasInteractiveElements: ((_a = context.additionalContext) == null ? void 0 : _a.hasInteractiveElements) || false,
+          componentFamily: ((_b = context.additionalContext) == null ? void 0 : _b.componentFamily) || "generic"
+        }
+      };
+      return this.createHash(JSON.stringify(hashInput));
+    }
+    /**
+     * Get cached analysis if available and valid
+     */
+    getCachedAnalysis(hash) {
+      if (!this.config.enableCaching) return null;
+      const cached = this.cache.get(hash);
+      if (!cached) return null;
+      const isExpired = Date.now() - cached.timestamp > 24 * 60 * 60 * 1e3;
+      if (isExpired) {
+        this.cache.delete(hash);
+        return null;
+      }
+      console.log("\u2705 Using cached analysis for component hash:", hash);
+      return cached;
+    }
+    /**
+     * Cache analysis result
+     */
+    cacheAnalysis(hash, result) {
+      var _a;
+      if (!this.config.enableCaching) return;
+      this.cache.set(hash, {
+        hash,
+        result,
+        timestamp: Date.now(),
+        mcpKnowledgeVersion: ((_a = this.designSystemsKnowledge) == null ? void 0 : _a.version) || "1.0.0"
+      });
+      console.log("\u{1F4BE} Cached analysis for component hash:", hash);
+    }
+    /**
+    * Load design systems knowledge from MCP server
+    */
+    async loadDesignSystemsKnowledge() {
+      if (!this.config.enableMCPIntegration) {
+        console.log("\u{1F4DA} MCP integration disabled, using fallback knowledge");
+        this.loadFallbackKnowledge();
+        return;
+      }
+      try {
+        console.log("\u{1F504} Loading design systems knowledge from MCP...");
+        const connectivityTest = await this.testMCPConnectivity();
+        if (!connectivityTest) {
+          console.warn("\u26A0\uFE0F MCP server not accessible, using fallback knowledge");
+          this.loadFallbackKnowledge();
+          return;
+        }
+        const [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge] = await Promise.allSettled([
+          this.queryMCP("component analysis best practices"),
+          this.queryMCP("design token naming conventions and patterns"),
+          this.queryMCP("design system accessibility requirements"),
+          this.queryMCP("design system component scoring methodology")
+        ]);
+        this.designSystemsKnowledge = {
+          version: "1.0.0",
+          components: this.processComponentKnowledge(
+            componentKnowledge.status === "fulfilled" ? componentKnowledge.value : null
+          ),
+          tokens: this.processKnowledgeContent(
+            tokenKnowledge.status === "fulfilled" ? tokenKnowledge.value : null
+          ),
+          accessibility: this.processKnowledgeContent(
+            accessibilityKnowledge.status === "fulfilled" ? accessibilityKnowledge.value : null
+          ),
+          scoring: this.processKnowledgeContent(
+            scoringKnowledge.status === "fulfilled" ? scoringKnowledge.value : null
+          ),
+          lastUpdated: Date.now()
+        };
+        const successfulQueries = [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge].filter((result) => result.status === "fulfilled").length;
+        if (successfulQueries > 0) {
+          console.log(`\u2705 Design systems knowledge loaded successfully (${successfulQueries}/4 queries successful)`);
+        } else {
+          console.warn("\u26A0\uFE0F All MCP queries failed, using fallback knowledge");
+          this.loadFallbackKnowledge();
+        }
+      } catch (error) {
+        console.warn("\u26A0\uFE0F Failed to load design systems knowledge:", error);
+        this.loadFallbackKnowledge();
+      }
+    }
+    /**
+    * Test MCP server connectivity using MCP initialization instead of health endpoint
+    */
+    async testMCPConnectivity() {
+      var _a, _b;
+      try {
+        console.log("\u{1F517} Testing MCP server connectivity...");
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("Connectivity test timeout")), 5e3)
+        );
+        const initPayload = {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: { roots: { listChanged: true } },
+            clientInfo: { name: "figmalint", version: "2.0.0" }
+          }
+        };
+        if (!this.config.mcpServerUrl) {
+          throw new Error("MCP server URL not configured");
+        }
+        const fetchPromise = fetch(this.config.mcpServerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(initPayload)
+        });
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (response.ok) {
+          const data = await response.json();
+          if ((_b = (_a = data.result) == null ? void 0 : _a.serverInfo) == null ? void 0 : _b.name) {
+            console.log(`\u2705 MCP server accessible: ${data.result.serverInfo.name}`);
+            return true;
+          }
+        }
+        console.warn(`\u26A0\uFE0F MCP server returned ${response.status}`);
+        return false;
+      } catch (error) {
+        console.warn("\u26A0\uFE0F MCP server connectivity test failed:", error);
+        return false;
+      }
+    }
+    /**
+     * Query the design systems MCP server using proper JSON-RPC protocol
+     */
+    async queryMCP(query) {
+      try {
+        console.log(`\u{1F50D} Querying MCP for: "${query}"`);
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("MCP query timeout")), 5e3)
+        );
+        if (!this.config.mcpServerUrl) {
+          throw new Error("MCP server URL not configured");
+        }
+        const searchPayload = {
+          jsonrpc: "2.0",
+          id: Math.floor(Math.random() * 1e3) + 2,
+          // Random ID > 1 (1 is used for init)
+          method: "tools/call",
+          params: {
+            name: "search_design_knowledge",
+            arguments: {
+              query,
+              limit: 5,
+              category: "components"
+            }
+          }
+        };
+        const fetchPromise = fetch(this.config.mcpServerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(searchPayload)
+        });
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (!response.ok) {
+          throw new Error(`MCP query failed: ${response.status} ${response.statusText}`);
+        }
+        const result = await response.json();
+        console.log(`\u2705 MCP query successful for: "${query}"`);
+        if (result.result && result.result.content) {
+          return {
+            results: result.result.content.map((item) => ({
+              title: item.title || "Design System Knowledge",
+              content: item.content || item.description || "Knowledge content",
+              category: "design-systems"
+            }))
+          };
+        }
+        return { results: [] };
+      } catch (error) {
+        console.warn(`\u26A0\uFE0F MCP query failed for "${query}":`, error);
+        return this.getFallbackKnowledgeForQuery(query);
+      }
+    }
+    /**
+     * Create deterministic analysis prompt with MCP knowledge
+     */
+    createDeterministicPrompt(context) {
+      const basePrompt = this.createBasePrompt(context);
+      const mcpGuidance = this.getMCPGuidance(context);
+      const scoringCriteria = this.getScoringCriteria(context);
+      return `${basePrompt}
+
+**CONSISTENCY REQUIREMENTS:**
+- Use DETERMINISTIC analysis based on the exact component structure provided
+- Apply CONSISTENT scoring criteria for identical components
+- Follow established design system patterns and conventions
+- Provide REPRODUCIBLE results for the same input
+
+**DESIGN SYSTEMS GUIDANCE:**
+${mcpGuidance}
+
+**SCORING METHODOLOGY:**
+${scoringCriteria}
+
+**DETERMINISTIC SETTINGS:**
+- Analysis must be based solely on the provided component structure
+- Scores must be calculated using objective criteria
+- Recommendations must follow established design system patterns
+- Response format must be exactly as specified (JSON only)
+
+**RESPONSE FORMAT (JSON only - no explanatory text):**
+{
+  "component": "Component name and purpose",
+  "description": "Detailed component description based on structure analysis",
+  "score": {
+    "overall": 85,
+    "breakdown": {
+      "structure": 90,
+      "tokens": 80,
+      "accessibility": 85,
+      "consistency": 90
+    }
+  },
+  "props": [...],
+  "states": [...],
+  "slots": [...],
+  "variants": {...},
+  "usage": "Usage guidelines",
+  "accessibility": {...},
+  "tokens": {...},
+  "audit": {...},
+  "mcpReadiness": {...}
+}`;
+    }
+    /**
+     * Validate analysis result for consistency
+     */
+    validateAnalysisConsistency(result, context) {
+      var _a, _b, _c, _d, _e;
+      const issues = [];
+      if (!((_a = result.metadata) == null ? void 0 : _a.component)) issues.push("Missing component name");
+      if (!((_b = result.metadata) == null ? void 0 : _b.description)) issues.push("Missing component description");
+      if (!this.isValidScore((_d = (_c = result.metadata) == null ? void 0 : _c.mcpReadiness) == null ? void 0 : _d.score)) {
+        issues.push("Invalid or missing MCP readiness score");
+      }
+      const family = (_e = context.additionalContext) == null ? void 0 : _e.componentFamily;
+      if (family && !this.validateComponentFamilyConsistency(result, family)) {
+        issues.push(`Inconsistent analysis for ${family} component family`);
+      }
+      if (!this.validateTokenRecommendations(result.tokens)) {
+        issues.push("Inconsistent token recommendations");
+      }
+      if (issues.length > 0) {
+        console.warn("\u26A0\uFE0F Analysis consistency issues found:", issues);
+        return false;
+      }
+      return true;
+    }
+    /**
+     * Apply consistency corrections to analysis result
+     */
+    applyConsistencyCorrections(result, context) {
+      var _a;
+      const corrected = __spreadValues({}, result);
+      if ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) {
+        corrected.metadata = this.applyComponentFamilyCorrections(
+          corrected.metadata,
+          context.additionalContext.componentFamily
+        );
+      }
+      corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
+      corrected.metadata.mcpReadiness = this.ensureConsistentScoring(
+        corrected.metadata.mcpReadiness || {},
+        context
+      );
+      return corrected;
+    }
+    // Private helper methods
+    normalizeHierarchy(hierarchy) {
+      return hierarchy.map((item) => ({
+        name: item.name.toLowerCase().trim(),
+        type: item.type,
+        depth: item.depth
+      }));
+    }
+    generateTokenFingerprint(tokens) {
+      const fingerprint = tokens.map((token) => `${token.type}:${token.isToken}:${token.source}`).sort().join("|");
+      return this.createHash(fingerprint);
+    }
+    createHash(input) {
+      let hash = 0;
+      if (input.length === 0) return hash.toString();
+      for (let i = 0; i < input.length; i++) {
+        const char = input.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash).toString(36);
+    }
+    createBasePrompt(context) {
+      var _a, _b, _c, _d;
+      return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
+
+**Component Analysis Context:**
+- Component Name: ${context.name}
+- Component Type: ${context.type}
+- Layer Structure: ${JSON.stringify(context.hierarchy, null, 2)}
+- Frame Structure: ${JSON.stringify(context.frameStructure)}
+- Detected Styles: ${JSON.stringify(context.detectedStyles)}
+- Component Family: ${((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic"}
+- Interactive Elements: ${((_b = context.additionalContext) == null ? void 0 : _b.hasInteractiveElements) || false}
+- Design Patterns: ${((_d = (_c = context.additionalContext) == null ? void 0 : _c.designPatterns) == null ? void 0 : _d.join(", ")) || "none"}`;
+    }
+    getMCPGuidance(context) {
+      var _a;
+      if (!this.designSystemsKnowledge) {
+        return this.getFallbackGuidance(context);
+      }
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const guidance = this.designSystemsKnowledge.components[family] || this.designSystemsKnowledge.components.generic;
+      return guidance || this.getFallbackGuidance(context);
+    }
+    getScoringCriteria(context) {
+      var _a;
+      if (!((_a = this.designSystemsKnowledge) == null ? void 0 : _a.scoring)) {
+        return this.getFallbackScoringCriteria();
+      }
+      return this.designSystemsKnowledge.scoring;
+    }
+    processComponentKnowledge(knowledge) {
+      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
+        console.log("\u{1F4DD} No component knowledge available, using defaults");
+        return this.getDefaultComponentKnowledge();
+      }
+      const processed = {};
+      knowledge.results.forEach((result) => {
+        if (result.title && result.content) {
+          const componentType = this.extractComponentType(result.title);
+          processed[componentType] = result.content;
+        }
+      });
+      const defaults = this.getDefaultComponentKnowledge();
+      return __spreadValues(__spreadValues({}, defaults), processed);
+    }
+    extractComponentType(title) {
+      const titleLower = title.toLowerCase();
+      if (titleLower.includes("button")) return "button";
+      if (titleLower.includes("avatar")) return "avatar";
+      if (titleLower.includes("input") || titleLower.includes("field")) return "input";
+      if (titleLower.includes("card")) return "card";
+      if (titleLower.includes("badge") || titleLower.includes("tag")) return "badge";
+      return "generic";
+    }
+    processKnowledgeContent(knowledge) {
+      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
+        return "";
+      }
+      return knowledge.results.map((result) => result.content).filter((content) => content).join("\n\n");
+    }
+    getDefaultComponentKnowledge() {
+      return {
+        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
+        avatar: "Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
+        card: "Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
+        badge: "Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
+        input: "Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
+        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
+      };
+    }
+    getFallbackKnowledgeForQuery(query) {
+      return {
+        results: [
+          {
+            title: `Fallback guidance for ${query}`,
+            content: this.getFallbackContentForQuery(query),
+            category: "fallback"
+          }
+        ]
+      };
+    }
+    getFallbackContentForQuery(query) {
+      if (query.includes("component analysis")) {
+        return "Components should follow consistent naming, use design tokens, implement proper states, and maintain accessibility standards.";
+      }
+      if (query.includes("token")) {
+        return "Design tokens should use semantic naming patterns like semantic-color-primary, spacing-md-16px, and text-size-lg-18px.";
+      }
+      if (query.includes("accessibility")) {
+        return "Ensure WCAG 2.1 AA compliance with proper ARIA labels, keyboard support, and color contrast.";
+      }
+      if (query.includes("scoring")) {
+        return "Score components based on structure (25%), token usage (25%), accessibility (25%), and consistency (25%).";
+      }
+      return "Follow established design system best practices for consistency and scalability.";
+    }
+    getFallbackGuidance(context) {
+      var _a;
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const guidanceMap = {
+        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
+        avatar: "Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
+        card: "Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
+        badge: "Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
+        input: "Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
+      };
+      return guidanceMap[family] || guidanceMap.generic;
+    }
+    getFallbackScoringCriteria() {
+      return `
+    **MCP Readiness Scoring (0-100):**
+    - **Structure (25%)**: Clear hierarchy, logical organization, proper nesting
+    - **Tokens (25%)**: Design token usage vs hard-coded values
+    - **Accessibility (25%)**: WCAG compliance, keyboard support, ARIA labels
+    - **Consistency (25%)**: Naming conventions, pattern adherence, scalability
+
+    **Score Calculation:**
+    - 90-100: Production ready, comprehensive implementation
+    - 80-89: Good implementation, minor improvements needed
+    - 70-79: Solid foundation, some important gaps
+    - 60-69: Basic implementation, significant improvements needed
+    - Below 60: Major issues, substantial rework required
+    `;
+    }
+    loadFallbackKnowledge() {
+      this.designSystemsKnowledge = {
+        version: "1.0.0-fallback",
+        components: {
+          button: "Button components require comprehensive state management",
+          avatar: "Avatar components should support size variants and interactive states",
+          card: "Card components need consistent spacing and content hierarchy",
+          badge: "Badge components should use semantic colors for status indication",
+          input: "Input components require comprehensive accessibility and validation",
+          generic: "Generic components should follow basic design system principles"
+        },
+        tokens: "Use semantic token naming: semantic-color-primary, spacing-md-16px, text-size-lg-18px",
+        accessibility: "Ensure WCAG 2.1 AA compliance with proper ARIA labels and keyboard support",
+        scoring: this.getFallbackScoringCriteria(),
+        lastUpdated: Date.now()
+      };
+    }
+    isValidScore(score) {
+      return typeof score === "number" && score >= 0 && score <= 100;
+    }
+    validateComponentFamilyConsistency(result, family) {
+      const metadata = result.metadata;
+      switch (family) {
+        case "button":
+          return this.validateButtonComponent(metadata);
+        case "avatar":
+          return this.validateAvatarComponent(metadata);
+        case "input":
+          return this.validateInputComponent(metadata);
+        default:
+          return true;
+      }
+    }
+    validateButtonComponent(metadata) {
+      var _a;
+      const hasInteractiveStates = (_a = metadata.states) == null ? void 0 : _a.some(
+        (state) => ["hover", "focus", "active", "disabled"].includes(state.toLowerCase())
+      );
+      return hasInteractiveStates || false;
+    }
+    validateAvatarComponent(metadata) {
+      var _a, _b, _c;
+      const hasSizeVariants = ((_b = (_a = metadata.variants) == null ? void 0 : _a.size) == null ? void 0 : _b.length) > 0;
+      const hasSizeProps = (_c = metadata.props) == null ? void 0 : _c.some(
+        (prop) => prop.name.toLowerCase().includes("size")
+      );
+      return hasSizeVariants || hasSizeProps || false;
+    }
+    validateInputComponent(metadata) {
+      var _a;
+      const hasFormStates = (_a = metadata.states) == null ? void 0 : _a.some(
+        (state) => ["focus", "error", "disabled", "filled"].includes(state.toLowerCase())
+      );
+      return hasFormStates || false;
+    }
+    validateTokenRecommendations(tokens) {
+      var _a;
+      const hasSemanticColors = (_a = tokens.colors) == null ? void 0 : _a.some(
+        (token) => token.name.includes("semantic-") || token.name.includes("primary") || token.name.includes("secondary")
+      );
+      return hasSemanticColors !== false;
+    }
+    applyComponentFamilyCorrections(metadata, family) {
+      var _a, _b, _c;
+      const corrected = __spreadValues({}, metadata);
+      switch (family) {
+        case "button":
+          if (!((_a = corrected.states) == null ? void 0 : _a.includes("hover"))) {
+            corrected.states = [...corrected.states || [], "hover", "focus", "active", "disabled"];
+          }
+          break;
+        case "avatar":
+          if (!((_b = corrected.variants) == null ? void 0 : _b.size) && !((_c = corrected.props) == null ? void 0 : _c.some((p) => p.name.includes("size")))) {
+            corrected.variants = __spreadProps(__spreadValues({}, corrected.variants), { size: ["small", "medium", "large"] });
+          }
+          break;
+      }
+      return corrected;
+    }
+    applyTokenConsistencyCorrections(tokens) {
+      if (!tokens) return tokens;
+      const corrected = __spreadValues({}, tokens);
+      return corrected;
+    }
+    ensureConsistentScoring(mcpReadiness, context) {
+      return __spreadProps(__spreadValues({}, mcpReadiness), {
+        score: mcpReadiness.score || 0
+      });
+    }
+    /**
+     * Query MCP for component-specific best practices
+     * Returns expected properties, states, and variants for a component type
+     */
+    async getComponentBestPractices(componentFamily) {
+      var _a;
+      try {
+        console.log(`\u{1F50D} Querying MCP for ${componentFamily} best practices...`);
+        const mcpResult = await this.queryMCP(
+          `${componentFamily} component best practices properties states variants accessibility`
+        );
+        if (((_a = mcpResult == null ? void 0 : mcpResult.results) == null ? void 0 : _a.length) > 0) {
+          const bestPractices = this.parseMCPBestPractices(componentFamily, mcpResult.results);
+          console.log(`\u2705 Retrieved MCP best practices for ${componentFamily}:`, bestPractices);
+          return bestPractices;
+        }
+        return this.getBuiltInBestPractices(componentFamily);
+      } catch (error) {
+        console.warn(`\u26A0\uFE0F Failed to get MCP best practices for ${componentFamily}:`, error);
+        return this.getBuiltInBestPractices(componentFamily);
+      }
+    }
+    /**
+     * Parse MCP response into structured best practices
+     * Extracts states, properties, and accessibility requirements from MCP content
+     */
+    parseMCPBestPractices(family, mcpResults) {
+      const content = mcpResults.map((r) => r.content || "").join(" ").toLowerCase();
+      const mcpKnowledge = mcpResults.map((r) => r.content || r.description || "").slice(0, 3);
+      const builtIn = this.getBuiltInBestPracticesInternal(family);
+      if (builtIn) {
+        return __spreadProps(__spreadValues({}, builtIn), {
+          mcpKnowledge
+        });
+      }
+      const extractedStates = this.extractStatesFromContent(content, family);
+      const extractedProperties = this.extractPropertiesFromContent(content, family);
+      const extractedAccessibility = this.extractAccessibilityFromContent(content);
+      return {
+        family,
+        expectedStates: extractedStates.length > 0 ? extractedStates : ["default"],
+        expectedProperties: extractedProperties,
+        accessibilityRequirements: extractedAccessibility,
+        mcpKnowledge
+      };
+    }
+    /**
+     * Extract expected states from MCP content
+     */
+    extractStatesFromContent(content, family) {
+      const states = [];
+      const stateKeywords = {
+        interactive: ["default", "hover", "focus", "active", "disabled"],
+        form: ["default", "hover", "focus", "filled", "disabled", "error", "success", "loading"],
+        selection: ["default", "selected", "hover", "focus", "disabled"],
+        toggle: ["off", "on", "disabled"],
+        loading: ["default", "loading", "success", "error"],
+        expandable: ["collapsed", "expanded", "hover", "focus", "disabled"]
+      };
+      let pattern = "interactive";
+      if (content.includes("form") || content.includes("input") || family.includes("field") || family.includes("input")) {
+        pattern = "form";
+      } else if (content.includes("select") || content.includes("checkbox") || content.includes("radio") || family.includes("select")) {
+        pattern = "selection";
+      } else if (content.includes("toggle") || content.includes("switch") || family.includes("toggle") || family.includes("switch")) {
+        pattern = "toggle";
+      } else if (content.includes("accordion") || content.includes("collapse") || content.includes("expand") || family.includes("accordion") || family.includes("dropdown")) {
+        pattern = "expandable";
+      } else if (content.includes("loading") || content.includes("async") || family.includes("loader") || family.includes("spinner")) {
+        pattern = "loading";
+      }
+      states.push(...stateKeywords[pattern]);
+      const explicitStatePatterns = [
+        /\b(hover|hovered)\b/,
+        /\b(focus|focused)\b/,
+        /\b(active|pressed)\b/,
+        /\b(disabled)\b/,
+        /\b(loading)\b/,
+        /\b(error)\b/,
+        /\b(success)\b/,
+        /\b(selected)\b/,
+        /\b(expanded|open)\b/,
+        /\b(collapsed|closed)\b/,
+        /\b(checked)\b/,
+        /\b(indeterminate)\b/
+      ];
+      for (const pattern2 of explicitStatePatterns) {
+        const match = content.match(pattern2);
+        if (match) {
+          const state = match[1].replace("ed", "").replace("hovered", "hover").replace("focused", "focus").replace("pressed", "active");
+          if (!states.includes(state)) {
+            states.push(state);
+          }
+        }
+      }
+      return [...new Set(states)];
+    }
+    /**
+     * Extract expected properties from MCP content
+     */
+    extractPropertiesFromContent(content, family) {
+      const properties = [];
+      const propertyPatterns = [
+        {
+          keywords: ["size", "sizes", "small", "medium", "large"],
+          property: { name: "size", type: "variant", values: ["small", "medium", "large"] }
+        },
+        {
+          keywords: ["variant", "variants", "style", "appearance"],
+          property: { name: "variant", type: "variant", values: ["primary", "secondary", "outline"] }
+        },
+        {
+          keywords: ["disabled", "disable", "enabled"],
+          property: { name: "disabled", type: "boolean", description: "Disables the component" }
+        },
+        {
+          keywords: ["loading", "loader", "spinner"],
+          property: { name: "loading", type: "boolean", description: "Shows loading state" }
+        },
+        {
+          keywords: ["icon", "icons", "leading icon", "trailing icon"],
+          property: { name: "icon", type: "instance-swap", description: "Icon slot" }
+        },
+        {
+          keywords: ["label", "labels", "text"],
+          property: { name: "label", type: "text", description: "Label text" }
+        },
+        {
+          keywords: ["placeholder"],
+          property: { name: "placeholder", type: "text", description: "Placeholder text" }
+        },
+        {
+          keywords: ["color", "colors", "semantic color"],
+          property: { name: "color", type: "variant", values: ["default", "primary", "success", "warning", "error"] }
+        },
+        {
+          keywords: ["orientation", "horizontal", "vertical"],
+          property: { name: "orientation", type: "variant", values: ["horizontal", "vertical"] }
+        }
+      ];
+      for (const { keywords, property } of propertyPatterns) {
+        const hasKeyword = keywords.some((kw) => content.includes(kw));
+        if (hasKeyword) {
+          properties.push(property);
+        }
+      }
+      if (properties.length === 0) {
+        if (family.includes("modal") || family.includes("dialog")) {
+          properties.push({ name: "open", type: "boolean", description: "Controls dialog visibility" });
+          properties.push({ name: "size", type: "variant", values: ["small", "medium", "large", "fullscreen"] });
+        } else if (family.includes("dropdown") || family.includes("menu")) {
+          properties.push({ name: "open", type: "boolean", description: "Controls menu visibility" });
+          properties.push({ name: "placement", type: "variant", values: ["top", "bottom", "left", "right"] });
+        } else if (family.includes("tooltip") || family.includes("popover")) {
+          properties.push({ name: "placement", type: "variant", values: ["top", "bottom", "left", "right"] });
+        } else if (family.includes("tab") || family.includes("tabs")) {
+          properties.push({ name: "selected", type: "boolean", description: "Whether tab is selected" });
+          properties.push({ name: "disabled", type: "boolean", description: "Disables the tab" });
+        } else if (family.includes("table") || family.includes("data")) {
+          properties.push({ name: "sortable", type: "boolean", description: "Enables sorting" });
+          properties.push({ name: "selectable", type: "boolean", description: "Enables row selection" });
+        } else if (family.includes("list") || family.includes("item")) {
+          properties.push({ name: "selected", type: "boolean", description: "Selection state" });
+          properties.push({ name: "disabled", type: "boolean", description: "Disables the item" });
+        }
+      }
+      return properties;
+    }
+    /**
+     * Extract accessibility requirements from MCP content
+     */
+    extractAccessibilityFromContent(content) {
+      const requirements = [];
+      const a11yPatterns = [
+        { pattern: /keyboard|key press|arrow key/i, requirement: "Keyboard navigation support" },
+        { pattern: /screen reader|aria|accessible/i, requirement: "Screen reader compatibility" },
+        { pattern: /contrast|color ratio/i, requirement: "Sufficient color contrast (WCAG 2.1)" },
+        { pattern: /focus|focus indicator|focus ring/i, requirement: "Visible focus indicator" },
+        { pattern: /label|labeled|labelled/i, requirement: "Associated label for form controls" },
+        { pattern: /touch target|tap target|44px|44 pixel/i, requirement: "Minimum touch target size (44x44px)" },
+        { pattern: /announce|announced|live region/i, requirement: "State changes announced to assistive technology" },
+        { pattern: /escape|esc key|close/i, requirement: "Escape key to close/dismiss" }
+      ];
+      for (const { pattern, requirement } of a11yPatterns) {
+        if (pattern.test(content)) {
+          requirements.push(requirement);
+        }
+      }
+      if (requirements.length === 0) {
+        requirements.push("Keyboard navigation support");
+        requirements.push("Visible focus indicator");
+      }
+      return requirements;
+    }
+    /**
+     * Get built-in best practices (internal - returns null for unknown families)
+     */
+    getBuiltInBestPracticesInternal(family) {
+      const bestPractices = this.getBestPracticesMap();
+      return bestPractices[family] || null;
+    }
+    /**
+     * Get the best practices map (shared between internal and public methods)
+     */
+    getBestPracticesMap() {
+      return {
+        button: {
+          family: "button",
+          expectedStates: ["default", "hover", "focus", "active", "disabled", "loading"],
+          expectedProperties: [
+            { name: "variant", type: "variant", values: ["primary", "secondary", "outline", "ghost", "destructive"] },
+            { name: "size", type: "variant", values: ["small", "medium", "large"] },
+            { name: "disabled", type: "boolean", description: "Disables the button" },
+            { name: "loading", type: "boolean", description: "Shows loading state" },
+            { name: "iconBefore", type: "instance-swap", description: "Icon slot before text" },
+            { name: "iconAfter", type: "instance-swap", description: "Icon slot after text" }
+          ],
+          accessibilityRequirements: [
+            "Minimum touch target size of 44x44px",
+            "Color contrast ratio of at least 4.5:1 for text",
+            "Visible focus indicator",
+            "Disabled state should be visually distinct"
+          ],
+          mcpKnowledge: []
+        },
+        input: {
+          family: "input",
+          expectedStates: ["default", "hover", "focus", "filled", "disabled", "error", "success"],
+          expectedProperties: [
+            { name: "size", type: "variant", values: ["small", "medium", "large"] },
+            { name: "state", type: "variant", values: ["default", "error", "success"] },
+            { name: "disabled", type: "boolean", description: "Disables the input" },
+            { name: "label", type: "text", description: "Input label text" },
+            { name: "placeholder", type: "text", description: "Placeholder text" },
+            { name: "helperText", type: "text", description: "Helper or error message" }
+          ],
+          accessibilityRequirements: [
+            "Associated label for screen readers",
+            "Error messages announced to screen readers",
+            "Sufficient color contrast",
+            "Visible focus state"
+          ],
+          mcpKnowledge: []
+        },
+        card: {
+          family: "card",
+          expectedStates: ["default", "hover", "selected"],
+          expectedProperties: [
+            { name: "variant", type: "variant", values: ["default", "outlined", "elevated"] },
+            { name: "padding", type: "variant", values: ["none", "small", "medium", "large"] },
+            { name: "clickable", type: "boolean", description: "Whether card is interactive" }
+          ],
+          accessibilityRequirements: [
+            "Interactive cards should be keyboard focusable",
+            "Card content should have logical reading order",
+            "Sufficient contrast for card boundaries"
+          ],
+          mcpKnowledge: []
+        },
+        avatar: {
+          family: "avatar",
+          expectedStates: ["default", "loading", "error"],
+          expectedProperties: [
+            { name: "size", type: "variant", values: ["xs", "small", "medium", "large", "xl"] },
+            { name: "shape", type: "variant", values: ["circle", "square", "rounded"] },
+            { name: "showBadge", type: "boolean", description: "Show status badge" }
+          ],
+          accessibilityRequirements: [
+            "Alternative text for images",
+            "Fallback for failed image loads",
+            "Badge status should be accessible"
+          ],
+          mcpKnowledge: []
+        },
+        icon: {
+          family: "icon",
+          expectedStates: ["default"],
+          expectedProperties: [
+            { name: "size", type: "variant", values: ["xs", "small", "medium", "large", "xl"] },
+            { name: "color", type: "color", description: "Icon color" }
+          ],
+          accessibilityRequirements: [
+            "Decorative icons should be hidden from assistive technology",
+            "Meaningful icons need accessible labels"
+          ],
+          mcpKnowledge: []
+        },
+        badge: {
+          family: "badge",
+          expectedStates: ["default"],
+          expectedProperties: [
+            { name: "variant", type: "variant", values: ["default", "success", "warning", "error", "info"] },
+            { name: "size", type: "variant", values: ["small", "medium"] }
+          ],
+          accessibilityRequirements: [
+            "Color should not be the only indicator",
+            "Text should have sufficient contrast"
+          ],
+          mcpKnowledge: []
+        },
+        checkbox: {
+          family: "checkbox",
+          expectedStates: ["default", "hover", "focus", "checked", "indeterminate", "disabled"],
+          expectedProperties: [
+            { name: "checked", type: "boolean", description: "Whether checkbox is checked" },
+            { name: "indeterminate", type: "boolean", description: "Partial selection state" },
+            { name: "disabled", type: "boolean", description: "Disables the checkbox" },
+            { name: "label", type: "text", description: "Checkbox label" }
+          ],
+          accessibilityRequirements: [
+            "Associated label for screen readers",
+            "Keyboard operable",
+            "State changes announced"
+          ],
+          mcpKnowledge: []
+        },
+        toggle: {
+          family: "toggle",
+          expectedStates: ["off", "on", "disabled"],
+          expectedProperties: [
+            { name: "checked", type: "boolean", description: "Toggle state" },
+            { name: "disabled", type: "boolean", description: "Disables the toggle" },
+            { name: "size", type: "variant", values: ["small", "medium"] }
+          ],
+          accessibilityRequirements: [
+            "Role of switch",
+            "State announced on change",
+            "Keyboard operable"
+          ],
+          mcpKnowledge: []
+        }
+      };
+    }
+    /**
+     * Get built-in best practices for common component families
+     * Uses shared map for known families, generates intelligent defaults for unknown families
+     */
+    getBuiltInBestPractices(family) {
+      const bestPractices = this.getBestPracticesMap();
+      if (bestPractices[family]) {
+        return bestPractices[family];
+      }
+      return this.generateDefaultsForUnknownFamily(family);
+    }
+    /**
+     * Generate intelligent defaults for component families not in the built-in list
+     */
+    generateDefaultsForUnknownFamily(family) {
+      const familyLower = family.toLowerCase();
+      let expectedStates = ["default"];
+      let expectedProperties = [];
+      let accessibilityRequirements = ["Keyboard navigation support", "Visible focus indicator"];
+      if (familyLower.includes("modal") || familyLower.includes("dialog") || familyLower.includes("popup")) {
+        expectedStates = ["closed", "open"];
+        expectedProperties = [
+          { name: "open", type: "boolean", description: "Controls visibility" },
+          { name: "size", type: "variant", values: ["small", "medium", "large", "fullscreen"] }
+        ];
+        accessibilityRequirements = [
+          "Focus trap when open",
+          "Escape key to close",
+          "Return focus on close",
+          "ARIA modal role"
+        ];
+      } else if (familyLower.includes("dropdown") || familyLower.includes("menu") || familyLower.includes("popover")) {
+        expectedStates = ["closed", "open", "hover"];
+        expectedProperties = [
+          { name: "open", type: "boolean", description: "Controls menu visibility" },
+          { name: "placement", type: "variant", values: ["top", "bottom", "left", "right"] }
+        ];
+        accessibilityRequirements = [
+          "Arrow key navigation",
+          "Escape key to close",
+          "ARIA expanded state"
+        ];
+      } else if (familyLower.includes("tooltip")) {
+        expectedStates = ["hidden", "visible"];
+        expectedProperties = [
+          { name: "placement", type: "variant", values: ["top", "bottom", "left", "right"] }
+        ];
+        accessibilityRequirements = [
+          "Accessible via keyboard focus",
+          "ARIA describedby relationship"
+        ];
+      } else if (familyLower.includes("table") || familyLower.includes("datagrid") || familyLower.includes("grid")) {
+        expectedStates = ["default", "hover", "selected"];
+        expectedProperties = [
+          { name: "sortable", type: "boolean", description: "Enables sorting" },
+          { name: "selectable", type: "boolean", description: "Enables row selection" }
+        ];
+        accessibilityRequirements = [
+          "Proper table semantics",
+          "Keyboard navigation for cells",
+          "Sort status announced"
+        ];
+      } else if (familyLower.includes("tab")) {
+        expectedStates = ["default", "hover", "focus", "selected", "disabled"];
+        expectedProperties = [
+          { name: "selected", type: "boolean", description: "Whether tab is selected" },
+          { name: "disabled", type: "boolean", description: "Disables the tab" }
+        ];
+        accessibilityRequirements = [
+          "Arrow key navigation between tabs",
+          "ARIA tablist role",
+          "ARIA selected state"
+        ];
+      } else if (familyLower.includes("accordion") || familyLower.includes("collapse") || familyLower.includes("expand")) {
+        expectedStates = ["collapsed", "expanded", "hover", "focus", "disabled"];
+        expectedProperties = [
+          { name: "expanded", type: "boolean", description: "Expansion state" },
+          { name: "disabled", type: "boolean", description: "Disables the section" }
+        ];
+        accessibilityRequirements = [
+          "ARIA expanded state",
+          "Enter/Space to toggle",
+          "ARIA controls relationship"
+        ];
+      } else if (familyLower.includes("data")) {
+        expectedStates = ["default", "loading", "empty", "error"];
+        expectedProperties = [
+          { name: "loading", type: "boolean", description: "Loading state" }
+        ];
+        accessibilityRequirements = [
+          "Loading state announced",
+          "Empty state has proper messaging"
+        ];
+      } else if (familyLower.includes("stepper") || familyLower.includes("wizard") || familyLower.includes("step")) {
+        expectedStates = ["default", "active", "completed", "disabled", "error"];
+        expectedProperties = [
+          { name: "active", type: "boolean", description: "Current step" },
+          { name: "completed", type: "boolean", description: "Step completed" }
+        ];
+        accessibilityRequirements = [
+          "Current step indicated",
+          "Progress announced to screen readers"
+        ];
+      } else if (familyLower.includes("chip") || familyLower.includes("tag") || familyLower.includes("pill")) {
+        expectedStates = ["default", "hover", "selected", "disabled"];
+        expectedProperties = [
+          { name: "selected", type: "boolean", description: "Selection state" },
+          { name: "removable", type: "boolean", description: "Can be removed" }
+        ];
+        accessibilityRequirements = [
+          "Remove action accessible",
+          "Selection state announced"
+        ];
+      } else if (familyLower.includes("slider") || familyLower.includes("range")) {
+        expectedStates = ["default", "hover", "focus", "disabled"];
+        expectedProperties = [
+          { name: "disabled", type: "boolean", description: "Disables the slider" }
+        ];
+        accessibilityRequirements = [
+          "ARIA slider role",
+          "Value announced on change",
+          "Keyboard operable"
+        ];
+      } else if (familyLower.includes("rating") || familyLower.includes("star")) {
+        expectedStates = ["default", "hover", "selected", "disabled"];
+        expectedProperties = [
+          { name: "readonly", type: "boolean", description: "Read-only mode" }
+        ];
+        accessibilityRequirements = [
+          "Current rating announced",
+          "Keyboard selection support"
+        ];
+      } else if (familyLower.includes("list") || familyLower.includes("item")) {
+        expectedStates = ["default", "hover", "focus", "selected", "disabled"];
+        expectedProperties = [
+          { name: "selected", type: "boolean", description: "Selection state" },
+          { name: "disabled", type: "boolean", description: "Disables the item" }
+        ];
+        accessibilityRequirements = [
+          "ARIA listbox/option roles",
+          "Arrow key navigation"
+        ];
+      } else if (familyLower.includes("alert") || familyLower.includes("banner") || familyLower.includes("notification") || familyLower.includes("announcement") || familyLower.includes("toast") || familyLower.includes("snackbar")) {
+        expectedStates = ["default", "dismissing"];
+        expectedProperties = [
+          { name: "variant", type: "variant", values: ["info", "success", "warning", "error"] },
+          { name: "dismissible", type: "boolean", description: "Can be dismissed" }
+        ];
+        accessibilityRequirements = [
+          "ARIA alert or status role",
+          "Color not sole indicator"
+        ];
+      } else if (familyLower.includes("progress") || familyLower.includes("loader") || familyLower.includes("spinner")) {
+        expectedStates = ["default", "loading", "complete", "error"];
+        expectedProperties = [
+          { name: "indeterminate", type: "boolean", description: "Indeterminate state" }
+        ];
+        accessibilityRequirements = [
+          "ARIA progressbar role",
+          "Value announced to screen readers"
+        ];
+      } else if (familyLower.includes("nav") || familyLower.includes("breadcrumb") || familyLower.includes("pagination")) {
+        expectedStates = ["default", "hover", "focus", "active", "disabled"];
+        expectedProperties = [];
+        accessibilityRequirements = [
+          "ARIA navigation role",
+          "Current page indicated"
+        ];
+      } else if (familyLower.includes("button") || familyLower.includes("link") || familyLower.includes("action")) {
+        expectedStates = ["default", "hover", "focus", "active", "disabled"];
+        expectedProperties = [
+          { name: "disabled", type: "boolean", description: "Disables interaction" }
+        ];
+      } else if (familyLower.includes("container") || familyLower.includes("section") || familyLower.includes("wrapper") || familyLower.includes("layout")) {
+        expectedStates = ["default"];
+        expectedProperties = [];
+        accessibilityRequirements = ["Proper semantic structure"];
+      } else {
+        expectedStates = ["default", "hover", "focus", "disabled"];
+        expectedProperties = [
+          { name: "disabled", type: "boolean", description: "Disables the component" }
+        ];
+      }
+      return {
+        family,
+        expectedStates,
+        expectedProperties,
+        accessibilityRequirements,
+        mcpKnowledge: []
+      };
+    }
+    /**
+     * Compare component against best practices and return gaps
+     */
+    analyzeAgainstBestPractices(componentContext, currentStates, currentProperties, bestPractices) {
+      const gaps = [];
+      const missingStates = bestPractices.expectedStates.filter(
+        (state) => !currentStates.some((s) => s.toLowerCase().includes(state.toLowerCase()))
+      );
+      if (missingStates.length > 0) {
+        gaps.push({
+          category: "states",
+          severity: "warning",
+          message: `Missing interactive states: ${missingStates.join(", ")}`,
+          suggestion: `Add visual designs for: ${missingStates.join(", ")}`,
+          missingItems: missingStates
+        });
+      }
+      const missingProperties = bestPractices.expectedProperties.filter(
+        (prop) => !currentProperties.some(
+          (p) => p.toLowerCase().includes(prop.name.toLowerCase())
+        )
+      );
+      if (missingProperties.length > 0) {
+        gaps.push({
+          category: "properties",
+          severity: "info",
+          message: `Consider adding properties: ${missingProperties.map((p) => p.name).join(", ")}`,
+          suggestion: `Add component properties for configurability`,
+          missingItems: missingProperties.map((p) => p.name)
+        });
+      }
+      return gaps;
+    }
+  };
+  var consistency_engine_default = ComponentConsistencyEngine;
+
+  // src/fixes/naming-fixer.ts
+  var GENERIC_NAMES = /^(Frame|Rectangle|Ellipse|Group|Vector|Line|Polygon|Star|Text|Component|Instance|Slice|Boolean|Union|Subtract|Intersect|Exclude)\s*\d*$/i;
+  var NUMBERED_SUFFIX = /\s+\d+$/;
+  var COMPONENT_PREFIXES = {
+    button: "btn",
+    icon: "ico",
+    input: "input",
+    text: "txt",
+    image: "img",
+    container: "container",
+    card: "card",
+    list: "list",
+    "list-item": "list-item",
+    nav: "nav",
+    header: "header",
+    footer: "footer",
+    modal: "modal",
+    dropdown: "dropdown",
+    checkbox: "checkbox",
+    radio: "radio",
+    toggle: "toggle",
+    avatar: "avatar",
+    badge: "badge",
+    divider: "divider",
+    spacer: "spacer",
+    link: "link",
+    tab: "tab",
+    tooltip: "tooltip",
+    alert: "alert",
+    progress: "progress",
+    skeleton: "skeleton",
+    unknown: "layer"
+  };
+  var TYPE_KEYWORD_ENTRIES = [
+    ["btn", "button"],
+    ["button", "button"],
+    ["cta", "button"],
+    ["submit", "button"],
+    ["icon", "icon"],
+    ["ico", "icon"],
+    ["glyph", "icon"],
+    ["symbol", "icon"],
+    ["arrow", "icon"],
+    ["chevron", "icon"],
+    ["close", "icon"],
+    ["plus", "icon"],
+    ["minus", "icon"],
+    ["txt", "text"],
+    ["label", "text"],
+    ["title", "text"],
+    ["heading", "text"],
+    ["paragraph", "text"],
+    ["description", "text"],
+    ["caption", "text"],
+    ["subtitle", "text"],
+    ["input", "input"],
+    ["field", "input"],
+    ["textfield", "input"],
+    ["textarea", "input"],
+    ["searchfield", "input"],
+    ["searchbox", "input"],
+    ["image", "image"],
+    ["img", "image"],
+    ["photo", "image"],
+    ["picture", "image"],
+    ["thumbnail", "image"],
+    ["cover", "image"],
+    ["container", "container"],
+    ["wrapper", "container"],
+    ["content", "container"],
+    ["section", "container"],
+    ["block", "container"],
+    ["box", "container"],
+    ["card", "card"],
+    ["tile", "card"],
+    ["panel", "card"],
+    ["list", "list"],
+    ["items", "list"],
+    ["item", "list-item"],
+    ["row", "list-item"],
+    ["listitem", "list-item"],
+    ["nav", "nav"],
+    ["navbar", "nav"],
+    ["navigation", "nav"],
+    ["sidebar", "nav"],
+    ["breadcrumb", "nav"],
+    ["menu", "nav"],
+    ["header", "header"],
+    ["topbar", "header"],
+    ["footer", "footer"],
+    ["bottombar", "footer"],
+    ["modal", "modal"],
+    ["dialog", "modal"],
+    ["popup", "modal"],
+    ["overlay", "modal"],
+    ["dropdown", "dropdown"],
+    ["select", "dropdown"],
+    ["picker", "dropdown"],
+    ["combobox", "dropdown"],
+    ["checkbox", "checkbox"],
+    ["checkmark", "checkbox"],
+    ["radio", "radio"],
+    ["toggle", "toggle"],
+    ["switch", "toggle"],
+    ["avatar", "avatar"],
+    ["profile", "avatar"],
+    ["userpic", "avatar"],
+    ["badge", "badge"],
+    ["tag", "badge"],
+    ["chip", "badge"],
+    ["pill", "badge"],
+    ["status", "badge"],
+    ["divider", "divider"],
+    ["separator", "divider"],
+    ["hr", "divider"],
+    ["spacer", "spacer"],
+    ["gap", "spacer"],
+    ["link", "link"],
+    ["anchor", "link"],
+    ["href", "link"],
+    ["tab", "tab"],
+    ["tabs", "tab"],
+    ["tabbar", "tab"],
+    ["tooltip", "tooltip"],
+    ["hint", "tooltip"],
+    ["popover", "tooltip"],
+    ["alert", "alert"],
+    ["notification", "alert"],
+    ["toast", "alert"],
+    ["message", "alert"],
+    ["snackbar", "alert"],
+    ["banner", "alert"],
+    ["progress", "progress"],
+    ["loader", "progress"],
+    ["loading", "progress"],
+    ["spinner", "progress"],
+    ["progressbar", "progress"],
+    ["skeleton", "skeleton"],
+    ["placeholder", "skeleton"],
+    ["shimmer", "skeleton"]
+  ];
+  function isGenericName(name) {
+    if (!name || typeof name !== "string") {
+      return true;
+    }
+    const trimmedName = name.trim();
+    if (GENERIC_NAMES.test(trimmedName)) {
+      return true;
+    }
+    if (trimmedName.length === 1) {
+      return true;
+    }
+    if (/^\d+$/.test(trimmedName)) {
+      return true;
+    }
+    return false;
+  }
+  function hasNumberedSuffix(name) {
+    return NUMBERED_SUFFIX.test(name.trim());
+  }
+  function detectLayerType(node) {
+    const name = node.name.toLowerCase();
+    for (let i = 0; i < TYPE_KEYWORD_ENTRIES.length; i++) {
+      const entry = TYPE_KEYWORD_ENTRIES[i];
+      if (name.indexOf(entry[0]) !== -1) {
+        return entry[1];
+      }
+    }
+    switch (node.type) {
+      case "TEXT":
+        return "text";
+      case "VECTOR":
+      case "STAR":
+      case "POLYGON":
+      case "BOOLEAN_OPERATION":
+        return "icon";
+      case "RECTANGLE":
+      case "ELLIPSE":
+      case "LINE":
+        if ("fills" in node && Array.isArray(node.fills)) {
+          const fills = node.fills;
+          let hasImageFill = false;
+          for (let i = 0; i < fills.length; i++) {
+            const fill = fills[i];
+            if (fill.type === "IMAGE" && fill.visible !== false) {
+              hasImageFill = true;
+              break;
+            }
+          }
+          if (hasImageFill) {
+            return "image";
+          }
+        }
+        if ("width" in node && "height" in node) {
+          const width = node.width;
+          const height = node.height;
+          const aspectRatio = width / height;
+          if (height <= 2 && width > 20) {
+            return "divider";
+          }
+          if (width <= 2 && height > 20) {
+            return "divider";
+          }
+          if (width <= 32 && height <= 32 && aspectRatio > 0.5 && aspectRatio < 2) {
+            return "spacer";
+          }
+        }
+        return "unknown";
+      case "FRAME":
+      case "GROUP":
+        return detectFrameType(node);
+      case "COMPONENT":
+      case "INSTANCE":
+        return detectComponentType(node);
+      case "COMPONENT_SET":
+        return detectComponentSetType(node);
+      default:
+        return "unknown";
+    }
+  }
+  function detectFrameType(node) {
+    if (!("children" in node) || node.children.length === 0) {
+      return "container";
+    }
+    const children = node.children;
+    const childTypes = [];
+    const childNames = [];
+    for (let i = 0; i < children.length; i++) {
+      childTypes.push(children[i].type);
+      childNames.push(children[i].name.toLowerCase());
+    }
+    let hasText = false;
+    let hasIcon = false;
+    for (let i = 0; i < childTypes.length; i++) {
+      if (childTypes[i] === "TEXT") {
+        hasText = true;
+      }
+      if (childTypes[i] === "VECTOR" || childNames[i].indexOf("icon") !== -1) {
+        hasIcon = true;
+      }
+    }
+    const isSmall = "width" in node && "height" in node && node.width < 300 && node.height < 100;
+    if (hasText && isSmall && (hasIcon || children.length <= 3)) {
+      if ("layoutMode" in node && node.layoutMode !== "NONE") {
+        return "button";
+      }
+    }
+    let hasImage = false;
+    for (let i = 0; i < childTypes.length; i++) {
+      if (childTypes[i] === "RECTANGLE" || childNames[i].indexOf("image") !== -1) {
+        hasImage = true;
+        break;
+      }
+    }
+    if (hasText && hasImage && children.length >= 2) {
+      return "card";
+    }
+    if (children.length >= 3) {
+      const firstChildType = children[0].type;
+      let allSameType = true;
+      for (let i = 1; i < children.length; i++) {
+        if (children[i].type !== firstChildType) {
+          allSameType = false;
+          break;
+        }
+      }
+      if (allSameType && (firstChildType === "FRAME" || firstChildType === "INSTANCE")) {
+        return "list";
+      }
+    }
+    if ("cornerRadius" in node && node.cornerRadius && children.length <= 2) {
+      if (hasText && isSmall) {
+        return "input";
+      }
+    }
+    if ("layoutMode" in node && node.layoutMode === "HORIZONTAL") {
+      let clickableCount = 0;
+      for (let i = 0; i < children.length; i++) {
+        const childType = children[i].type;
+        if (childType === "FRAME" || childType === "INSTANCE" || childType === "TEXT") {
+          clickableCount++;
+        }
+      }
+      if (clickableCount >= 3 && isSmall) {
+        return "nav";
+      }
+    }
+    return "container";
+  }
+  function detectComponentType(node) {
+    const name = node.name.toLowerCase();
+    for (let i = 0; i < TYPE_KEYWORD_ENTRIES.length; i++) {
+      const entry = TYPE_KEYWORD_ENTRIES[i];
+      if (name.indexOf(entry[0]) !== -1) {
+        return entry[1];
+      }
+    }
+    if ("children" in node) {
+      return detectFrameType(node);
+    }
+    return "unknown";
+  }
+  function detectComponentSetType(node) {
+    const name = node.name.toLowerCase();
+    for (let i = 0; i < TYPE_KEYWORD_ENTRIES.length; i++) {
+      const entry = TYPE_KEYWORD_ENTRIES[i];
+      if (name.indexOf(entry[0]) !== -1) {
+        return entry[1];
+      }
+    }
+    if ("children" in node && node.children.length > 0) {
+      return detectComponentType(node.children[0]);
+    }
+    return "unknown";
+  }
+  function analyzeNamingIssues(node, maxDepth = 10) {
+    const issues = [];
+    function traverse(currentNode, depth, path) {
+      if (depth > maxDepth) {
+        return;
+      }
+      const currentPath = path ? `${path} > ${currentNode.name}` : currentNode.name;
+      const layerType = detectLayerType(currentNode);
+      if (isGenericName(currentNode.name)) {
+        const suggestedName = suggestLayerName(currentNode);
+        issues.push({
+          nodeId: currentNode.id,
+          nodeName: currentNode.name,
+          currentName: currentNode.name,
+          suggestedName,
+          severity: "error",
+          reason: "Generic layer name detected",
+          layerType,
+          depth,
+          path: currentPath
+        });
+      } else if (hasNumberedSuffix(currentNode.name)) {
+        const baseName = currentNode.name.replace(NUMBERED_SUFFIX, "").trim();
+        const suggestedName = suggestLayerName(currentNode);
+        issues.push({
+          nodeId: currentNode.id,
+          nodeName: currentNode.name,
+          currentName: currentNode.name,
+          suggestedName: suggestedName !== currentNode.name ? suggestedName : baseName,
+          severity: "warning",
+          reason: "Layer name has numbered suffix (possible duplicate)",
+          layerType,
+          depth,
+          path: currentPath
+        });
+      }
+      if ("children" in currentNode) {
+        for (let i = 0; i < currentNode.children.length; i++) {
+          traverse(currentNode.children[i], depth + 1, currentPath);
+        }
+      }
+    }
+    traverse(node, 0, "");
+    return issues;
+  }
+  function suggestLayerName(node) {
+    const layerType = detectLayerType(node);
+    if (node.type === "TEXT") {
+      return generateTextName(node);
+    }
+    if (node.type === "VECTOR" || node.type === "STAR" || node.type === "POLYGON" || node.type === "BOOLEAN_OPERATION") {
+      return generateIconName(node);
+    }
+    if ("children" in node && node.children.length > 0) {
+      return generateContainerName(node);
+    }
+    return COMPONENT_PREFIXES[layerType] || "layer";
+  }
+  function generateIconName(node) {
+    const name = node.name.toLowerCase();
+    const meaningfulPart = name.replace(GENERIC_NAMES, "").replace(/[_\-\s]+/g, "-").replace(/^-|-$/g, "").trim();
+    if (meaningfulPart && meaningfulPart.length > 1) {
+      return `icon-${toKebabCase(meaningfulPart)}`;
+    }
+    if ("children" in node && node.children.length > 0) {
+      const childTypes = [];
+      for (let i = 0; i < node.children.length; i++) {
+        childTypes.push(node.children[i].type);
+      }
+      for (let i = 0; i < childTypes.length; i++) {
+        if (childTypes[i] === "ELLIPSE") {
+          return "icon-circle";
+        }
+        if (childTypes[i] === "STAR") {
+          return "icon-star";
+        }
+        if (childTypes[i] === "POLYGON") {
+          return "icon-shape";
+        }
+      }
+    }
+    if ("width" in node && "height" in node) {
+      const aspectRatio = node.width / node.height;
+      if (aspectRatio > 1.5 || aspectRatio < 0.67) {
+        return "icon-arrow";
+      }
+    }
+    return "icon";
+  }
+  function generateTextName(node) {
+    const text = node.characters || "";
+    const trimmedText = text.trim();
+    if (!trimmedText) {
+      return "text-empty";
+    }
+    const words = trimmedText.split(/\s+/);
+    if (words.length <= 2 && trimmedText.length <= 30) {
+      return `text-${toKebabCase(trimmedText)}`;
+    }
+    const firstWord = words[0].toLowerCase();
+    const headingKeywords = ["welcome", "about", "contact", "services", "features", "pricing"];
+    const labelKeywords = ["name", "email", "password", "username", "address", "phone"];
+    const buttonKeywords = ["submit", "cancel", "save", "delete", "edit", "add", "remove", "ok", "yes", "no"];
+    const linkKeywords = ["learn", "read", "view", "see", "click", "here", "more"];
+    const errorKeywords = ["error", "invalid", "required", "failed", "wrong"];
+    const successKeywords = ["success", "done", "complete", "saved", "updated"];
+    const lowerText = trimmedText.toLowerCase();
+    for (let i = 0; i < headingKeywords.length; i++) {
+      if (firstWord.indexOf(headingKeywords[i]) !== -1 || lowerText.indexOf(headingKeywords[i]) !== -1) {
+        return `text-heading-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < labelKeywords.length; i++) {
+      if (firstWord.indexOf(labelKeywords[i]) !== -1 || lowerText.indexOf(labelKeywords[i]) !== -1) {
+        return `text-label-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < buttonKeywords.length; i++) {
+      if (firstWord.indexOf(buttonKeywords[i]) !== -1 || lowerText.indexOf(buttonKeywords[i]) !== -1) {
+        return `text-button-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < linkKeywords.length; i++) {
+      if (firstWord.indexOf(linkKeywords[i]) !== -1 || lowerText.indexOf(linkKeywords[i]) !== -1) {
+        return `text-link-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < errorKeywords.length; i++) {
+      if (firstWord.indexOf(errorKeywords[i]) !== -1 || lowerText.indexOf(errorKeywords[i]) !== -1) {
+        return `text-error-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < successKeywords.length; i++) {
+      if (firstWord.indexOf(successKeywords[i]) !== -1 || lowerText.indexOf(successKeywords[i]) !== -1) {
+        return `text-success-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    return `text-${toKebabCase(words.slice(0, 2).join(" "))}`;
+  }
+  function generateContainerName(node) {
+    const layerType = detectLayerType(node);
+    const prefix = COMPONENT_PREFIXES[layerType];
+    if ("children" in node && node.children.length > 0) {
+      let textChild;
+      for (let i = 0; i < node.children.length; i++) {
+        if (node.children[i].type === "TEXT") {
+          textChild = node.children[i];
+          break;
+        }
+      }
+      if (textChild && textChild.characters) {
+        const text = textChild.characters.trim();
+        const words = text.split(/\s+/).slice(0, 2);
+        if (words.length > 0 && words[0].length > 0) {
+          return `${prefix}-${toKebabCase(words.join(" "))}`;
+        }
+      }
+      if (layerType === "button" || layerType === "input") {
+        let iconChild;
+        for (let i = 0; i < node.children.length; i++) {
+          const child = node.children[i];
+          if (child.type === "VECTOR" || child.name.toLowerCase().indexOf("icon") !== -1) {
+            iconChild = child;
+            break;
+          }
+        }
+        if (iconChild) {
+          const iconName = iconChild.name.toLowerCase().replace(/icon[-_\s]*/gi, "");
+          if (iconName && !isGenericName(iconName)) {
+            return `${prefix}-${toKebabCase(iconName)}`;
+          }
+        }
+      }
+    }
+    return prefix;
+  }
+  function renameLayer(node, newName) {
+    if (!node || !newName || typeof newName !== "string") {
+      return false;
+    }
+    const trimmedName = newName.trim();
+    if (trimmedName.length === 0) {
+      return false;
+    }
+    try {
+      node.name = trimmedName;
+      return true;
+    } catch (error) {
+      console.error("Failed to rename layer:", error);
+      return false;
+    }
+  }
+  function previewRename(node, newName) {
+    return {
+      nodeId: node.id,
+      currentName: node.name,
+      newName: newName.trim(),
+      layerType: detectLayerType(node),
+      willChange: node.name !== newName.trim()
+    };
+  }
+  function toKebabCase(str) {
+    return str.replace(/([a-z])([A-Z])/g, "$1-$2").replace(/[\s_]+/g, "-").replace(/[^a-zA-Z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  }
+
   // src/core/component-analyzer.ts
+  var consistencyEngine = new consistency_engine_default({
+    enableCaching: true,
+    enableMCPIntegration: true,
+    mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
+  });
   async function extractComponentContext(node) {
     const hierarchy = extractLayerHierarchy(node);
     const nestedLayers = getLayerNames(hierarchy);
@@ -2170,7 +4575,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     });
     return uniqueStates;
   }
-  async function processEnhancedAnalysis(context, apiKey, model, options = {}) {
+  async function processEnhancedAnalysis(context, apiKey, model, options = {}, providerId = "anthropic") {
     console.log("\u{1F3AF} Starting enhanced component analysis...");
     const selectedNode = figma.currentPage.selection[0];
     const node = options.node || selectedNode;
@@ -2201,8 +4606,13 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     if (useMCP) {
       console.log("\u{1F504} Using hybrid Claude + MCP approach...");
       const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
-      const claudeResponse = await fetchClaude(claudePrompt, apiKey, model);
-      const claudeData = extractJSONFromResponse(claudeResponse);
+      const llmResponse = await callProvider(providerId, apiKey, {
+        prompt: claudePrompt,
+        model,
+        maxTokens: 2048,
+        temperature: 0.1
+      });
+      const claudeData = extractJSONFromResponse(llmResponse.content);
       if (!claudeData) {
         throw new Error("Failed to extract JSON from Claude response");
       }
@@ -2224,8 +4634,13 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     } else {
       console.log("\u{1F4DD} Using Claude-only analysis...");
       const prompt = createEnhancedMetadataPrompt(context);
-      const response = await fetchClaude(prompt, apiKey, model);
-      analysisResult = extractJSONFromResponse(response);
+      const llmFallbackResponse = await callProvider(providerId, apiKey, {
+        prompt,
+        model,
+        maxTokens: 2048,
+        temperature: 0.1
+      });
+      analysisResult = extractJSONFromResponse(llmFallbackResponse.content);
       if (!analysisResult) {
         throw new Error("Failed to extract JSON from response");
       }
@@ -2561,22 +4976,43 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       console.log("\u{1F4E4} Sending to UI - metadata.props:", (_a = metadata.props) == null ? void 0 : _a.length);
       console.log("\u{1F4E4} Sending to UI - metadata.states:", metadata.states);
       console.log("\u{1F4E4} Sending to UI - metadata.mcpReadiness:", metadata.mcpReadiness);
-      const audit = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
+      const audit = await createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
       const recommendations = generatePropertyRecommendations(context.name, actualProperties);
+      const namingIssues = analyzeNamingIssues(node, 5);
+      console.log(`\u{1F4DB} Found ${namingIssues.length} naming issues`);
       console.log("\u2705 Analysis result processed successfully");
       return {
         metadata,
         tokens,
         audit,
         properties: actualProperties,
-        recommendations
+        recommendations,
+        namingIssues
       };
     } catch (error) {
       console.error("Error processing analysis result:", error);
       throw error;
     }
   }
-  function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription) {
+  async function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription) {
+    var _a;
+    const componentFamily = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+    let bestPractices;
+    let bestPracticesGaps = [];
+    try {
+      console.log(`\u{1F50D} Getting best practices for ${componentFamily}...`);
+      bestPractices = await consistencyEngine.getComponentBestPractices(componentFamily);
+      const propertyNames = actualProperties.map((p) => p.name);
+      bestPracticesGaps = consistencyEngine.analyzeAgainstBestPractices(
+        context,
+        actualStates,
+        propertyNames,
+        bestPractices
+      );
+      console.log(`\u2705 Best practices analysis complete: ${bestPracticesGaps.length} gaps found`);
+    } catch (error) {
+      console.warn("\u26A0\uFE0F Failed to analyze best practices:", error);
+    }
     return {
       // Basic state checking
       states: actualStates.map((state) => ({
@@ -2595,7 +5031,9 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
           status: componentDescription && componentDescription.trim().length > 0 ? "pass" : "warning",
           suggestion: componentDescription && componentDescription.trim().length > 0 ? "Component has description for MCP/AI context" : "Add a component description to help MCP and AI understand the component purpose and usage"
         }
-      ]
+      ],
+      // Best practices gaps from MCP knowledge
+      bestPracticesGaps: bestPracticesGaps.length > 0 ? bestPracticesGaps : void 0
     };
   }
   function generateFallbackMCPReadiness(data) {
@@ -3165,557 +5603,363 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
     return matrix[str2.length][str1.length];
   }
 
-  // src/core/consistency-engine.ts
-  var ComponentConsistencyEngine = class {
-    constructor(config = {}) {
-      this.cache = /* @__PURE__ */ new Map();
-      this.designSystemsKnowledge = null;
-      this.config = __spreadValues({
-        enableCaching: true,
-        enableMCPIntegration: true,
-        mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp",
-        consistencyThreshold: 0.95
-      }, config);
-    }
-    /**
-     * Generate a deterministic hash for a component based on its structure
-     */
-    generateComponentHash(context, tokens) {
-      var _a, _b;
-      const hashInput = {
-        name: context.name,
-        type: context.type,
-        hierarchy: this.normalizeHierarchy(context.hierarchy),
-        frameStructure: context.frameStructure,
-        detectedStyles: context.detectedStyles,
-        tokenFingerprint: this.generateTokenFingerprint(tokens),
-        // Don't include dynamic context that could vary
-        staticProperties: {
-          hasInteractiveElements: ((_a = context.additionalContext) == null ? void 0 : _a.hasInteractiveElements) || false,
-          componentFamily: ((_b = context.additionalContext) == null ? void 0 : _b.componentFamily) || "generic"
+  // src/fixes/token-fixer.ts
+  async function bindColorToken(node, propertyType, variableId, paintIndex = 0) {
+    try {
+      if (!(propertyType in node)) {
+        return {
+          success: false,
+          message: `Node does not support ${propertyType}`,
+          error: `Property ${propertyType} not found on node type ${node.type}`
+        };
+      }
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (!variable) {
+        return {
+          success: false,
+          message: "Variable not found",
+          error: `Could not find variable with ID: ${variableId}`
+        };
+      }
+      if (variable.resolvedType !== "COLOR") {
+        return {
+          success: false,
+          message: "Variable is not a color type",
+          error: `Variable ${variable.name} is of type ${variable.resolvedType}, expected COLOR`
+        };
+      }
+      const nodeWithPaints = node;
+      const paints = [...nodeWithPaints[propertyType]];
+      if (paintIndex >= paints.length) {
+        return {
+          success: false,
+          message: "Paint index out of range",
+          error: `Paint index ${paintIndex} does not exist. Node has ${paints.length} ${propertyType}.`
+        };
+      }
+      const currentPaint = paints[paintIndex];
+      if (currentPaint.type !== "SOLID") {
+        return {
+          success: false,
+          message: "Can only bind to solid paints",
+          error: `Paint at index ${paintIndex} is of type ${currentPaint.type}, expected SOLID`
+        };
+      }
+      const boundPaint = figma.variables.setBoundVariableForPaint(
+        currentPaint,
+        "color",
+        variable
+      );
+      paints[paintIndex] = boundPaint;
+      if (propertyType === "fills") {
+        node.fills = paints;
+      } else {
+        node.strokes = paints;
+      }
+      return {
+        success: true,
+        message: `Successfully bound ${variable.name} to ${propertyType}[${paintIndex}]`,
+        appliedFix: {
+          nodeId: node.id,
+          nodeName: node.name,
+          propertyPath: `${propertyType}[${paintIndex}]`,
+          beforeValue: currentPaint.type === "SOLID" && currentPaint.color ? rgbToHex(currentPaint.color.r, currentPaint.color.g, currentPaint.color.b) : "unknown",
+          afterValue: variable.name,
+          tokenId: variableId,
+          tokenName: variable.name,
+          fixType: "color"
         }
       };
-      return this.createHash(JSON.stringify(hashInput));
+    } catch (error) {
+      return {
+        success: false,
+        message: "Failed to bind color token",
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
-    /**
-     * Get cached analysis if available and valid
-     */
-    getCachedAnalysis(hash) {
-      if (!this.config.enableCaching) return null;
-      const cached = this.cache.get(hash);
-      if (!cached) return null;
-      const isExpired = Date.now() - cached.timestamp > 24 * 60 * 60 * 1e3;
-      if (isExpired) {
-        this.cache.delete(hash);
+  }
+  async function bindSpacingToken(node, property, variableId) {
+    try {
+      if (!(property in node)) {
+        return {
+          success: false,
+          message: `Node does not support ${property}`,
+          error: `Property ${property} not found on node type ${node.type}`
+        };
+      }
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (!variable) {
+        return {
+          success: false,
+          message: "Variable not found",
+          error: `Could not find variable with ID: ${variableId}`
+        };
+      }
+      if (variable.resolvedType !== "FLOAT") {
+        return {
+          success: false,
+          message: "Variable is not a number type",
+          error: `Variable ${variable.name} is of type ${variable.resolvedType}, expected FLOAT`
+        };
+      }
+      const currentValue = node[property];
+      const bindableNode = node;
+      bindableNode.setBoundVariable(property, variable);
+      return {
+        success: true,
+        message: `Successfully bound ${variable.name} to ${property}`,
+        appliedFix: {
+          nodeId: node.id,
+          nodeName: node.name,
+          propertyPath: property,
+          beforeValue: typeof currentValue === "number" ? `${currentValue}px` : String(currentValue),
+          afterValue: variable.name,
+          tokenId: variableId,
+          tokenName: variable.name,
+          fixType: property.includes("Radius") ? "border" : "spacing"
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: "Failed to bind spacing token",
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  async function findMatchingColorVariable(hexColor, tolerance = 0) {
+    try {
+      const targetRgb = hexToRgb(hexColor);
+      if (!targetRgb) {
+        return [];
+      }
+      const suggestions = [];
+      const colorVariables = await figma.variables.getLocalVariablesAsync("COLOR");
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      const collectionMap = /* @__PURE__ */ new Map();
+      for (const collection of collections) {
+        collectionMap.set(collection.id, collection);
+      }
+      for (const variable of colorVariables) {
+        const collection = collectionMap.get(variable.variableCollectionId);
+        if (!collection) continue;
+        const modeId = collection.modes[0].modeId;
+        const value = variable.valuesByMode[modeId];
+        if (!value || typeof value !== "object" || !("r" in value)) {
+          continue;
+        }
+        const varColor = value;
+        const matchScore = calculateColorMatchScore(targetRgb, varColor);
+        if (matchScore >= 1 - tolerance) {
+          suggestions.push({
+            variableId: variable.id,
+            variableName: variable.name,
+            collectionName: collection.name,
+            value: rgbToHex(varColor.r, varColor.g, varColor.b),
+            matchScore,
+            type: "color"
+          });
+        }
+      }
+      return suggestions.sort((a, b) => b.matchScore - a.matchScore);
+    } catch (error) {
+      console.error("Error finding matching color variable:", error);
+      return [];
+    }
+  }
+  async function findMatchingSpacingVariable(pixelValue, tolerance = 0) {
+    try {
+      const suggestions = [];
+      const numberVariables = await figma.variables.getLocalVariablesAsync("FLOAT");
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      const collectionMap = /* @__PURE__ */ new Map();
+      for (const collection of collections) {
+        collectionMap.set(collection.id, collection);
+      }
+      for (const variable of numberVariables) {
+        const collection = collectionMap.get(variable.variableCollectionId);
+        if (!collection) continue;
+        const modeId = collection.modes[0].modeId;
+        const value = variable.valuesByMode[modeId];
+        if (typeof value !== "number") {
+          continue;
+        }
+        const difference = Math.abs(value - pixelValue);
+        if (difference <= tolerance) {
+          const matchScore = difference === 0 ? 1 : 1 - difference / (tolerance || 1);
+          suggestions.push({
+            variableId: variable.id,
+            variableName: variable.name,
+            collectionName: collection.name,
+            value: `${value}px`,
+            matchScore,
+            type: "number"
+          });
+        }
+      }
+      return suggestions.sort((a, b) => b.matchScore - a.matchScore);
+    } catch (error) {
+      console.error("Error finding matching spacing variable:", error);
+      return [];
+    }
+  }
+  async function applyColorFix(node, propertyPath, tokenId) {
+    const match = propertyPath.match(/^(fills|strokes)\[(\d+)\]$/);
+    if (!match) {
+      return {
+        success: false,
+        message: "Invalid property path",
+        error: `Expected format: fills[n] or strokes[n], got: ${propertyPath}`
+      };
+    }
+    const [, propertyType, indexStr] = match;
+    const paintIndex = parseInt(indexStr, 10);
+    return bindColorToken(
+      node,
+      propertyType,
+      tokenId,
+      paintIndex
+    );
+  }
+  async function applySpacingFix(node, propertyPath, tokenId) {
+    const validProperties = [
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "itemSpacing",
+      "counterAxisSpacing",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomLeftRadius",
+      "bottomRightRadius",
+      "strokeWeight"
+    ];
+    if (!validProperties.includes(propertyPath)) {
+      return {
+        success: false,
+        message: "Invalid property path",
+        error: `Property ${propertyPath} is not a valid spacing property`
+      };
+    }
+    return bindSpacingToken(
+      node,
+      propertyPath,
+      tokenId
+    );
+  }
+  async function previewFix(node, propertyPath, tokenId) {
+    try {
+      const variable = await figma.variables.getVariableByIdAsync(tokenId);
+      if (!variable) {
         return null;
       }
-      console.log("\u2705 Using cached analysis for component hash:", hash);
-      return cached;
-    }
-    /**
-     * Cache analysis result
-     */
-    cacheAnalysis(hash, result) {
-      var _a;
-      if (!this.config.enableCaching) return;
-      this.cache.set(hash, {
-        hash,
-        result,
-        timestamp: Date.now(),
-        mcpKnowledgeVersion: ((_a = this.designSystemsKnowledge) == null ? void 0 : _a.version) || "1.0.0"
-      });
-      console.log("\u{1F4BE} Cached analysis for component hash:", hash);
-    }
-    /**
-    * Load design systems knowledge from MCP server
-    */
-    async loadDesignSystemsKnowledge() {
-      if (!this.config.enableMCPIntegration) {
-        console.log("\u{1F4DA} MCP integration disabled, using fallback knowledge");
-        this.loadFallbackKnowledge();
-        return;
-      }
-      try {
-        console.log("\u{1F504} Loading design systems knowledge from MCP...");
-        const connectivityTest = await this.testMCPConnectivity();
-        if (!connectivityTest) {
-          console.warn("\u26A0\uFE0F MCP server not accessible, using fallback knowledge");
-          this.loadFallbackKnowledge();
-          return;
+      let fixType;
+      let beforeValue;
+      const colorMatch = propertyPath.match(/^(fills|strokes)\[(\d+)\]$/);
+      if (colorMatch) {
+        fixType = "color";
+        const [, propertyType, indexStr] = colorMatch;
+        const paintIndex = parseInt(indexStr, 10);
+        if (!(propertyType in node)) {
+          return null;
         }
-        const [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge] = await Promise.allSettled([
-          this.queryMCP("component analysis best practices"),
-          this.queryMCP("design token naming conventions and patterns"),
-          this.queryMCP("design system accessibility requirements"),
-          this.queryMCP("design system component scoring methodology")
-        ]);
-        this.designSystemsKnowledge = {
-          version: "1.0.0",
-          components: this.processComponentKnowledge(
-            componentKnowledge.status === "fulfilled" ? componentKnowledge.value : null
-          ),
-          tokens: this.processKnowledgeContent(
-            tokenKnowledge.status === "fulfilled" ? tokenKnowledge.value : null
-          ),
-          accessibility: this.processKnowledgeContent(
-            accessibilityKnowledge.status === "fulfilled" ? accessibilityKnowledge.value : null
-          ),
-          scoring: this.processKnowledgeContent(
-            scoringKnowledge.status === "fulfilled" ? scoringKnowledge.value : null
-          ),
-          lastUpdated: Date.now()
-        };
-        const successfulQueries = [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge].filter((result) => result.status === "fulfilled").length;
-        if (successfulQueries > 0) {
-          console.log(`\u2705 Design systems knowledge loaded successfully (${successfulQueries}/4 queries successful)`);
+        const nodeWithPaints = node;
+        const paints = nodeWithPaints[propertyType];
+        if (paintIndex >= paints.length) {
+          return null;
+        }
+        const paint = paints[paintIndex];
+        if (paint.type === "SOLID" && paint.color) {
+          beforeValue = rgbToHex(paint.color.r, paint.color.g, paint.color.b);
         } else {
-          console.warn("\u26A0\uFE0F All MCP queries failed, using fallback knowledge");
-          this.loadFallbackKnowledge();
+          beforeValue = paint.type;
         }
-      } catch (error) {
-        console.warn("\u26A0\uFE0F Failed to load design systems knowledge:", error);
-        this.loadFallbackKnowledge();
-      }
-    }
-    /**
-    * Test MCP server connectivity using MCP initialization instead of health endpoint
-    */
-    async testMCPConnectivity() {
-      var _a, _b;
-      try {
-        console.log("\u{1F517} Testing MCP server connectivity...");
-        const timeoutPromise = new Promise(
-          (_, reject) => setTimeout(() => reject(new Error("Connectivity test timeout")), 5e3)
-        );
-        const initPayload = {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: {
-            protocolVersion: "2024-11-05",
-            capabilities: { roots: { listChanged: true } },
-            clientInfo: { name: "figmalint", version: "2.0.0" }
-          }
-        };
-        if (!this.config.mcpServerUrl) {
-          throw new Error("MCP server URL not configured");
+      } else {
+        if (!(propertyPath in node)) {
+          return null;
         }
-        const fetchPromise = fetch(this.config.mcpServerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(initPayload)
-        });
-        const response = await Promise.race([fetchPromise, timeoutPromise]);
-        if (response.ok) {
-          const data = await response.json();
-          if ((_b = (_a = data.result) == null ? void 0 : _a.serverInfo) == null ? void 0 : _b.name) {
-            console.log(`\u2705 MCP server accessible: ${data.result.serverInfo.name}`);
-            return true;
-          }
+        const currentValue = node[propertyPath];
+        beforeValue = typeof currentValue === "number" ? `${currentValue}px` : String(currentValue);
+        fixType = propertyPath.includes("Radius") ? "border" : "spacing";
+      }
+      let afterValue = variable.name;
+      const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+      if (collection) {
+        const modeId = collection.modes[0].modeId;
+        const value = variable.valuesByMode[modeId];
+        if (typeof value === "number") {
+          afterValue = `${variable.name} (${value}px)`;
+        } else if (value && typeof value === "object" && "r" in value) {
+          const rgb = value;
+          afterValue = `${variable.name} (${rgbToHex(rgb.r, rgb.g, rgb.b)})`;
         }
-        console.warn(`\u26A0\uFE0F MCP server returned ${response.status}`);
-        return false;
-      } catch (error) {
-        console.warn("\u26A0\uFE0F MCP server connectivity test failed:", error);
-        return false;
       }
-    }
-    /**
-     * Query the design systems MCP server using proper JSON-RPC protocol
-     */
-    async queryMCP(query) {
-      try {
-        console.log(`\u{1F50D} Querying MCP for: "${query}"`);
-        const timeoutPromise = new Promise(
-          (_, reject) => setTimeout(() => reject(new Error("MCP query timeout")), 5e3)
-        );
-        if (!this.config.mcpServerUrl) {
-          throw new Error("MCP server URL not configured");
-        }
-        const searchPayload = {
-          jsonrpc: "2.0",
-          id: Math.floor(Math.random() * 1e3) + 2,
-          // Random ID > 1 (1 is used for init)
-          method: "tools/call",
-          params: {
-            name: "search_design_knowledge",
-            arguments: {
-              query,
-              limit: 5,
-              category: "components"
-            }
-          }
-        };
-        const fetchPromise = fetch(this.config.mcpServerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(searchPayload)
-        });
-        const response = await Promise.race([fetchPromise, timeoutPromise]);
-        if (!response.ok) {
-          throw new Error(`MCP query failed: ${response.status} ${response.statusText}`);
-        }
-        const result = await response.json();
-        console.log(`\u2705 MCP query successful for: "${query}"`);
-        if (result.result && result.result.content) {
-          return {
-            results: result.result.content.map((item) => ({
-              title: item.title || "Design System Knowledge",
-              content: item.content || item.description || "Knowledge content",
-              category: "design-systems"
-            }))
-          };
-        }
-        return { results: [] };
-      } catch (error) {
-        console.warn(`\u26A0\uFE0F MCP query failed for "${query}":`, error);
-        return this.getFallbackKnowledgeForQuery(query);
-      }
-    }
-    /**
-     * Create deterministic analysis prompt with MCP knowledge
-     */
-    createDeterministicPrompt(context) {
-      const basePrompt = this.createBasePrompt(context);
-      const mcpGuidance = this.getMCPGuidance(context);
-      const scoringCriteria = this.getScoringCriteria(context);
-      return `${basePrompt}
-
-**CONSISTENCY REQUIREMENTS:**
-- Use DETERMINISTIC analysis based on the exact component structure provided
-- Apply CONSISTENT scoring criteria for identical components
-- Follow established design system patterns and conventions
-- Provide REPRODUCIBLE results for the same input
-
-**DESIGN SYSTEMS GUIDANCE:**
-${mcpGuidance}
-
-**SCORING METHODOLOGY:**
-${scoringCriteria}
-
-**DETERMINISTIC SETTINGS:**
-- Analysis must be based solely on the provided component structure
-- Scores must be calculated using objective criteria
-- Recommendations must follow established design system patterns
-- Response format must be exactly as specified (JSON only)
-
-**RESPONSE FORMAT (JSON only - no explanatory text):**
-{
-  "component": "Component name and purpose",
-  "description": "Detailed component description based on structure analysis",
-  "score": {
-    "overall": 85,
-    "breakdown": {
-      "structure": 90,
-      "tokens": 80,
-      "accessibility": 85,
-      "consistency": 90
-    }
-  },
-  "props": [...],
-  "states": [...],
-  "slots": [...],
-  "variants": {...},
-  "usage": "Usage guidelines",
-  "accessibility": {...},
-  "tokens": {...},
-  "audit": {...},
-  "mcpReadiness": {...}
-}`;
-    }
-    /**
-     * Validate analysis result for consistency
-     */
-    validateAnalysisConsistency(result, context) {
-      var _a, _b, _c, _d, _e;
-      const issues = [];
-      if (!((_a = result.metadata) == null ? void 0 : _a.component)) issues.push("Missing component name");
-      if (!((_b = result.metadata) == null ? void 0 : _b.description)) issues.push("Missing component description");
-      if (!this.isValidScore((_d = (_c = result.metadata) == null ? void 0 : _c.mcpReadiness) == null ? void 0 : _d.score)) {
-        issues.push("Invalid or missing MCP readiness score");
-      }
-      const family = (_e = context.additionalContext) == null ? void 0 : _e.componentFamily;
-      if (family && !this.validateComponentFamilyConsistency(result, family)) {
-        issues.push(`Inconsistent analysis for ${family} component family`);
-      }
-      if (!this.validateTokenRecommendations(result.tokens)) {
-        issues.push("Inconsistent token recommendations");
-      }
-      if (issues.length > 0) {
-        console.warn("\u26A0\uFE0F Analysis consistency issues found:", issues);
-        return false;
-      }
-      return true;
-    }
-    /**
-     * Apply consistency corrections to analysis result
-     */
-    applyConsistencyCorrections(result, context) {
-      var _a;
-      const corrected = __spreadValues({}, result);
-      if ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) {
-        corrected.metadata = this.applyComponentFamilyCorrections(
-          corrected.metadata,
-          context.additionalContext.componentFamily
-        );
-      }
-      corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
-      corrected.metadata.mcpReadiness = this.ensureConsistentScoring(
-        corrected.metadata.mcpReadiness || {},
-        context
-      );
-      return corrected;
-    }
-    // Private helper methods
-    normalizeHierarchy(hierarchy) {
-      return hierarchy.map((item) => ({
-        name: item.name.toLowerCase().trim(),
-        type: item.type,
-        depth: item.depth
-      }));
-    }
-    generateTokenFingerprint(tokens) {
-      const fingerprint = tokens.map((token) => `${token.type}:${token.isToken}:${token.source}`).sort().join("|");
-      return this.createHash(fingerprint);
-    }
-    createHash(input) {
-      let hash = 0;
-      if (input.length === 0) return hash.toString();
-      for (let i = 0; i < input.length; i++) {
-        const char = input.charCodeAt(i);
-        hash = (hash << 5) - hash + char;
-        hash = hash & hash;
-      }
-      return Math.abs(hash).toString(36);
-    }
-    createBasePrompt(context) {
-      var _a, _b, _c, _d;
-      return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
-
-**Component Analysis Context:**
-- Component Name: ${context.name}
-- Component Type: ${context.type}
-- Layer Structure: ${JSON.stringify(context.hierarchy, null, 2)}
-- Frame Structure: ${JSON.stringify(context.frameStructure)}
-- Detected Styles: ${JSON.stringify(context.detectedStyles)}
-- Component Family: ${((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic"}
-- Interactive Elements: ${((_b = context.additionalContext) == null ? void 0 : _b.hasInteractiveElements) || false}
-- Design Patterns: ${((_d = (_c = context.additionalContext) == null ? void 0 : _c.designPatterns) == null ? void 0 : _d.join(", ")) || "none"}`;
-    }
-    getMCPGuidance(context) {
-      var _a;
-      if (!this.designSystemsKnowledge) {
-        return this.getFallbackGuidance(context);
-      }
-      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
-      const guidance = this.designSystemsKnowledge.components[family] || this.designSystemsKnowledge.components.generic;
-      return guidance || this.getFallbackGuidance(context);
-    }
-    getScoringCriteria(context) {
-      var _a;
-      if (!((_a = this.designSystemsKnowledge) == null ? void 0 : _a.scoring)) {
-        return this.getFallbackScoringCriteria();
-      }
-      return this.designSystemsKnowledge.scoring;
-    }
-    processComponentKnowledge(knowledge) {
-      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
-        console.log("\u{1F4DD} No component knowledge available, using defaults");
-        return this.getDefaultComponentKnowledge();
-      }
-      const processed = {};
-      knowledge.results.forEach((result) => {
-        if (result.title && result.content) {
-          const componentType = this.extractComponentType(result.title);
-          processed[componentType] = result.content;
-        }
-      });
-      const defaults = this.getDefaultComponentKnowledge();
-      return __spreadValues(__spreadValues({}, defaults), processed);
-    }
-    extractComponentType(title) {
-      const titleLower = title.toLowerCase();
-      if (titleLower.includes("button")) return "button";
-      if (titleLower.includes("avatar")) return "avatar";
-      if (titleLower.includes("input") || titleLower.includes("field")) return "input";
-      if (titleLower.includes("card")) return "card";
-      if (titleLower.includes("badge") || titleLower.includes("tag")) return "badge";
-      return "generic";
-    }
-    processKnowledgeContent(knowledge) {
-      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
-        return "";
-      }
-      return knowledge.results.map((result) => result.content).filter((content) => content).join("\n\n");
-    }
-    getDefaultComponentKnowledge() {
       return {
-        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
-        avatar: "Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
-        card: "Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
-        badge: "Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
-        input: "Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
-        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).",
-        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
+        nodeId: node.id,
+        nodeName: node.name,
+        propertyPath,
+        beforeValue,
+        afterValue,
+        tokenId,
+        tokenName: variable.name,
+        fixType
       };
+    } catch (error) {
+      console.error("Error generating fix preview:", error);
+      return null;
     }
-    getFallbackKnowledgeForQuery(query) {
-      return {
-        results: [
-          {
-            title: `Fallback guidance for ${query}`,
-            content: this.getFallbackContentForQuery(query),
-            category: "fallback"
-          }
-        ]
-      };
+  }
+  function hexToRgb(hex) {
+    const cleanHex = hex.replace(/^#/, "");
+    let fullHex = cleanHex;
+    if (cleanHex.length === 3) {
+      fullHex = cleanHex[0] + cleanHex[0] + cleanHex[1] + cleanHex[1] + cleanHex[2] + cleanHex[2];
     }
-    getFallbackContentForQuery(query) {
-      if (query.includes("component analysis")) {
-        return "Components should follow consistent naming, use design tokens, implement proper states, and maintain accessibility standards.";
-      }
-      if (query.includes("token")) {
-        return "Design tokens should use semantic naming patterns like semantic-color-primary, spacing-md-16px, and text-size-lg-18px.";
-      }
-      if (query.includes("accessibility")) {
-        return "Ensure WCAG 2.1 AA compliance with proper ARIA labels, keyboard support, and color contrast.";
-      }
-      if (query.includes("scoring")) {
-        return "Score components based on structure (25%), token usage (25%), accessibility (25%), and consistency (25%).";
-      }
-      return "Follow established design system best practices for consistency and scalability.";
+    if (fullHex.length !== 6) {
+      return null;
     }
-    getFallbackGuidance(context) {
-      var _a;
-      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
-      const guidanceMap = {
-        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
-        avatar: "Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
-        card: "Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
-        badge: "Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
-        input: "Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
-        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
-      };
-      return guidanceMap[family] || guidanceMap.generic;
+    const r = parseInt(fullHex.substring(0, 2), 16);
+    const g = parseInt(fullHex.substring(2, 4), 16);
+    const b = parseInt(fullHex.substring(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+      return null;
     }
-    getFallbackScoringCriteria() {
-      return `
-    **MCP Readiness Scoring (0-100):**
-    - **Structure (25%)**: Clear hierarchy, logical organization, proper nesting
-    - **Tokens (25%)**: Design token usage vs hard-coded values
-    - **Accessibility (25%)**: WCAG compliance, keyboard support, ARIA labels
-    - **Consistency (25%)**: Naming conventions, pattern adherence, scalability
-
-    **Score Calculation:**
-    - 90-100: Production ready, comprehensive implementation
-    - 80-89: Good implementation, minor improvements needed
-    - 70-79: Solid foundation, some important gaps
-    - 60-69: Basic implementation, significant improvements needed
-    - Below 60: Major issues, substantial rework required
-    `;
-    }
-    loadFallbackKnowledge() {
-      this.designSystemsKnowledge = {
-        version: "1.0.0-fallback",
-        components: {
-          button: "Button components require comprehensive state management",
-          avatar: "Avatar components should support size variants and interactive states",
-          card: "Card components need consistent spacing and content hierarchy",
-          badge: "Badge components should use semantic colors for status indication",
-          input: "Input components require comprehensive accessibility and validation",
-          generic: "Generic components should follow basic design system principles"
-        },
-        tokens: "Use semantic token naming: semantic-color-primary, spacing-md-16px, text-size-lg-18px",
-        accessibility: "Ensure WCAG 2.1 AA compliance with proper ARIA labels and keyboard support",
-        scoring: this.getFallbackScoringCriteria(),
-        lastUpdated: Date.now()
-      };
-    }
-    isValidScore(score) {
-      return typeof score === "number" && score >= 0 && score <= 100;
-    }
-    validateComponentFamilyConsistency(result, family) {
-      const metadata = result.metadata;
-      switch (family) {
-        case "button":
-          return this.validateButtonComponent(metadata);
-        case "avatar":
-          return this.validateAvatarComponent(metadata);
-        case "input":
-          return this.validateInputComponent(metadata);
-        default:
-          return true;
-      }
-    }
-    validateButtonComponent(metadata) {
-      var _a;
-      const hasInteractiveStates = (_a = metadata.states) == null ? void 0 : _a.some(
-        (state) => ["hover", "focus", "active", "disabled"].includes(state.toLowerCase())
-      );
-      return hasInteractiveStates || false;
-    }
-    validateAvatarComponent(metadata) {
-      var _a, _b, _c;
-      const hasSizeVariants = ((_b = (_a = metadata.variants) == null ? void 0 : _a.size) == null ? void 0 : _b.length) > 0;
-      const hasSizeProps = (_c = metadata.props) == null ? void 0 : _c.some(
-        (prop) => prop.name.toLowerCase().includes("size")
-      );
-      return hasSizeVariants || hasSizeProps || false;
-    }
-    validateInputComponent(metadata) {
-      var _a;
-      const hasFormStates = (_a = metadata.states) == null ? void 0 : _a.some(
-        (state) => ["focus", "error", "disabled", "filled"].includes(state.toLowerCase())
-      );
-      return hasFormStates || false;
-    }
-    validateTokenRecommendations(tokens) {
-      var _a;
-      const hasSemanticColors = (_a = tokens.colors) == null ? void 0 : _a.some(
-        (token) => token.name.includes("semantic-") || token.name.includes("primary") || token.name.includes("secondary")
-      );
-      return hasSemanticColors !== false;
-    }
-    applyComponentFamilyCorrections(metadata, family) {
-      var _a, _b, _c;
-      const corrected = __spreadValues({}, metadata);
-      switch (family) {
-        case "button":
-          if (!((_a = corrected.states) == null ? void 0 : _a.includes("hover"))) {
-            corrected.states = [...corrected.states || [], "hover", "focus", "active", "disabled"];
-          }
-          break;
-        case "avatar":
-          if (!((_b = corrected.variants) == null ? void 0 : _b.size) && !((_c = corrected.props) == null ? void 0 : _c.some((p) => p.name.includes("size")))) {
-            corrected.variants = __spreadProps(__spreadValues({}, corrected.variants), { size: ["small", "medium", "large"] });
-          }
-          break;
-      }
-      return corrected;
-    }
-    applyTokenConsistencyCorrections(tokens) {
-      if (!tokens) return tokens;
-      const corrected = __spreadValues({}, tokens);
-      return corrected;
-    }
-    ensureConsistentScoring(mcpReadiness, context) {
-      return __spreadProps(__spreadValues({}, mcpReadiness), {
-        score: mcpReadiness.score || 0
-      });
-    }
-  };
-  var consistency_engine_default = ComponentConsistencyEngine;
+    return {
+      r: r / 255,
+      g: g / 255,
+      b: b / 255
+    };
+  }
+  function calculateColorMatchScore(color1, color2) {
+    const dr = color1.r - color2.r;
+    const dg = color1.g - color2.g;
+    const db = color1.b - color2.b;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    const maxDistance = Math.sqrt(3);
+    return 1 - distance / maxDistance;
+  }
 
   // src/ui/message-handler.ts
   var storedApiKey = null;
   var selectedModel = "claude-sonnet-4-5-20250929";
+  var selectedProvider = "anthropic";
+  function isValidApiKeyFormat(apiKey, provider = selectedProvider) {
+    const trimmed = (apiKey == null ? void 0 : apiKey.trim()) || "";
+    switch (provider) {
+      case "anthropic":
+        return trimmed.startsWith("sk-ant-") && trimmed.length >= 40;
+      case "openai":
+        return trimmed.startsWith("sk-") && trimmed.length >= 20;
+      case "google":
+        return trimmed.startsWith("AIza") && trimmed.length >= 35;
+      default:
+        return false;
+    }
+  }
   var lastAnalyzedMetadata = null;
   var lastAnalyzedNode = null;
-  var consistencyEngine = new consistency_engine_default({
+  var consistencyEngine2 = new consistency_engine_default({
     enableCaching: true,
     enableMCPIntegration: true,
     mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
@@ -3729,7 +5973,7 @@ ${scoringCriteria}
           await handleCheckApiKey();
           break;
         case "save-api-key":
-          await handleSaveApiKey(data.apiKey, data.model);
+          await handleSaveApiKey(data.apiKey, data.model, data.provider);
           break;
         case "update-model":
           await handleUpdateModel(data.model);
@@ -3752,6 +5996,22 @@ ${scoringCriteria}
         case "select-node":
           await handleSelectNode(data);
           break;
+        // Auto-fix handlers
+        case "preview-fix":
+          await handlePreviewFix(data);
+          break;
+        case "apply-token-fix":
+          await handleApplyTokenFix(data);
+          break;
+        case "apply-naming-fix":
+          await handleApplyNamingFix(data);
+          break;
+        case "apply-batch-fix":
+          await handleApplyBatchFix(data);
+          break;
+        case "update-description":
+          await handleUpdateDescription(data);
+          break;
         default:
           console.warn("Unknown message type:", type);
       }
@@ -3763,36 +6023,54 @@ ${scoringCriteria}
   }
   async function handleCheckApiKey() {
     try {
+      await migrateLegacyStorage();
+      const config = await loadProviderConfig();
+      selectedProvider = config.providerId;
+      selectedModel = config.modelId;
       if (storedApiKey) {
-        sendMessageToUI("api-key-status", { hasKey: true });
+        sendMessageToUI("api-key-status", {
+          hasKey: true,
+          provider: selectedProvider,
+          model: selectedModel
+        });
         return;
       }
-      const savedKey = await figma.clientStorage.getAsync("claude-api-key");
-      if (savedKey && isValidApiKeyFormat(savedKey)) {
-        storedApiKey = savedKey;
-        sendMessageToUI("api-key-status", { hasKey: true });
+      if (config.apiKey && isValidApiKeyFormat(config.apiKey, config.providerId)) {
+        storedApiKey = config.apiKey;
+        sendMessageToUI("api-key-status", {
+          hasKey: true,
+          provider: selectedProvider,
+          model: selectedModel
+        });
       } else {
-        sendMessageToUI("api-key-status", { hasKey: false });
+        sendMessageToUI("api-key-status", {
+          hasKey: false,
+          provider: selectedProvider,
+          model: selectedModel
+        });
       }
     } catch (error) {
       console.error("Error checking API key:", error);
-      sendMessageToUI("api-key-status", { hasKey: false });
+      sendMessageToUI("api-key-status", { hasKey: false, provider: "anthropic" });
     }
   }
-  async function handleSaveApiKey(apiKey, model) {
+  async function handleSaveApiKey(apiKey, model, provider) {
     try {
-      if (!isValidApiKeyFormat(apiKey)) {
-        throw new Error("Invalid API key format. Please check your Claude API key.");
+      const providerId = provider || selectedProvider;
+      if (!isValidApiKeyFormat(apiKey, providerId)) {
+        const providerObj2 = getProvider(providerId);
+        throw new Error(`Invalid API key format for ${providerObj2.name}. Expected format: ${providerObj2.keyPlaceholder}`);
       }
+      selectedProvider = providerId;
       storedApiKey = apiKey;
       if (model) {
         selectedModel = model;
-        await figma.clientStorage.setAsync("claude-model", model);
       }
-      await figma.clientStorage.setAsync("claude-api-key", apiKey);
-      console.log("API key and model saved successfully");
-      sendMessageToUI("api-key-saved", { success: true });
-      figma.notify("API key and model saved successfully", { timeout: 2e3 });
+      await saveProviderConfig(providerId, selectedModel, apiKey);
+      console.log(`${providerId} API key and model saved successfully`);
+      const providerObj = getProvider(providerId);
+      sendMessageToUI("api-key-saved", { success: true, provider: providerId });
+      figma.notify(`${providerObj.name} API key saved successfully`, { timeout: 2e3 });
     } catch (error) {
       console.error("Error saving API key:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -3803,7 +6081,7 @@ ${scoringCriteria}
   async function handleUpdateModel(model) {
     try {
       selectedModel = model;
-      await figma.clientStorage.setAsync("claude-model", model);
+      await saveProviderConfig(selectedProvider, model);
       console.log("Model updated to:", model);
       figma.notify(`Model updated to ${model}`, { timeout: 2e3 });
     } catch (error) {
@@ -3815,7 +6093,8 @@ ${scoringCriteria}
     var _a;
     try {
       if (!storedApiKey) {
-        throw new Error("API key not found. Please save your Claude API key first.");
+        const providerName = getProvider(selectedProvider).name;
+        throw new Error(`API key not found. Please save your ${providerName} API key first.`);
       }
       const selection = figma.currentPage.selection;
       if (selection.length === 0) {
@@ -3851,7 +6130,7 @@ ${scoringCriteria}
       if (!isValidNodeForAnalysis(selectedNode)) {
         throw new Error("Please select a Frame, Component, Component Set, or Instance to analyze");
       }
-      await consistencyEngine.loadDesignSystemsKnowledge();
+      await consistencyEngine2.loadDesignSystemsKnowledge();
       const componentContext = await extractComponentContext(selectedNode);
       const enhancedOptions = __spreadValues({
         enableMCPEnhancement: true,
@@ -3866,11 +6145,14 @@ ${scoringCriteria}
         componentContext,
         storedApiKey,
         selectedModel,
-        enhancedOptions
+        enhancedOptions,
+        selectedProvider
       );
       lastAnalyzedMetadata = result.metadata;
       lastAnalyzedNode = selectedNode;
-      sendMessageToUI("enhanced-analysis-result", result);
+      sendMessageToUI("enhanced-analysis-result", __spreadProps(__spreadValues({}, result), {
+        analyzedNodeId: selectedNode.id
+      }));
       figma.notify("Enhanced analysis complete! Check the results panel.", { timeout: 3e3 });
     } catch (error) {
       console.error("Error during enhanced analysis:", error);
@@ -3884,7 +6166,7 @@ ${scoringCriteria}
   }
   async function handleBatchAnalysis(nodes, _options) {
     const results = [];
-    await consistencyEngine.loadDesignSystemsKnowledge();
+    await consistencyEngine2.loadDesignSystemsKnowledge();
     for (const node of nodes) {
       if (isValidNodeForAnalysis(node)) {
         try {
@@ -3897,8 +6179,8 @@ ${scoringCriteria}
             ...tokenAnalysis.effects,
             ...tokenAnalysis.borders
           ];
-          const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens);
-          const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
+          const componentHash = consistencyEngine2.generateComponentHash(componentContext, allTokens);
+          const cachedAnalysis = consistencyEngine2.getCachedAnalysis(componentHash);
           if (cachedAnalysis) {
             console.log(`\u2705 Using cached analysis for ${node.name}`);
             results.push({
@@ -3909,16 +6191,21 @@ ${scoringCriteria}
             });
             continue;
           }
-          const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
-          const analysis = await fetchClaude(deterministicPrompt, storedApiKey, selectedModel, true);
-          const rawEnhancedData = extractJSONFromResponse(analysis);
+          const deterministicPrompt = consistencyEngine2.createDeterministicPrompt(componentContext);
+          const batchLlmResponse = await callProvider(selectedProvider, storedApiKey, {
+            prompt: deterministicPrompt,
+            model: selectedModel,
+            maxTokens: 2048,
+            temperature: 0.1
+          });
+          const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
           const enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
-          let result = await processEnhancedAnalysis(enhancedData, node, node);
-          const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
+          let result = await processAnalysisResult(enhancedData, componentContext, { batchMode: true });
+          const isConsistent = consistencyEngine2.validateAnalysisConsistency(result, componentContext);
           if (!isConsistent) {
-            result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
+            result = consistencyEngine2.applyConsistencyCorrections(result, componentContext);
           }
-          consistencyEngine.cacheAnalysis(componentHash, result);
+          consistencyEngine2.cacheAnalysis(componentHash, result);
           results.push({
             node: node.name,
             success: true,
@@ -3942,9 +6229,11 @@ ${scoringCriteria}
   async function handleClearApiKey() {
     try {
       storedApiKey = null;
+      await clearProviderKey(selectedProvider);
       await figma.clientStorage.setAsync("claude-api-key", "");
+      const providerName = getProvider(selectedProvider).name;
       sendMessageToUI("api-key-cleared", { success: true });
-      figma.notify("API key cleared", { timeout: 2e3 });
+      figma.notify(`${providerName} API key cleared`, { timeout: 2e3 });
     } catch (error) {
       console.error("Error clearing API key:", error);
     }
@@ -3953,15 +6242,21 @@ ${scoringCriteria}
     try {
       console.log("Processing chat message:", data.message);
       if (!storedApiKey) {
-        throw new Error("API key not found. Please save your Claude API key first.");
+        const providerName = getProvider(selectedProvider).name;
+        throw new Error(`API key not found. Please save your ${providerName} API key first.`);
       }
       sendMessageToUI("chat-response-loading", { isLoading: true });
       const componentContext = getCurrentComponentContext();
       const mcpResponse = await queryDesignSystemsMCP(data.message);
       const enhancedPrompt = createChatPromptWithContext(data.message, mcpResponse, data.history, componentContext);
-      const response = await fetchClaude(enhancedPrompt, storedApiKey, selectedModel, false);
+      const llmResponse = await callProvider(selectedProvider, storedApiKey, {
+        prompt: enhancedPrompt,
+        model: selectedModel,
+        maxTokens: 2048,
+        temperature: 0.7
+      });
       const chatResponse = {
-        message: response,
+        message: llmResponse.content,
         sources: mcpResponse.sources || []
       };
       sendMessageToUI("chat-response", { response: chatResponse });
@@ -4044,7 +6339,7 @@ ${scoringCriteria}
     var _a;
     try {
       console.log("\u{1F50D} Querying MCP for chat:", query);
-      const mcpServerUrl = ((_a = consistencyEngine["config"]) == null ? void 0 : _a.mcpServerUrl) || "https://design-systems-mcp.southleft-llc.workers.dev/mcp";
+      const mcpServerUrl = ((_a = consistencyEngine2["config"]) == null ? void 0 : _a.mcpServerUrl) || "https://design-systems-mcp.southleft-llc.workers.dev/mcp";
       const searchPromises = [
         // General design knowledge search
         searchMCPKnowledge(mcpServerUrl, query, { category: "general", limit: 3 }),
@@ -4228,31 +6523,26 @@ Respond naturally and helpfully to the user's question.`;
   }
   async function initializePlugin() {
     try {
-      const savedApiKey = await figma.clientStorage.getAsync("claude-api-key");
-      if (savedApiKey) {
-        storedApiKey = savedApiKey;
-        sendMessageToUI("api-key-status", { hasKey: true });
+      const config = await loadProviderConfig();
+      selectedProvider = config.providerId;
+      selectedModel = config.modelId;
+      if (config.apiKey) {
+        storedApiKey = config.apiKey;
+        sendMessageToUI("api-key-status", {
+          hasKey: true,
+          provider: selectedProvider,
+          model: selectedModel
+        });
+      } else {
+        sendMessageToUI("api-key-status", {
+          hasKey: false,
+          provider: selectedProvider,
+          model: selectedModel
+        });
       }
-      const savedModel = await figma.clientStorage.getAsync("claude-model");
-      if (savedModel) {
-        const validModels = [
-          "claude-sonnet-4-5-20250929",
-          "claude-haiku-4-5-20251001",
-          "claude-opus-4-1-20250805",
-          "claude-sonnet-4-20250514",
-          "claude-opus-4-20250514"
-        ];
-        if (validModels.includes(savedModel)) {
-          selectedModel = savedModel;
-          console.log("Loaded saved model:", selectedModel);
-        } else {
-          console.log("Saved model is deprecated, resetting to default:", savedModel);
-          selectedModel = "claude-sonnet-4-5-20250929";
-          await figma.clientStorage.setAsync("claude-model", selectedModel);
-        }
-      }
+      console.log(`Plugin initialized with provider: ${selectedProvider}, model: ${selectedModel}`);
       console.log("\u{1F504} Initializing design systems knowledge...");
-      consistencyEngine.loadDesignSystemsKnowledge().then(() => {
+      consistencyEngine2.loadDesignSystemsKnowledge().then(() => {
         console.log("\u2705 Design systems knowledge loaded successfully");
       }).catch((error) => {
         console.warn("\u26A0\uFE0F Failed to load design systems knowledge, using fallback:", error);
@@ -4260,6 +6550,322 @@ Respond naturally and helpfully to the user's question.`;
       console.log("Plugin initialized successfully");
     } catch (error) {
       console.error("Error initializing plugin:", error);
+    }
+  }
+  async function handlePreviewFix(data) {
+    try {
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node || !("type" in node)) {
+        sendMessageToUI("fix-preview", {
+          success: false,
+          error: "Node not found or is not a valid scene node"
+        });
+        return;
+      }
+      const sceneNode = node;
+      let preview = null;
+      if (data.type === "token") {
+        if (!data.propertyPath) {
+          sendMessageToUI("fix-preview", {
+            success: false,
+            error: "Property path is required for token fixes"
+          });
+          return;
+        }
+        const matches = data.propertyPath.match(/^(fills|strokes)\[(\d+)\]$/);
+        if (matches) {
+          const colorMatches = await findMatchingColorVariable(data.suggestedValue || "", 0.1);
+          if (colorMatches.length > 0) {
+            preview = await previewFix(sceneNode, data.propertyPath, colorMatches[0].variableId);
+          }
+        } else {
+          const pixelValue = parseFloat(data.suggestedValue || "0");
+          const spacingMatches = await findMatchingSpacingVariable(pixelValue, 2);
+          if (spacingMatches.length > 0) {
+            preview = await previewFix(sceneNode, data.propertyPath, spacingMatches[0].variableId);
+          }
+        }
+        if (preview) {
+          sendMessageToUI("fix-preview", { success: true, preview });
+        } else {
+          sendMessageToUI("fix-preview", {
+            success: false,
+            error: "No matching token found for this value"
+          });
+        }
+      } else if (data.type === "naming") {
+        const suggestedName = data.suggestedValue || suggestLayerName(sceneNode);
+        preview = previewRename(sceneNode, suggestedName);
+        sendMessageToUI("fix-preview", { success: true, preview });
+      } else {
+        sendMessageToUI("fix-preview", {
+          success: false,
+          error: `Unknown fix type: ${data.type}`
+        });
+      }
+    } catch (error) {
+      console.error("Error previewing fix:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("fix-preview", { success: false, error: errorMessage });
+    }
+  }
+  async function handleApplyTokenFix(data) {
+    try {
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node || !("type" in node)) {
+        sendMessageToUI("fix-applied", {
+          success: false,
+          error: "Node not found or is not a valid scene node"
+        });
+        figma.notify("Failed to apply fix: Node not found", { error: true });
+        return;
+      }
+      const sceneNode = node;
+      if (!data.propertyPath) {
+        sendMessageToUI("fix-applied", {
+          success: false,
+          error: "Property path is required for token fixes"
+        });
+        figma.notify("Failed to apply fix: Property path missing", { error: true });
+        return;
+      }
+      if (!data.tokenId) {
+        sendMessageToUI("fix-applied", {
+          success: false,
+          error: "Token ID is required for token fixes"
+        });
+        figma.notify("Failed to apply fix: Token ID missing", { error: true });
+        return;
+      }
+      let result;
+      const isColorProperty = /^(fills|strokes)\[\d+\]$/.test(data.propertyPath);
+      if (isColorProperty) {
+        result = await applyColorFix(sceneNode, data.propertyPath, data.tokenId);
+      } else {
+        result = await applySpacingFix(sceneNode, data.propertyPath, data.tokenId);
+      }
+      sendMessageToUI("fix-applied", result);
+      if (result.success) {
+        figma.notify(`Applied token to ${sceneNode.name}`, { timeout: 2e3 });
+      } else {
+        figma.notify(`Failed to apply token: ${result.error || result.message}`, { error: true });
+      }
+    } catch (error) {
+      console.error("Error applying token fix:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("fix-applied", { success: false, error: errorMessage });
+      figma.notify(`Failed to apply fix: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleApplyNamingFix(data) {
+    try {
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node || !("type" in node)) {
+        sendMessageToUI("fix-applied", {
+          success: false,
+          error: "Node not found or is not a valid scene node"
+        });
+        figma.notify("Failed to rename: Node not found", { error: true });
+        return;
+      }
+      const sceneNode = node;
+      const newName = data.newValue || suggestLayerName(sceneNode);
+      const oldName = sceneNode.name;
+      const success = renameLayer(sceneNode, newName);
+      const result = {
+        success,
+        message: success ? `Renamed "${oldName}" to "${newName}"` : `Failed to rename layer`,
+        oldName,
+        newName: success ? newName : oldName
+      };
+      sendMessageToUI("fix-applied", result);
+      if (success) {
+        figma.notify(`Renamed "${oldName}" to "${newName}"`, { timeout: 2e3 });
+      } else {
+        figma.notify("Failed to rename layer", { error: true });
+      }
+    } catch (error) {
+      console.error("Error applying naming fix:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("fix-applied", { success: false, error: errorMessage });
+      figma.notify(`Failed to rename: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleApplyBatchFix(data) {
+    try {
+      const results = [];
+      let successCount = 0;
+      let errorCount = 0;
+      for (const fix of data.fixes) {
+        try {
+          const node = await figma.getNodeByIdAsync(fix.nodeId);
+          if (!node || !("type" in node)) {
+            results.push({
+              nodeId: fix.nodeId,
+              success: false,
+              message: "Node not found",
+              error: "Node not found or is not a valid scene node"
+            });
+            errorCount++;
+            continue;
+          }
+          const sceneNode = node;
+          if (fix.type === "token") {
+            if (!fix.propertyPath) {
+              results.push({
+                nodeId: fix.nodeId,
+                success: false,
+                message: "Missing property path",
+                error: "Token fixes require a propertyPath"
+              });
+              errorCount++;
+              continue;
+            }
+            let tokenId = fix.tokenId;
+            const isColorProperty = /^(fills|strokes)\[\d+\]$/.test(fix.propertyPath);
+            if (!tokenId && fix.newValue) {
+              try {
+                if (isColorProperty) {
+                  const colorMatches = await findMatchingColorVariable(fix.newValue, 0.1);
+                  if (colorMatches.length > 0) {
+                    tokenId = colorMatches[0].variableId;
+                  }
+                } else {
+                  const pixelValue = parseFloat(fix.newValue);
+                  if (!isNaN(pixelValue)) {
+                    const spacingMatches = await findMatchingSpacingVariable(pixelValue, 2);
+                    if (spacingMatches.length > 0) {
+                      tokenId = spacingMatches[0].variableId;
+                    }
+                  }
+                }
+              } catch (matchError) {
+                console.warn("Could not find matching variable:", matchError);
+              }
+            }
+            if (!tokenId) {
+              results.push({
+                nodeId: fix.nodeId,
+                success: false,
+                message: "No matching design token found for this value",
+                error: "Could not find a matching variable to bind"
+              });
+              errorCount++;
+              continue;
+            }
+            let result;
+            if (isColorProperty) {
+              result = await applyColorFix(sceneNode, fix.propertyPath, tokenId);
+            } else {
+              result = await applySpacingFix(sceneNode, fix.propertyPath, tokenId);
+            }
+            results.push({
+              nodeId: fix.nodeId,
+              success: result.success,
+              message: result.message,
+              error: result.error
+            });
+            if (result.success) {
+              successCount++;
+            } else {
+              errorCount++;
+            }
+          } else if (fix.type === "naming") {
+            const newName = fix.newValue || suggestLayerName(sceneNode);
+            const oldName = sceneNode.name;
+            const success = renameLayer(sceneNode, newName);
+            results.push({
+              nodeId: fix.nodeId,
+              success,
+              message: success ? `Renamed "${oldName}" to "${newName}"` : "Failed to rename layer"
+            });
+            if (success) {
+              successCount++;
+            } else {
+              errorCount++;
+            }
+          } else {
+            results.push({
+              nodeId: fix.nodeId,
+              success: false,
+              message: `Unknown fix type: ${fix.type}`,
+              error: `Unsupported fix type: ${fix.type}`
+            });
+            errorCount++;
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error";
+          results.push({
+            nodeId: fix.nodeId,
+            success: false,
+            message: "Error applying fix",
+            error: errorMessage
+          });
+          errorCount++;
+        }
+      }
+      const summary = {
+        total: data.fixes.length,
+        success: successCount,
+        errors: errorCount,
+        results
+      };
+      sendMessageToUI("batch-fix-applied", summary);
+      if (errorCount === 0) {
+        figma.notify(`Applied ${successCount} fix${successCount !== 1 ? "es" : ""} successfully`, { timeout: 2e3 });
+      } else if (successCount > 0) {
+        figma.notify(`Applied ${successCount} fix${successCount !== 1 ? "es" : ""}, ${errorCount} failed`, { timeout: 3e3 });
+      } else {
+        figma.notify(`Failed to apply ${errorCount} fix${errorCount !== 1 ? "es" : ""}`, { error: true });
+      }
+    } catch (error) {
+      console.error("Error applying batch fixes:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("batch-fix-applied", {
+        total: data.fixes.length,
+        success: 0,
+        errors: data.fixes.length,
+        error: errorMessage
+      });
+      figma.notify(`Batch fix failed: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleUpdateDescription(data) {
+    try {
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node) {
+        sendMessageToUI("description-updated", {
+          success: false,
+          error: "Node not found"
+        });
+        figma.notify("Failed to update description: Node not found", { error: true });
+        return;
+      }
+      if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+        sendMessageToUI("description-updated", {
+          success: false,
+          error: "Node is not a component or component set"
+        });
+        figma.notify("Description can only be set on components", { error: true });
+        return;
+      }
+      const componentNode = node;
+      const oldDescription = componentNode.description;
+      componentNode.description = data.description;
+      sendMessageToUI("description-updated", {
+        success: true,
+        oldDescription,
+        newDescription: data.description
+      });
+      figma.notify("Component description updated", { timeout: 2e3 });
+    } catch (error) {
+      console.error("Error updating description:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("description-updated", {
+        success: false,
+        error: errorMessage
+      });
+      figma.notify(`Failed to update description: ${errorMessage}`, { error: true });
     }
   }
 

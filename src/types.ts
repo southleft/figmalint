@@ -188,7 +188,35 @@ export type UIMessageType =
   | 'clear-api-key'
   | 'chat-message'
   | 'chat-clear-history'
-  | 'select-node';
+  | 'select-node'
+  // Auto-fix message types
+  | 'preview-fix'
+  | 'apply-fix'
+  | 'apply-token-fix'
+  | 'apply-naming-fix'
+  | 'apply-batch-fix'
+  | 'update-description';
+
+// Auto-fix Types
+export interface FixRequest {
+  type: 'token' | 'naming' | 'property';
+  nodeId: string;
+  propertyPath?: string;
+  tokenId?: string;
+  newValue?: string;
+}
+
+export interface FixPreviewRequest {
+  type: 'token' | 'naming';
+  nodeId: string;
+  propertyPath?: string;
+  suggestedValue?: string;
+}
+
+export interface BatchFixRequest {
+  fixes: FixRequest[];
+  confirmAll?: boolean;
+}
 
 // Enhanced Analysis Types
 export interface EnhancedAnalysisOptions {
@@ -204,6 +232,13 @@ export interface EnhancedAnalysisOptions {
 export interface DetailedAuditResults {
   states: Array<{ name: string; found: boolean }>;
   accessibility: Array<{ check: string; status: 'pass' | 'fail' | 'warning'; suggestion: string }>;
+  bestPracticesGaps?: Array<{
+    category: 'states' | 'properties' | 'accessibility';
+    severity: 'error' | 'warning' | 'info';
+    message: string;
+    suggestion: string;
+    missingItems: string[];
+  }>;
 }
 
 export interface EnhancedAnalysisResult {
@@ -212,6 +247,20 @@ export interface EnhancedAnalysisResult {
   audit: DetailedAuditResults;
   properties: Array<{ name: string; values: string[]; default: string }>;
   recommendations?: Array<{ name: string; type: string; description: string; examples: string[] }>;
+  namingIssues?: NamingIssue[];
+}
+
+// Re-export NamingIssue shape for use in UI messages
+export interface NamingIssue {
+  nodeId: string;
+  nodeName: string;
+  currentName: string;
+  suggestedName: string;
+  severity: 'error' | 'warning' | 'info';
+  reason: string;
+  layerType: string;
+  depth: number;
+  path: string;
 }
 
 export interface DetailedAudit {

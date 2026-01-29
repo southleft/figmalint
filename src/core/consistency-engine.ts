@@ -660,6 +660,694 @@ ${scoringCriteria}
       score: mcpReadiness.score || 0
     };
   }
+
+  /**
+   * Query MCP for component-specific best practices
+   * Returns expected properties, states, and variants for a component type
+   */
+  async getComponentBestPractices(componentFamily: string): Promise<ComponentBestPractices> {
+    try {
+      console.log(`🔍 Querying MCP for ${componentFamily} best practices...`);
+
+      // Query MCP for component-specific guidance
+      const mcpResult = await this.queryMCP(
+        `${componentFamily} component best practices properties states variants accessibility`
+      );
+
+      // Parse MCP results into structured recommendations
+      if (mcpResult?.results?.length > 0) {
+        const bestPractices = this.parseMCPBestPractices(componentFamily, mcpResult.results);
+        console.log(`✅ Retrieved MCP best practices for ${componentFamily}:`, bestPractices);
+        return bestPractices;
+      }
+
+      // Fallback to built-in best practices
+      return this.getBuiltInBestPractices(componentFamily);
+
+    } catch (error) {
+      console.warn(`⚠️ Failed to get MCP best practices for ${componentFamily}:`, error);
+      return this.getBuiltInBestPractices(componentFamily);
+    }
+  }
+
+  /**
+   * Parse MCP response into structured best practices
+   * Extracts states, properties, and accessibility requirements from MCP content
+   */
+  private parseMCPBestPractices(family: string, mcpResults: any[]): ComponentBestPractices {
+    // Get content from MCP results
+    const content = mcpResults.map(r => r.content || '').join(' ').toLowerCase();
+    const mcpKnowledge = mcpResults.map(r => r.content || r.description || '').slice(0, 3);
+
+    // Check if we have built-in best practices for this family
+    const builtIn = this.getBuiltInBestPracticesInternal(family);
+    if (builtIn) {
+      return {
+        ...builtIn,
+        mcpKnowledge
+      };
+    }
+
+    // For unknown components, extract recommendations from MCP content
+    const extractedStates = this.extractStatesFromContent(content, family);
+    const extractedProperties = this.extractPropertiesFromContent(content, family);
+    const extractedAccessibility = this.extractAccessibilityFromContent(content);
+
+    return {
+      family,
+      expectedStates: extractedStates.length > 0 ? extractedStates : ['default'],
+      expectedProperties: extractedProperties,
+      accessibilityRequirements: extractedAccessibility,
+      mcpKnowledge
+    };
+  }
+
+  /**
+   * Extract expected states from MCP content
+   */
+  private extractStatesFromContent(content: string, family: string): string[] {
+    const states: string[] = [];
+
+    // Common interactive states to look for
+    const stateKeywords: Record<string, string[]> = {
+      interactive: ['default', 'hover', 'focus', 'active', 'disabled'],
+      form: ['default', 'hover', 'focus', 'filled', 'disabled', 'error', 'success', 'loading'],
+      selection: ['default', 'selected', 'hover', 'focus', 'disabled'],
+      toggle: ['off', 'on', 'disabled'],
+      loading: ['default', 'loading', 'success', 'error'],
+      expandable: ['collapsed', 'expanded', 'hover', 'focus', 'disabled']
+    };
+
+    // Detect component interaction pattern from content or family name
+    let pattern = 'interactive'; // default pattern
+
+    if (content.includes('form') || content.includes('input') || family.includes('field') || family.includes('input')) {
+      pattern = 'form';
+    } else if (content.includes('select') || content.includes('checkbox') || content.includes('radio') || family.includes('select')) {
+      pattern = 'selection';
+    } else if (content.includes('toggle') || content.includes('switch') || family.includes('toggle') || family.includes('switch')) {
+      pattern = 'toggle';
+    } else if (content.includes('accordion') || content.includes('collapse') || content.includes('expand') || family.includes('accordion') || family.includes('dropdown')) {
+      pattern = 'expandable';
+    } else if (content.includes('loading') || content.includes('async') || family.includes('loader') || family.includes('spinner')) {
+      pattern = 'loading';
+    }
+
+    // Add states from the detected pattern
+    states.push(...stateKeywords[pattern]);
+
+    // Also scan content for explicitly mentioned states
+    const explicitStatePatterns = [
+      /\b(hover|hovered)\b/,
+      /\b(focus|focused)\b/,
+      /\b(active|pressed)\b/,
+      /\b(disabled)\b/,
+      /\b(loading)\b/,
+      /\b(error)\b/,
+      /\b(success)\b/,
+      /\b(selected)\b/,
+      /\b(expanded|open)\b/,
+      /\b(collapsed|closed)\b/,
+      /\b(checked)\b/,
+      /\b(indeterminate)\b/
+    ];
+
+    for (const pattern of explicitStatePatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        const state = match[1].replace('ed', '').replace('hovered', 'hover').replace('focused', 'focus').replace('pressed', 'active');
+        if (!states.includes(state)) {
+          states.push(state);
+        }
+      }
+    }
+
+    return [...new Set(states)]; // Remove duplicates
+  }
+
+  /**
+   * Extract expected properties from MCP content
+   */
+  private extractPropertiesFromContent(content: string, family: string): ExpectedProperty[] {
+    const properties: ExpectedProperty[] = [];
+
+    // Common property patterns to detect
+    const propertyPatterns: Array<{
+      keywords: string[];
+      property: ExpectedProperty;
+    }> = [
+      {
+        keywords: ['size', 'sizes', 'small', 'medium', 'large'],
+        property: { name: 'size', type: 'variant', values: ['small', 'medium', 'large'] }
+      },
+      {
+        keywords: ['variant', 'variants', 'style', 'appearance'],
+        property: { name: 'variant', type: 'variant', values: ['primary', 'secondary', 'outline'] }
+      },
+      {
+        keywords: ['disabled', 'disable', 'enabled'],
+        property: { name: 'disabled', type: 'boolean', description: 'Disables the component' }
+      },
+      {
+        keywords: ['loading', 'loader', 'spinner'],
+        property: { name: 'loading', type: 'boolean', description: 'Shows loading state' }
+      },
+      {
+        keywords: ['icon', 'icons', 'leading icon', 'trailing icon'],
+        property: { name: 'icon', type: 'instance-swap', description: 'Icon slot' }
+      },
+      {
+        keywords: ['label', 'labels', 'text'],
+        property: { name: 'label', type: 'text', description: 'Label text' }
+      },
+      {
+        keywords: ['placeholder'],
+        property: { name: 'placeholder', type: 'text', description: 'Placeholder text' }
+      },
+      {
+        keywords: ['color', 'colors', 'semantic color'],
+        property: { name: 'color', type: 'variant', values: ['default', 'primary', 'success', 'warning', 'error'] }
+      },
+      {
+        keywords: ['orientation', 'horizontal', 'vertical'],
+        property: { name: 'orientation', type: 'variant', values: ['horizontal', 'vertical'] }
+      }
+    ];
+
+    // Check for each property pattern in content
+    for (const { keywords, property } of propertyPatterns) {
+      const hasKeyword = keywords.some(kw => content.includes(kw));
+      if (hasKeyword) {
+        properties.push(property);
+      }
+    }
+
+    // Add family-specific defaults if no properties detected
+    if (properties.length === 0) {
+      // Check family name for common patterns
+      if (family.includes('modal') || family.includes('dialog')) {
+        properties.push({ name: 'open', type: 'boolean', description: 'Controls dialog visibility' });
+        properties.push({ name: 'size', type: 'variant', values: ['small', 'medium', 'large', 'fullscreen'] });
+      } else if (family.includes('dropdown') || family.includes('menu')) {
+        properties.push({ name: 'open', type: 'boolean', description: 'Controls menu visibility' });
+        properties.push({ name: 'placement', type: 'variant', values: ['top', 'bottom', 'left', 'right'] });
+      } else if (family.includes('tooltip') || family.includes('popover')) {
+        properties.push({ name: 'placement', type: 'variant', values: ['top', 'bottom', 'left', 'right'] });
+      } else if (family.includes('tab') || family.includes('tabs')) {
+        properties.push({ name: 'selected', type: 'boolean', description: 'Whether tab is selected' });
+        properties.push({ name: 'disabled', type: 'boolean', description: 'Disables the tab' });
+      } else if (family.includes('table') || family.includes('data')) {
+        properties.push({ name: 'sortable', type: 'boolean', description: 'Enables sorting' });
+        properties.push({ name: 'selectable', type: 'boolean', description: 'Enables row selection' });
+      } else if (family.includes('list') || family.includes('item')) {
+        properties.push({ name: 'selected', type: 'boolean', description: 'Selection state' });
+        properties.push({ name: 'disabled', type: 'boolean', description: 'Disables the item' });
+      }
+    }
+
+    return properties;
+  }
+
+  /**
+   * Extract accessibility requirements from MCP content
+   */
+  private extractAccessibilityFromContent(content: string): string[] {
+    const requirements: string[] = [];
+
+    // Common accessibility requirements to look for
+    const a11yPatterns: Array<{ pattern: RegExp; requirement: string }> = [
+      { pattern: /keyboard|key press|arrow key/i, requirement: 'Keyboard navigation support' },
+      { pattern: /screen reader|aria|accessible/i, requirement: 'Screen reader compatibility' },
+      { pattern: /contrast|color ratio/i, requirement: 'Sufficient color contrast (WCAG 2.1)' },
+      { pattern: /focus|focus indicator|focus ring/i, requirement: 'Visible focus indicator' },
+      { pattern: /label|labeled|labelled/i, requirement: 'Associated label for form controls' },
+      { pattern: /touch target|tap target|44px|44 pixel/i, requirement: 'Minimum touch target size (44x44px)' },
+      { pattern: /announce|announced|live region/i, requirement: 'State changes announced to assistive technology' },
+      { pattern: /escape|esc key|close/i, requirement: 'Escape key to close/dismiss' }
+    ];
+
+    for (const { pattern, requirement } of a11yPatterns) {
+      if (pattern.test(content)) {
+        requirements.push(requirement);
+      }
+    }
+
+    // Add basic requirements if none detected
+    if (requirements.length === 0) {
+      requirements.push('Keyboard navigation support');
+      requirements.push('Visible focus indicator');
+    }
+
+    return requirements;
+  }
+
+  /**
+   * Get built-in best practices (internal - returns null for unknown families)
+   */
+  private getBuiltInBestPracticesInternal(family: string): ComponentBestPractices | null {
+    const bestPractices = this.getBestPracticesMap();
+    return bestPractices[family] || null;
+  }
+
+  /**
+   * Get the best practices map (shared between internal and public methods)
+   */
+  private getBestPracticesMap(): Record<string, ComponentBestPractices> {
+    return {
+      button: {
+        family: 'button',
+        expectedStates: ['default', 'hover', 'focus', 'active', 'disabled', 'loading'],
+        expectedProperties: [
+          { name: 'variant', type: 'variant', values: ['primary', 'secondary', 'outline', 'ghost', 'destructive'] },
+          { name: 'size', type: 'variant', values: ['small', 'medium', 'large'] },
+          { name: 'disabled', type: 'boolean', description: 'Disables the button' },
+          { name: 'loading', type: 'boolean', description: 'Shows loading state' },
+          { name: 'iconBefore', type: 'instance-swap', description: 'Icon slot before text' },
+          { name: 'iconAfter', type: 'instance-swap', description: 'Icon slot after text' }
+        ],
+        accessibilityRequirements: [
+          'Minimum touch target size of 44x44px',
+          'Color contrast ratio of at least 4.5:1 for text',
+          'Visible focus indicator',
+          'Disabled state should be visually distinct'
+        ],
+        mcpKnowledge: []
+      },
+      input: {
+        family: 'input',
+        expectedStates: ['default', 'hover', 'focus', 'filled', 'disabled', 'error', 'success'],
+        expectedProperties: [
+          { name: 'size', type: 'variant', values: ['small', 'medium', 'large'] },
+          { name: 'state', type: 'variant', values: ['default', 'error', 'success'] },
+          { name: 'disabled', type: 'boolean', description: 'Disables the input' },
+          { name: 'label', type: 'text', description: 'Input label text' },
+          { name: 'placeholder', type: 'text', description: 'Placeholder text' },
+          { name: 'helperText', type: 'text', description: 'Helper or error message' }
+        ],
+        accessibilityRequirements: [
+          'Associated label for screen readers',
+          'Error messages announced to screen readers',
+          'Sufficient color contrast',
+          'Visible focus state'
+        ],
+        mcpKnowledge: []
+      },
+      card: {
+        family: 'card',
+        expectedStates: ['default', 'hover', 'selected'],
+        expectedProperties: [
+          { name: 'variant', type: 'variant', values: ['default', 'outlined', 'elevated'] },
+          { name: 'padding', type: 'variant', values: ['none', 'small', 'medium', 'large'] },
+          { name: 'clickable', type: 'boolean', description: 'Whether card is interactive' }
+        ],
+        accessibilityRequirements: [
+          'Interactive cards should be keyboard focusable',
+          'Card content should have logical reading order',
+          'Sufficient contrast for card boundaries'
+        ],
+        mcpKnowledge: []
+      },
+      avatar: {
+        family: 'avatar',
+        expectedStates: ['default', 'loading', 'error'],
+        expectedProperties: [
+          { name: 'size', type: 'variant', values: ['xs', 'small', 'medium', 'large', 'xl'] },
+          { name: 'shape', type: 'variant', values: ['circle', 'square', 'rounded'] },
+          { name: 'showBadge', type: 'boolean', description: 'Show status badge' }
+        ],
+        accessibilityRequirements: [
+          'Alternative text for images',
+          'Fallback for failed image loads',
+          'Badge status should be accessible'
+        ],
+        mcpKnowledge: []
+      },
+      icon: {
+        family: 'icon',
+        expectedStates: ['default'],
+        expectedProperties: [
+          { name: 'size', type: 'variant', values: ['xs', 'small', 'medium', 'large', 'xl'] },
+          { name: 'color', type: 'color', description: 'Icon color' }
+        ],
+        accessibilityRequirements: [
+          'Decorative icons should be hidden from assistive technology',
+          'Meaningful icons need accessible labels'
+        ],
+        mcpKnowledge: []
+      },
+      badge: {
+        family: 'badge',
+        expectedStates: ['default'],
+        expectedProperties: [
+          { name: 'variant', type: 'variant', values: ['default', 'success', 'warning', 'error', 'info'] },
+          { name: 'size', type: 'variant', values: ['small', 'medium'] }
+        ],
+        accessibilityRequirements: [
+          'Color should not be the only indicator',
+          'Text should have sufficient contrast'
+        ],
+        mcpKnowledge: []
+      },
+      checkbox: {
+        family: 'checkbox',
+        expectedStates: ['default', 'hover', 'focus', 'checked', 'indeterminate', 'disabled'],
+        expectedProperties: [
+          { name: 'checked', type: 'boolean', description: 'Whether checkbox is checked' },
+          { name: 'indeterminate', type: 'boolean', description: 'Partial selection state' },
+          { name: 'disabled', type: 'boolean', description: 'Disables the checkbox' },
+          { name: 'label', type: 'text', description: 'Checkbox label' }
+        ],
+        accessibilityRequirements: [
+          'Associated label for screen readers',
+          'Keyboard operable',
+          'State changes announced'
+        ],
+        mcpKnowledge: []
+      },
+      toggle: {
+        family: 'toggle',
+        expectedStates: ['off', 'on', 'disabled'],
+        expectedProperties: [
+          { name: 'checked', type: 'boolean', description: 'Toggle state' },
+          { name: 'disabled', type: 'boolean', description: 'Disables the toggle' },
+          { name: 'size', type: 'variant', values: ['small', 'medium'] }
+        ],
+        accessibilityRequirements: [
+          'Role of switch',
+          'State announced on change',
+          'Keyboard operable'
+        ],
+        mcpKnowledge: []
+      }
+    };
+  }
+
+  /**
+   * Get built-in best practices for common component families
+   * Uses shared map for known families, generates intelligent defaults for unknown families
+   */
+  private getBuiltInBestPractices(family: string): ComponentBestPractices {
+    const bestPractices = this.getBestPracticesMap();
+
+    // Return built-in if available
+    if (bestPractices[family]) {
+      return bestPractices[family];
+    }
+
+    // For unknown families, generate intelligent defaults based on family name
+    return this.generateDefaultsForUnknownFamily(family);
+  }
+
+  /**
+   * Generate intelligent defaults for component families not in the built-in list
+   */
+  private generateDefaultsForUnknownFamily(family: string): ComponentBestPractices {
+    const familyLower = family.toLowerCase();
+
+    // Determine interaction pattern based on family name
+    let expectedStates: string[] = ['default'];
+    let expectedProperties: ExpectedProperty[] = [];
+    let accessibilityRequirements: string[] = ['Keyboard navigation support', 'Visible focus indicator'];
+
+    // Modal/Dialog pattern
+    if (familyLower.includes('modal') || familyLower.includes('dialog') || familyLower.includes('popup')) {
+      expectedStates = ['closed', 'open'];
+      expectedProperties = [
+        { name: 'open', type: 'boolean', description: 'Controls visibility' },
+        { name: 'size', type: 'variant', values: ['small', 'medium', 'large', 'fullscreen'] }
+      ];
+      accessibilityRequirements = [
+        'Focus trap when open',
+        'Escape key to close',
+        'Return focus on close',
+        'ARIA modal role'
+      ];
+    }
+    // Dropdown/Menu pattern
+    else if (familyLower.includes('dropdown') || familyLower.includes('menu') || familyLower.includes('popover')) {
+      expectedStates = ['closed', 'open', 'hover'];
+      expectedProperties = [
+        { name: 'open', type: 'boolean', description: 'Controls menu visibility' },
+        { name: 'placement', type: 'variant', values: ['top', 'bottom', 'left', 'right'] }
+      ];
+      accessibilityRequirements = [
+        'Arrow key navigation',
+        'Escape key to close',
+        'ARIA expanded state'
+      ];
+    }
+    // Tooltip pattern
+    else if (familyLower.includes('tooltip')) {
+      expectedStates = ['hidden', 'visible'];
+      expectedProperties = [
+        { name: 'placement', type: 'variant', values: ['top', 'bottom', 'left', 'right'] }
+      ];
+      accessibilityRequirements = [
+        'Accessible via keyboard focus',
+        'ARIA describedby relationship'
+      ];
+    }
+    // Table/Data pattern (check BEFORE tabs to avoid "DataTable" matching "tab")
+    else if (familyLower.includes('table') || familyLower.includes('datagrid') || familyLower.includes('grid')) {
+      expectedStates = ['default', 'hover', 'selected'];
+      expectedProperties = [
+        { name: 'sortable', type: 'boolean', description: 'Enables sorting' },
+        { name: 'selectable', type: 'boolean', description: 'Enables row selection' }
+      ];
+      accessibilityRequirements = [
+        'Proper table semantics',
+        'Keyboard navigation for cells',
+        'Sort status announced'
+      ];
+    }
+    // Tabs pattern
+    else if (familyLower.includes('tab')) {
+      expectedStates = ['default', 'hover', 'focus', 'selected', 'disabled'];
+      expectedProperties = [
+        { name: 'selected', type: 'boolean', description: 'Whether tab is selected' },
+        { name: 'disabled', type: 'boolean', description: 'Disables the tab' }
+      ];
+      accessibilityRequirements = [
+        'Arrow key navigation between tabs',
+        'ARIA tablist role',
+        'ARIA selected state'
+      ];
+    }
+    // Accordion pattern
+    else if (familyLower.includes('accordion') || familyLower.includes('collapse') || familyLower.includes('expand')) {
+      expectedStates = ['collapsed', 'expanded', 'hover', 'focus', 'disabled'];
+      expectedProperties = [
+        { name: 'expanded', type: 'boolean', description: 'Expansion state' },
+        { name: 'disabled', type: 'boolean', description: 'Disables the section' }
+      ];
+      accessibilityRequirements = [
+        'ARIA expanded state',
+        'Enter/Space to toggle',
+        'ARIA controls relationship'
+      ];
+    }
+    // Data-driven components (check after table)
+    else if (familyLower.includes('data')) {
+      expectedStates = ['default', 'loading', 'empty', 'error'];
+      expectedProperties = [
+        { name: 'loading', type: 'boolean', description: 'Loading state' }
+      ];
+      accessibilityRequirements = [
+        'Loading state announced',
+        'Empty state has proper messaging'
+      ];
+    }
+    // Stepper/Wizard pattern
+    else if (familyLower.includes('stepper') || familyLower.includes('wizard') || familyLower.includes('step')) {
+      expectedStates = ['default', 'active', 'completed', 'disabled', 'error'];
+      expectedProperties = [
+        { name: 'active', type: 'boolean', description: 'Current step' },
+        { name: 'completed', type: 'boolean', description: 'Step completed' }
+      ];
+      accessibilityRequirements = [
+        'Current step indicated',
+        'Progress announced to screen readers'
+      ];
+    }
+    // Chip/Tag pattern
+    else if (familyLower.includes('chip') || familyLower.includes('tag') || familyLower.includes('pill')) {
+      expectedStates = ['default', 'hover', 'selected', 'disabled'];
+      expectedProperties = [
+        { name: 'selected', type: 'boolean', description: 'Selection state' },
+        { name: 'removable', type: 'boolean', description: 'Can be removed' }
+      ];
+      accessibilityRequirements = [
+        'Remove action accessible',
+        'Selection state announced'
+      ];
+    }
+    // Slider/Range pattern
+    else if (familyLower.includes('slider') || familyLower.includes('range')) {
+      expectedStates = ['default', 'hover', 'focus', 'disabled'];
+      expectedProperties = [
+        { name: 'disabled', type: 'boolean', description: 'Disables the slider' }
+      ];
+      accessibilityRequirements = [
+        'ARIA slider role',
+        'Value announced on change',
+        'Keyboard operable'
+      ];
+    }
+    // Rating/Stars pattern
+    else if (familyLower.includes('rating') || familyLower.includes('star')) {
+      expectedStates = ['default', 'hover', 'selected', 'disabled'];
+      expectedProperties = [
+        { name: 'readonly', type: 'boolean', description: 'Read-only mode' }
+      ];
+      accessibilityRequirements = [
+        'Current rating announced',
+        'Keyboard selection support'
+      ];
+    }
+    // List/Item pattern
+    else if (familyLower.includes('list') || familyLower.includes('item')) {
+      expectedStates = ['default', 'hover', 'focus', 'selected', 'disabled'];
+      expectedProperties = [
+        { name: 'selected', type: 'boolean', description: 'Selection state' },
+        { name: 'disabled', type: 'boolean', description: 'Disables the item' }
+      ];
+      accessibilityRequirements = [
+        'ARIA listbox/option roles',
+        'Arrow key navigation'
+      ];
+    }
+    // Alert/Banner pattern (includes announcement, toast, snackbar)
+    else if (familyLower.includes('alert') || familyLower.includes('banner') || familyLower.includes('notification') ||
+             familyLower.includes('announcement') || familyLower.includes('toast') || familyLower.includes('snackbar')) {
+      expectedStates = ['default', 'dismissing'];
+      expectedProperties = [
+        { name: 'variant', type: 'variant', values: ['info', 'success', 'warning', 'error'] },
+        { name: 'dismissible', type: 'boolean', description: 'Can be dismissed' }
+      ];
+      accessibilityRequirements = [
+        'ARIA alert or status role',
+        'Color not sole indicator'
+      ];
+    }
+    // Progress/Loading pattern
+    else if (familyLower.includes('progress') || familyLower.includes('loader') || familyLower.includes('spinner')) {
+      expectedStates = ['default', 'loading', 'complete', 'error'];
+      expectedProperties = [
+        { name: 'indeterminate', type: 'boolean', description: 'Indeterminate state' }
+      ];
+      accessibilityRequirements = [
+        'ARIA progressbar role',
+        'Value announced to screen readers'
+      ];
+    }
+    // Navigation pattern
+    else if (familyLower.includes('nav') || familyLower.includes('breadcrumb') || familyLower.includes('pagination')) {
+      expectedStates = ['default', 'hover', 'focus', 'active', 'disabled'];
+      expectedProperties = [];
+      accessibilityRequirements = [
+        'ARIA navigation role',
+        'Current page indicated'
+      ];
+    }
+    // Interactive component (default with basic interaction)
+    else if (familyLower.includes('button') || familyLower.includes('link') || familyLower.includes('action')) {
+      expectedStates = ['default', 'hover', 'focus', 'active', 'disabled'];
+      expectedProperties = [
+        { name: 'disabled', type: 'boolean', description: 'Disables interaction' }
+      ];
+    }
+    // Container/Layout (minimal states)
+    else if (familyLower.includes('container') || familyLower.includes('section') || familyLower.includes('wrapper') || familyLower.includes('layout')) {
+      expectedStates = ['default'];
+      expectedProperties = [];
+      accessibilityRequirements = ['Proper semantic structure'];
+    }
+    // Generic interactive component
+    else {
+      expectedStates = ['default', 'hover', 'focus', 'disabled'];
+      expectedProperties = [
+        { name: 'disabled', type: 'boolean', description: 'Disables the component' }
+      ];
+    }
+
+    return {
+      family,
+      expectedStates,
+      expectedProperties,
+      accessibilityRequirements,
+      mcpKnowledge: []
+    };
+  }
+
+  /**
+   * Compare component against best practices and return gaps
+   */
+  analyzeAgainstBestPractices(
+    componentContext: ComponentContext,
+    currentStates: string[],
+    currentProperties: string[],
+    bestPractices: ComponentBestPractices
+  ): BestPracticesGap[] {
+    const gaps: BestPracticesGap[] = [];
+
+    // Check for missing states
+    const missingStates = bestPractices.expectedStates.filter(
+      state => !currentStates.some(s => s.toLowerCase().includes(state.toLowerCase()))
+    );
+
+    if (missingStates.length > 0) {
+      gaps.push({
+        category: 'states',
+        severity: 'warning',
+        message: `Missing interactive states: ${missingStates.join(', ')}`,
+        suggestion: `Add visual designs for: ${missingStates.join(', ')}`,
+        missingItems: missingStates
+      });
+    }
+
+    // Check for missing properties
+    const missingProperties = bestPractices.expectedProperties.filter(
+      prop => !currentProperties.some(p =>
+        p.toLowerCase().includes(prop.name.toLowerCase())
+      )
+    );
+
+    if (missingProperties.length > 0) {
+      gaps.push({
+        category: 'properties',
+        severity: 'info',
+        message: `Consider adding properties: ${missingProperties.map(p => p.name).join(', ')}`,
+        suggestion: `Add component properties for configurability`,
+        missingItems: missingProperties.map(p => p.name)
+      });
+    }
+
+    return gaps;
+  }
+}
+
+// Types for best practices
+export interface ComponentBestPractices {
+  family: string;
+  expectedStates: string[];
+  expectedProperties: ExpectedProperty[];
+  accessibilityRequirements: string[];
+  mcpKnowledge: string[];
+}
+
+export interface ExpectedProperty {
+  name: string;
+  type: 'variant' | 'boolean' | 'text' | 'number' | 'color' | 'instance-swap';
+  values?: string[];
+  description?: string;
+}
+
+export interface BestPracticesGap {
+  category: 'states' | 'properties' | 'accessibility';
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  suggestion: string;
+  missingItems: string[];
 }
 
 export default ComponentConsistencyEngine;

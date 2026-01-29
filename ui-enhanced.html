@@ -124,7 +124,7 @@
     /* Tabs Navigation */
     .tabs-navigation {
       display: flex;
-      padding: 0 var(--space-md) var(--space-xs);
+      padding: 0 var(--space-md) 0;
       border-bottom: 1px solid var(--border);
       background: var(--background);
       position: sticky;
@@ -178,8 +178,9 @@
 
     .card-subtitle {
       font-size: 11px;
-      color: var(--text-secondary);
-      margin: var(--space-xs) 0 0 0;
+      color: var(--text-tertiary);
+      margin: 2px 0 0 0;
+      line-height: 1.3;
     }
 
     /* Collapsible Sections */
@@ -219,7 +220,7 @@
     }
 
     .collapsible-title > .tooltip {
-      left: -8px;
+      /* tooltip positioning handled by general tooltip rules */
     }
 
     .collapsible-icon {
@@ -248,7 +249,12 @@
     .form-group {
       display: flex;
       flex-direction: column;
-      gap: var(--space-xs);
+      gap: 2px;
+      margin-bottom: var(--space-md);
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
     }
 
     label {
@@ -351,12 +357,12 @@
     .button-ghost {
       background: transparent;
       color: var(--primary);
-      border: 1px solid var(--surface-hover);
+      border: 1px solid transparent;
     }
 
     .button-ghost:hover:not(:disabled) {
       background: var(--primary-light);
-      border-color: var(--surface-hover);
+      border-color: var(--border);
     }
 
     .button:disabled {
@@ -413,8 +419,8 @@
 
     .status-warning {
       background: #FFF4E0;
-      color: var(--warning);
-      border: 1px solid var(--warning);
+      color: #946800;
+      border: 1px solid #D4960A;
     }
 
     /* Audit View Styles */
@@ -447,6 +453,16 @@
 
     .audit-status.warning {
       color: var(--warning);
+    }
+
+    .audit-status.info {
+      color: var(--info);
+    }
+
+    .audit-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
     }
 
     .audit-label {
@@ -961,9 +977,8 @@
       padding: var(--space-sm);
       position: absolute;
       z-index: 1000;
-      bottom: 125%;
-      left: 50%;
-      margin-left: -140px;
+      bottom: calc(100% + 8px);
+      right: -8px;
       opacity: 0;
       transition: opacity var(--transition-base);
       font-size: 11px;
@@ -975,27 +990,28 @@
       content: "";
       position: absolute;
       top: 100%;
-      left: 50%;
-      margin-left: -5px;
+      right: 12px;
       border-width: 5px;
       border-style: solid;
       border-color: var(--text-primary) transparent transparent transparent;
     }
 
-    /* Special positioning ONLY for Accessibility tooltip to prevent left edge cutoff */
-    /* We'll add a specific class to the Accessibility tooltip in the HTML */
-    .accessibility-tooltip .tooltiptext {
-      left: -10px;
-      margin-left: 0;
-    }
-
-    .accessibility-tooltip .tooltiptext::after {
-      left: 20px;
-    }
-
     .tooltip:hover .tooltiptext {
       visibility: visible;
       opacity: 1;
+    }
+
+    /* For tooltips inside section-header, anchor to left of the header block */
+    .section-header .tooltip .tooltiptext,
+    .collapsible-title .tooltip .tooltiptext {
+      right: auto;
+      left: -200px;
+    }
+
+    .section-header .tooltip .tooltiptext::after,
+    .collapsible-title .tooltip .tooltiptext::after {
+      right: auto;
+      left: calc(100% - 28px);
     }
 
     .section-header {
@@ -1103,17 +1119,6 @@
 
     .quick-actions-bar .button-ghost {
       flex: 0 0 auto;
-    }
-
-    /* Tabs Navigation */
-    .tabs-navigation {
-      display: flex;
-      padding: 0 var(--space-md) 0;
-      border-bottom: 1px solid var(--border);
-      background: var(--background);
-      position: sticky;
-      top: 0;
-      z-index: 100;
     }
 
     .tab-button {
@@ -1653,6 +1658,417 @@
 
     .chat-loading-dot:nth-child(1) { animation-delay: -0.32s; }
     .chat-loading-dot:nth-child(2) { animation-delay: -0.16s; }
+
+    /* Confirmation Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all var(--transition-fast);
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal-container {
+      background: var(--background);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      width: 90%;
+      max-width: 360px;
+      max-height: 80vh;
+      overflow: hidden;
+      transform: scale(0.95);
+      transition: transform var(--transition-fast);
+    }
+
+    .modal-overlay.active .modal-container {
+      transform: scale(1);
+    }
+
+    .modal-header {
+      padding: var(--space-md);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-tertiary);
+      padding: 4px;
+      border-radius: var(--radius-sm);
+      transition: all var(--transition-fast);
+    }
+
+    .modal-close:hover {
+      background: var(--surface);
+      color: var(--text-primary);
+    }
+
+    .modal-body {
+      padding: var(--space-md);
+      overflow-y: auto;
+      max-height: 50vh;
+    }
+
+    .modal-footer {
+      padding: var(--space-md);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: var(--space-sm);
+      justify-content: flex-end;
+    }
+
+    .preview-box {
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
+      margin-bottom: var(--space-sm);
+    }
+
+    .preview-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
+      margin-bottom: 4px;
+    }
+
+    .preview-value {
+      font-size: 13px;
+      color: var(--text-primary);
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .preview-arrow {
+      text-align: center;
+      color: var(--primary);
+      font-size: 16px;
+      margin: var(--space-xs) 0;
+    }
+
+    /* Fix Button Styles */
+    .fix-btn {
+      font-size: 10px;
+      padding: 2px 6px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+    }
+
+    .fix-btn:hover {
+      background: var(--primary);
+      color: white;
+    }
+
+    .fix-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .token-actions {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      margin-left: auto;
+    }
+
+    /* Fix Summary Bar (auto-fix actions in analysis results) */
+    .fix-summary-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--primary-light);
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      margin-bottom: 12px;
+    }
+
+    .fix-summary-stats {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .fix-summary-stats .stat-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .quick-actions-btn {
+      font-size: 11px;
+      padding: 4px 12px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .quick-actions-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .quick-actions-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Batch Action Bar (token section) */
+    .batch-action-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #FFF4E0;
+      border: 1px solid var(--warning);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      font-size: 11px;
+    }
+
+    .batch-action-bar .batch-label {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    /* Metadata Action Bar */
+    .metadata-action-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      background: var(--surface-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      margin-bottom: 12px;
+    }
+
+    .metadata-action-bar .action-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      flex: 1;
+      min-width: 0;
+    }
+
+    .metadata-action-bar .audit-action-button {
+      flex-shrink: 0;
+    }
+
+    /* Naming Issue Arrow */
+    .naming-issue-arrow {
+      color: var(--primary);
+      font-weight: 600;
+      margin: 0 6px;
+      font-size: 12px;
+    }
+
+    /* Layer Naming Tree */
+    .naming-tree-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      background: var(--surface-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .naming-tree-summary .severity-counts {
+      display: flex;
+      gap: 8px;
+    }
+    .naming-tree-summary .sev-count {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .naming-tree-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 2px 8px;
+      font-size: 10px;
+      color: var(--primary);
+      cursor: pointer;
+      transition: var(--transition-fast);
+    }
+    .naming-tree-toggle:hover {
+      background: var(--primary-light);
+      border-color: var(--primary);
+    }
+    .naming-tree-group {
+      margin-bottom: 6px;
+    }
+    .naming-tree-group-header {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 0;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+    .naming-tree-group-header:hover {
+      color: var(--text-primary);
+    }
+    .naming-tree-group-header .tree-arrow {
+      display: inline-block;
+      transition: transform var(--transition-fast);
+      font-size: 8px;
+      width: 12px;
+      text-align: center;
+    }
+    .naming-tree-group-header .tree-arrow.collapsed {
+      transform: rotate(-90deg);
+    }
+    .naming-tree-group-header .group-count {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0 5px;
+      font-size: 9px;
+      font-weight: 500;
+      color: var(--text-tertiary);
+      margin-left: auto;
+    }
+    .naming-tree-items {
+      overflow: hidden;
+      transition: max-height var(--transition-base);
+    }
+    .naming-tree-items.collapsed {
+      max-height: 0 !important;
+    }
+    .naming-tree-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 4px 0 4px 16px;
+      border-left: 1px solid var(--border);
+      margin-left: 5px;
+    }
+    .naming-tree-item .audit-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* Copy Button */
+    .copy-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 3px 5px;
+      cursor: pointer;
+      color: var(--text-tertiary);
+      transition: all var(--transition-fast);
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--border);
+      color: var(--text-primary);
+      background: var(--surface);
+    }
+
+    .copy-btn.copied {
+      border-color: var(--success);
+      color: var(--success);
+    }
+
+    /* Fix Applied Animation */
+    @keyframes fixAppliedFlash {
+      0% { background-color: transparent; }
+      30% { background-color: rgba(52, 199, 89, 0.15); }
+      100% { background-color: transparent; }
+    }
+
+    .fix-applied-success {
+      animation: fixAppliedFlash 1.2s ease-out;
+    }
+
+    .fix-btn.fix-applied {
+      background: var(--success);
+      color: white;
+      border-color: var(--success);
+      pointer-events: none;
+    }
+
+    /* Inline icon system */
+    .ico {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      vertical-align: -2px;
+      flex-shrink: 0;
+    }
+
+    .ico svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .ico-sm { width: 12px; height: 12px; }
+    .ico-lg { width: 16px; height: 16px; vertical-align: -3px; }
+
+    /* Provider indicator dots */
+    .provider-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    .provider-dot.anthropic { background: #7C3AED; }
+    .provider-dot.openai { background: #10A37F; }
+    .provider-dot.google { background: #4285F4; }
   </style>
 </head>
 <body>
@@ -1701,8 +2117,20 @@
           </div>
 
           <div id="config-content">
+            <!-- Provider Selection -->
             <div class="form-group">
-              <label for="api-key">Claude API Key</label>
+              <label for="provider-select">AI Provider</label>
+              <select id="provider-select">
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI (GPT)</option>
+                <option value="google">Google (Gemini)</option>
+              </select>
+              <p class="card-subtitle">Select your preferred AI provider</p>
+            </div>
+
+            <!-- API Key Input -->
+            <div class="form-group">
+              <label for="api-key"><span id="api-key-label">Claude</span> API Key</label>
               <div class="input-wrapper">
                 <input
                   type="password"
@@ -1710,21 +2138,35 @@
                   placeholder="sk-ant-..."
                   autocomplete="off"
                 >
-                <span class="input-icon">🔐</span>
+                <span class="input-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 4v2h-.25A1.75 1.75 0 002 7.75v5.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 13.25v-5.5A1.75 1.75 0 0012.25 6H12V4a4 4 0 10-8 0zm6 2V4a2 2 0 10-4 0v2h4zm-5.25 2h6.5a.25.25 0 01.25.25v5.5a.25.25 0 01-.25.25h-8.5a.25.25 0 01-.25-.25v-5.5a.25.25 0 01.25-.25z"/></svg></span>
               </div>
-              <p class="card-subtitle">Your API key is stored securely in this session</p>
+              <p class="card-subtitle" id="api-key-hint">Your API key is stored securely in this session</p>
             </div>
 
+            <!-- Model Selection (dynamic based on provider) -->
             <div class="form-group">
-              <label for="model-select">Claude Model</label>
+              <label for="model-select"><span id="model-label">Claude</span> Model</label>
               <select id="model-select">
-                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended - Latest & Best)</option>
-                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fastest - October 2025)</option>
-                <option value="claude-opus-4-1-20250805">Claude Opus 4.1 (Most Capable - Advanced Reasoning)</option>
-                <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (High Performance)</option>
-                <option value="claude-opus-4-20250514">Claude Opus 4 (Complex Analysis)</option>
+                <!-- Anthropic (Claude) Models -->
+                <optgroup label="Anthropic (Claude)" id="anthropic-models">
+                  <option value="claude-opus-4-5-20251218">Claude Opus 4.5 (Flagship - Advanced Reasoning)</option>
+                  <option value="claude-sonnet-4-5-20250929" selected>Claude Sonnet 4.5 (Recommended - Best Value)</option>
+                  <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast - Economy)</option>
+                </optgroup>
+                <!-- OpenAI (GPT) Models -->
+                <optgroup label="OpenAI (GPT)" id="openai-models" style="display: none;">
+                  <option value="gpt-5.2">GPT-5.2 (Flagship)</option>
+                  <option value="gpt-5.2-pro">GPT-5.2 Pro (Extended Reasoning)</option>
+                  <option value="gpt-5-mini">GPT-5 Mini (Fast - Economy)</option>
+                </optgroup>
+                <!-- Google (Gemini) Models -->
+                <optgroup label="Google (Gemini)" id="google-models" style="display: none;">
+                  <option value="gemini-3-pro-preview">Gemini 3 Pro (Flagship - Multimodal)</option>
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro (Recommended)</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast - Economy)</option>
+                </optgroup>
               </select>
-              <p class="card-subtitle">Choose the Claude model that works best for your component analysis</p>
+              <p class="card-subtitle">Choose the model that works best for your component analysis</p>
             </div>
 
             <div class="button-group mt-md">
@@ -1748,7 +2190,7 @@
 
         <!-- Batch Mode Toggle (shown when multiple components selected) -->
         <div class="batch-toggle hidden" id="batch-mode-toggle">
-          <span>🎯</span>
+          <span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z"/><path d="M8 4.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM6 8a2 2 0 114 0 2 2 0 01-4 0z"/><circle cx="8" cy="8" r="1"/></svg></span>
           <span>Multiple components selected</span>
           <label class="toggle-switch">
             <input type="checkbox" id="batch-mode-switch">
@@ -1910,14 +2352,14 @@
               <h2>Design Systems Chat</h2>
             </div>
             <button class="button button-ghost" id="clear-chat" title="Clear chat history">
-              🗑️ Clear
+              <span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zM4.496 6.675l.66 6.6a.25.25 0 00.249.225h5.19a.25.25 0 00.249-.225l.66-6.6a.75.75 0 011.492.15l-.66 6.6A1.748 1.748 0 0110.595 15h-5.19a1.75 1.75 0 01-1.741-1.575l-.66-6.6a.75.75 0 111.492-.15z"/></svg></span> Clear
             </button>
           </div>
 
           <!-- Component Context (if available) -->
           <div id="component-context-indicator" class="hidden component-context">
             <div class="context-badge">
-              🎯 Component Context Available
+              <span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z"/><path d="M8 4.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM6 8a2 2 0 114 0 2 2 0 01-4 0z"/><circle cx="8" cy="8" r="1"/></svg></span> Component Context Available
             </div>
             <div id="current-component-info" class="context-info">
               <!-- Component info will be injected here -->
@@ -1927,7 +2369,7 @@
           <!-- Chat Empty State -->
           <div id="chat-empty" class="chat-empty">
             <div class="chat-empty-content">
-              <span class="chat-empty-icon">💬</span>
+              <span class="chat-empty-icon"><svg viewBox="0 0 16 16" fill="currentColor" width="24" height="24"><path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 13H8.06l-2.573 2.573A1.458 1.458 0 013 14.543V13H1.75A1.75 1.75 0 010 11.25v-8.5C0 1.784.784 1 1.75 1zm.25 1.75v8.5c0 .138.112.25.25.25h2a.75.75 0 01.75.75v2.19l2.72-2.72a.749.749 0 01.53-.22h6a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H2a.25.25 0 00-.25.25z"/></svg></span>
               <div class="chat-empty-text">
                 <h3>Ask me about design systems!</h3>
                 <p>I have access to comprehensive design systems knowledge and can help with components, tokens, patterns, and best practices.</p>
@@ -1971,6 +2413,23 @@
       </div>
     </div>
 
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" id="fix-modal">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3 class="modal-title" id="modal-title">Confirm Fix</h3>
+          <button class="modal-close" onclick="hideFixModal()">✕</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+          <!-- Preview content will be inserted here -->
+        </div>
+        <div class="modal-footer">
+          <button class="button button-secondary" onclick="hideFixModal()">Cancel</button>
+          <button class="button button-primary" id="modal-confirm-btn" onclick="confirmFix()">Apply Fix</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <div class="footer-links">
       <a href="#" id="clear-api-key" class="footer-link hidden">Clear saved API key</a>
@@ -1990,6 +2449,31 @@
         .join(' ')
         .trim();
     }
+
+    // SVG Icon library for professional UI
+    const ICO = {
+      check:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg></span>',
+      x:         '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></span>',
+      warn:      '<span class="ico" style="color:var(--warning)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.083 11.398c.634 1.187-.169 2.555-1.543 2.555H1.917C.543 15-.26 13.632.374 12.445L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm0 9a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
+      info:      '<span class="ico" style="color:var(--info)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 8a8 8 0 1116 0A8 8 0 010 8zm8-6.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM6.5 7.75A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.75h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-2h-.25a.75.75 0 01-.75-.75zM8 6a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
+      lightbulb: '<span class="ico" style="color:var(--warning)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 01-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 00-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863.5 8 .5s5.5 1.81 5.5 4.75c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.32-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.75.75 0 01-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75zM6 15.25a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5h-2.5a.75.75 0 01-.75-.75zM5.75 12a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg></span>',
+      chart:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1.75V13.5h13.75a.75.75 0 010 1.5H.75a.75.75 0 01-.75-.75V1.75a.75.75 0 011.5 0zm14.28 2.53l-5.25 5.25a.75.75 0 01-1.06 0L7 7.06 4.28 9.78a.75.75 0 01-1.06-1.06l3.25-3.25a.75.75 0 011.06 0L10 7.94l4.72-4.72a.75.75 0 111.06 1.06z"/></svg></span>',
+      palette:   '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A7.996 7.996 0 0010.41 1c-.13.02-.26.04-.39.07A6.5 6.5 0 108 14.5c.2 0 .39-.01.58-.03A4 4 0 0011.5 8h-2a2 2 0 01-2-2V4.5A4 4 0 018 0zm0 3.5a1 1 0 110-2 1 1 0 010 2zm3 1a1 1 0 110-2 1 1 0 010 2zM4.5 7a1 1 0 110-2 1 1 0 010 2zM4 10a1 1 0 112 0 1 1 0 01-2 0z"/></svg></span>',
+      target:    '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z"/><path d="M8 4.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM6 8a2 2 0 114 0 2 2 0 01-4 0z"/><circle cx="8" cy="8" r="1"/></svg></span>',
+      text:      '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v2a.75.75 0 01-1.5 0V2.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25v2a.75.75 0 01-1.5 0v-2C0 1.784.784 1 1.75 1zM7.25 5v9.25a.75.75 0 001.5 0V5h3.5a.75.75 0 000-1.5h-8.5a.75.75 0 000 1.5h3.5z"/></svg></span>',
+      ruler:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3.75C2 2.784 2.784 2 3.75 2h8.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0112.25 14h-8.5A1.75 1.75 0 012 12.25v-8.5zm1.75-.25a.25.25 0 00-.25.25v1.5h2v-1.75h-1.75zm0 9h1.75v-1.75h-2v1.5c0 .138.112.25.25.25zm3.25-9H5.25v1.75h1.75V3.5zm0 9V10.75H5.25v1.75h1.75zm1.5-9v1.75h1.75V3.5H8.5zm3.75 0H10.5v1.75h2V3.75a.25.25 0 00-.25-.25zm.25 3.25h-2v1.75h2V6.75zm0 3.25h-2v2.5h1.75a.25.25 0 00.25-.25V10z"/></svg></span>',
+      square:    '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25V2.75A1.75 1.75 0 0014.25 1H1.75zm.25 1.75a.25.25 0 01.25-.25h11.5a.25.25 0 01.25.25v10.5a.25.25 0 01-.25.25H2.25a.25.25 0 01-.25-.25V2.75z"/></svg></span>',
+      gear:      '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a1.5 1.5 0 00-1.5 1.5v.17A6.979 6.979 0 004.2 2.79l-.12-.12a1.5 1.5 0 00-2.12 2.12l.12.12A6.979 6.979 0 001 7.21v-.01H.75a1.5 1.5 0 000 3h.42c.16.63.4 1.23.72 1.78l-.12.12a1.5 1.5 0 002.12 2.12l.12-.12c.55.32 1.15.56 1.78.72v.42a1.5 1.5 0 003 0v-.42c.63-.16 1.23-.4 1.78-.72l.12.12a1.5 1.5 0 002.12-2.12l-.12-.12c.32-.55.56-1.15.72-1.78h.42a1.5 1.5 0 000-3h-.42a6.979 6.979 0 00-.72-1.78l.12-.12a1.5 1.5 0 00-2.12-2.12l-.12.12A6.979 6.979 0 009.5 1.67V1.5A1.5 1.5 0 008 0zm0 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/></svg></span>',
+      pkg:       '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.878.392a1.75 1.75 0 00-1.756 0l-5.25 3.045A1.75 1.75 0 001 4.951v6.098c0 .624.332 1.2.872 1.514l5.25 3.045a1.75 1.75 0 001.756 0l5.25-3.045c.54-.313.872-.89.872-1.514V4.951c0-.624-.332-1.2-.872-1.514L8.878.392zM7.875 1.69a.25.25 0 01.25 0l4.63 2.685L8 7.133 3.245 4.375l4.63-2.685zM2.5 5.677l5 2.902v5.186l-4.63-2.685a.25.25 0 01-.124-.216L2.5 5.677zm6.5 8.088V8.58l5-2.902v5.186a.25.25 0 01-.124.216L8.999 13.765z"/></svg></span>',
+      message:   '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 13H8.06l-2.573 2.573A1.458 1.458 0 013 14.543V13H1.75A1.75 1.75 0 010 11.25v-8.5C0 1.784.784 1 1.75 1zm.25 1.75v8.5c0 .138.112.25.25.25h2a.75.75 0 01.75.75v2.19l2.72-2.72a.749.749 0 01.53-.22h6a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H2a.25.25 0 00-.25.25z"/></svg></span>',
+      book:      '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.75A.75.75 0 01.75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0111.006 1h4.245a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75h-4.507a2.25 2.25 0 00-1.591.659l-.622.621a.75.75 0 01-1.06 0l-.622-.621A2.25 2.25 0 005.258 13H.75a.75.75 0 01-.75-.75V1.75zm7.251 10.324l.004-5.073-.002-2.253A2.25 2.25 0 005.003 2.5H1.5v9h3.757a3.75 3.75 0 011.994.574zM8.755 4.75l-.004 7.322a3.752 3.752 0 011.992-.572H14.5v-9h-3.495a2.25 2.25 0 00-2.25 2.25z"/></svg></span>',
+      trash:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zM4.496 6.675l.66 6.6a.25.25 0 00.249.225h5.19a.25.25 0 00.249-.225l.66-6.6a.75.75 0 011.492.15l-.66 6.6A1.748 1.748 0 0110.595 15h-5.19a1.75 1.75 0 01-1.741-1.575l-.66-6.6a.75.75 0 111.492-.15z"/></svg></span>',
+      checkCircle: '<span class="ico" style="color:var(--success)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 118 0a8 8 0 010 16zm3.78-9.72a.751.751 0 00-.018-1.042.751.751 0 00-1.042-.018L6.75 9.19 5.28 7.72a.751.751 0 00-1.042.018.751.751 0 00-.018 1.042l2 2a.75.75 0 001.06 0l4.5-4.5z"/></svg></span>',
+      xCircle:     '<span class="ico" style="color:var(--error)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2.343 13.657A8 8 0 1113.658 2.343 8 8 0 012.343 13.657zM6.03 4.97a.751.751 0 00-1.042.018.751.751 0 00-.018 1.042L6.94 8 4.97 9.97a.749.749 0 00.326 1.275.749.749 0 00.734-.215L8 9.06l1.97 1.97a.749.749 0 001.275-.326.749.749 0 00-.215-.734L9.06 8l1.97-1.97a.749.749 0 00-.326-1.275.749.749 0 00-.734.215L8 6.94 6.03 4.97z"/></svg></span>',
+      warnTriangle:'<span class="ico" style="color:#946800"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.083 11.398c.634 1.187-.169 2.555-1.543 2.555H1.917C.543 15-.26 13.632.374 12.445L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm0 9a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
+      sparkle:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.53 1.282a.5.5 0 01.94 0l1.478 4.03a.5.5 0 00.296.296l4.03 1.478a.5.5 0 010 .94l-4.03 1.478a.5.5 0 00-.296.296l-1.478 4.03a.5.5 0 01-.94 0L6.052 9.8a.5.5 0 00-.296-.296L1.726 8.026a.5.5 0 010-.94L5.756 5.608a.5.5 0 00.296-.296L7.53 1.282z"/></svg></span>',
+      clipboard:   '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.75 1a.75.75 0 00-.75.75v.5c0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75v-.5a.75.75 0 00-.75-.75h-4.5z"/><path d="M3.5 3.75a.75.75 0 01.75-.75H5v.5A1.75 1.75 0 006.75 5h2.5A1.75 1.75 0 0011 3.5V3h.75a.75.75 0 01.75.75v9.5a.75.75 0 01-.75.75h-8.5a.75.75 0 01-.75-.75v-9.5z"/></svg></span>',
+    };
 
     // Filter out wrapper/boundary elements from token scoring
     function filterWrapperElements(tokenSummary) {
@@ -2017,7 +2501,7 @@
           }
         });
 
-        console.log(`🔍 [WRAPPER FILTER] Identified ${wrapperTokenCount} likely wrapper tokens`);
+        console.log(`[DEBUG][WRAPPER FILTER] Identified ${wrapperTokenCount} likely wrapper tokens`);
 
         // Reduce hard-coded count by estimated wrapper elements, but be conservative
         const filteredHardCoded = Math.max(0, tokenSummary.hardCodedValues - Math.min(wrapperTokenCount, Math.floor(tokenSummary.hardCodedValues * 0.3)));
@@ -2084,6 +2568,12 @@
     // Track the current analysis data for scoring purposes
     let currentAnalysisData = null;
 
+    // Auto-fix state
+    let currentNamingIssues = [];
+    let currentFixableTokens = [];
+    let lastAnalyzedNodeId = null;
+    let quickActionsFixCount = 0;
+
     // Chat State Management
     let chatHistory = [];
     let chatSessionId = 'session-' + Date.now();
@@ -2092,8 +2582,38 @@
     // DOM Elements
     const apiKeyInput = document.getElementById('api-key');
     const modelSelect = document.getElementById('model-select');
+    const providerSelect = document.getElementById('provider-select');
+    const apiKeyLabel = document.getElementById('api-key-label');
+    const modelLabel = document.getElementById('model-label');
+    const apiKeyHint = document.getElementById('api-key-hint');
     const saveKeyButton = document.getElementById('save-key');
     const analyzeButton = document.getElementById('analyze-component');
+
+    // Provider Configuration
+    const providerConfig = {
+      anthropic: {
+        name: 'Claude',
+        placeholder: 'sk-ant-...',
+        hint: 'Get your API key from console.anthropic.com',
+        defaultModel: 'claude-sonnet-4-5-20250929'
+      },
+      openai: {
+        name: 'OpenAI',
+        placeholder: 'sk-...',
+        hint: 'Get your API key from platform.openai.com',
+        defaultModel: 'gpt-5.2'
+      },
+      google: {
+        name: 'Gemini',
+        placeholder: 'AIza...',
+        hint: 'Get your API key from aistudio.google.com',
+        defaultModel: 'gemini-2.5-pro'
+      }
+    };
+
+    // Current provider state
+    let currentProvider = 'anthropic';
+    let providerApiKeys = {}; // Store keys per provider
     const statusContainer = document.getElementById('status-container');
     const statusDiv = document.getElementById('status');
     const statusIcon = document.getElementById('status-icon');
@@ -2149,11 +2669,161 @@
 
     // Status Icons
     const statusIcons = {
-      info: 'ℹ️',
-      success: '✅',
-      error: '❌',
-      warning: '⚠️'
+      info: ICO.info,
+      success: ICO.checkCircle,
+      error: ICO.xCircle,
+      warning: ICO.warnTriangle
     };
+
+    // =============================================
+    // Auto-Fix Functionality
+    // =============================================
+
+    // Current fix being previewed
+    let pendingFix = null;
+
+    // Show the confirmation modal with preview
+    function showFixModal(title, previewHtml, fixData) {
+      const modal = document.getElementById('fix-modal');
+      const modalTitle = document.getElementById('modal-title');
+      const modalBody = document.getElementById('modal-body');
+
+      modalTitle.textContent = title;
+      modalBody.innerHTML = previewHtml;
+      pendingFix = fixData;
+
+      modal.classList.add('active');
+    }
+
+    // Hide the confirmation modal
+    function hideFixModal() {
+      const modal = document.getElementById('fix-modal');
+      modal.classList.remove('active');
+      pendingFix = null;
+    }
+
+    // Confirm and apply the pending fix
+    function confirmFix() {
+      if (!pendingFix) return;
+
+      const { type, nodeId, propertyPath, newValue, tokenId, fixes } = pendingFix;
+
+      if (type === 'token') {
+        sendMessageToPlugin('apply-token-fix', {
+          type: 'token',
+          nodeId,
+          propertyPath,
+          tokenId,
+          newValue
+        });
+      } else if (type === 'naming') {
+        sendMessageToPlugin('apply-naming-fix', {
+          type: 'naming',
+          nodeId,
+          newValue
+        });
+      } else if (type === 'description') {
+        // Get the textarea value (may have been edited by user)
+        const textarea = document.getElementById('description-textarea');
+        const description = textarea ? textarea.value : pendingFix.description;
+        sendMessageToPlugin('update-description', {
+          nodeId: pendingFix.nodeId,
+          description
+        });
+      } else if (type === 'batch') {
+        sendMessageToPlugin('apply-batch-fix', {
+          fixes: fixes,
+          confirmAll: true
+        });
+      }
+
+      hideFixModal();
+      updateStatus('Applying fix...', 'info');
+    }
+
+    // Request fix preview for a token
+    function previewTokenFix(nodeId, propertyPath, currentValue) {
+      sendMessageToPlugin('preview-fix', {
+        type: 'token',
+        nodeId,
+        propertyPath,
+        suggestedValue: currentValue
+      });
+    }
+
+    // Toggle a naming tree group open/collapsed
+    function toggleNamingGroup(groupId) {
+      const items = document.getElementById(groupId);
+      const arrow = document.getElementById(groupId + '-arrow');
+      if (!items || !arrow) return;
+      const isCollapsed = items.classList.contains('collapsed');
+      if (isCollapsed) {
+        items.classList.remove('collapsed');
+        items.style.maxHeight = items.scrollHeight + 'px';
+        arrow.classList.remove('collapsed');
+      } else {
+        items.classList.add('collapsed');
+        items.style.maxHeight = '0';
+        arrow.classList.add('collapsed');
+      }
+    }
+
+    // Toggle all naming tree groups
+    function toggleAllNamingGroups() {
+      const allGroups = document.querySelectorAll('.naming-tree-items');
+      const allArrows = document.querySelectorAll('.naming-tree-group-header .tree-arrow');
+      const btn = document.querySelector('.naming-tree-toggle');
+      const anyCollapsed = Array.from(allGroups).some(g => g.classList.contains('collapsed'));
+
+      allGroups.forEach(group => {
+        if (anyCollapsed) {
+          group.classList.remove('collapsed');
+          group.style.maxHeight = group.scrollHeight + 'px';
+        } else {
+          group.classList.add('collapsed');
+          group.style.maxHeight = '0';
+        }
+      });
+      allArrows.forEach(arrow => {
+        if (anyCollapsed) {
+          arrow.classList.remove('collapsed');
+        } else {
+          arrow.classList.add('collapsed');
+        }
+      });
+      if (btn) {
+        btn.textContent = anyCollapsed ? 'Collapse All' : 'Expand All';
+      }
+    }
+
+    // Request fix preview for naming
+    function previewNamingFix(nodeId, currentName, suggestedName) {
+      // Show preview directly since we have the info
+      const previewHtml = `
+        <div class="preview-box">
+          <div class="preview-label">Current Name</div>
+          <div class="preview-value">${escapeHtml(currentName)}</div>
+        </div>
+        <div class="preview-arrow">↓</div>
+        <div class="preview-box">
+          <div class="preview-label">New Name</div>
+          <div class="preview-value">${escapeHtml(suggestedName)}</div>
+        </div>
+      `;
+
+      showFixModal('Rename Layer', previewHtml, {
+        type: 'naming',
+        nodeId,
+        newValue: suggestedName
+      });
+    }
+
+    // Helper to escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
     // Initialize UI
     function initializeUI() {
@@ -2169,6 +2839,11 @@
           handleSaveApiKey();
         }
       });
+
+      // Provider selection handling
+      if (providerSelect) {
+        providerSelect.addEventListener('change', handleProviderChange);
+      }
 
       // Model selection handling
       modelSelect.addEventListener('change', handleModelChange);
@@ -2347,21 +3022,70 @@
       }
     }
 
+    // Handle Provider Change
+    function handleProviderChange() {
+      const selectedProvider = providerSelect.value;
+      const config = providerConfig[selectedProvider];
+
+      if (!config) return;
+
+      // Store current provider's API key before switching
+      if (apiKeyInput.value.trim()) {
+        providerApiKeys[currentProvider] = apiKeyInput.value.trim();
+      }
+
+      // Update current provider
+      currentProvider = selectedProvider;
+
+      // Update UI labels
+      if (apiKeyLabel) apiKeyLabel.textContent = config.name;
+      if (modelLabel) modelLabel.textContent = config.name;
+      if (apiKeyHint) apiKeyHint.textContent = config.hint;
+      apiKeyInput.placeholder = config.placeholder;
+
+      // Restore saved API key for this provider (if any)
+      apiKeyInput.value = providerApiKeys[selectedProvider] || '';
+
+      // Update model dropdown visibility
+      const anthropicModels = document.getElementById('anthropic-models');
+      const openaiModels = document.getElementById('openai-models');
+      const googleModels = document.getElementById('google-models');
+
+      // Hide all model groups and show only the selected provider's models
+      if (anthropicModels) anthropicModels.style.display = selectedProvider === 'anthropic' ? '' : 'none';
+      if (openaiModels) openaiModels.style.display = selectedProvider === 'openai' ? '' : 'none';
+      if (googleModels) googleModels.style.display = selectedProvider === 'google' ? '' : 'none';
+
+      // Select default model for this provider
+      modelSelect.value = config.defaultModel;
+
+      // Update button state based on whether we have a key for this provider
+      const hasKey = apiKeyInput.value.trim().length > 0;
+      updateAnalyzeButtonState(hasKey && apiKeySaved);
+
+      console.log('Provider changed to:', selectedProvider, 'Model:', config.defaultModel);
+    }
+
     // Handle Save API Key
     function handleSaveApiKey() {
       const apiKey = apiKeyInput.value.trim();
       const selectedModel = modelSelect.value;
+      const selectedProvider = providerSelect ? providerSelect.value : 'anthropic';
 
       if (!apiKey) {
         updateStatus('Please enter an API key', 'error');
         return;
       }
 
+      // Store key for this provider
+      providerApiKeys[selectedProvider] = apiKey;
+
       saveKeyButton.disabled = true;
-      updateStatus('Saving API key and model selection...', 'info');
+      updateStatus(`Saving ${providerConfig[selectedProvider]?.name || 'API'} key...`, 'info');
       sendMessageToPlugin('save-api-key', {
         apiKey,
-        model: selectedModel
+        model: selectedModel,
+        provider: selectedProvider
       });
     }
 
@@ -2578,6 +3302,18 @@
         case 'chat-history-cleared':
           handleChatHistoryCleared();
           break;
+        case 'fix-preview':
+          handleFixPreview(data);
+          break;
+        case 'fix-applied':
+          handleFixApplied(data);
+          break;
+        case 'batch-fix-applied':
+          handleBatchFixApplied(data);
+          break;
+        case 'description-updated':
+          handleDescriptionUpdated(data);
+          break;
         default:
           console.log('Unknown message type:', type);
       }
@@ -2664,6 +3400,32 @@
       currentMetadata = data.metadata;
       currentAuditResults = data.audit;
       currentTokenSummary = data.tokens ? data.tokens.summary : undefined;
+
+      // Store naming issues and fixable tokens for auto-fix
+      currentNamingIssues = data.namingIssues || [];
+      currentFixableTokens = [];
+      if (data.tokens) {
+        ['colors', 'spacing', 'typography', 'effects', 'borders'].forEach(cat => {
+          if (data.tokens[cat] && Array.isArray(data.tokens[cat])) {
+            data.tokens[cat].forEach(token => {
+              if (!token.isActualToken && token.source === 'hard-coded' && !token.isDefaultVariantStyle && token.context && token.context.nodeId) {
+                currentFixableTokens.push(token);
+              }
+            });
+          }
+        });
+      }
+
+      // Store the analyzed node ID for description updates
+      lastAnalyzedNodeId = data.analyzedNodeId || null;
+      if (!lastAnalyzedNodeId) {
+        // Fallback: extract from token context or naming issues
+        if (currentFixableTokens.length > 0 && currentFixableTokens[0].context) {
+          lastAnalyzedNodeId = currentFixableTokens[0].context.nodeId;
+        } else if (currentNamingIssues.length > 0) {
+          lastAnalyzedNodeId = currentNamingIssues[0].nodeId;
+        }
+      }
 
       // Update Audit View
       if (data.audit) {
@@ -2754,6 +3516,17 @@
       // Enable relevant buttons
       updateUIButtonStates();
 
+      // Render Quick Actions bar (Phase 2)
+      const analysisResults = document.getElementById('analysis-results');
+      const existingBar = document.getElementById('fix-summary-bar');
+      if (existingBar) existingBar.remove();
+
+      const fixCounts = computeFixableCounts(data);
+      if (fixCounts.total > 0 && analysisResults) {
+        const barHtml = renderQuickActionsBar(fixCounts);
+        analysisResults.insertAdjacentHTML('afterbegin', barHtml);
+      }
+
       // Update chat component context if we're on chat tab or switching to it
       updateChatComponentContext();
 
@@ -2769,12 +3542,12 @@
       let weightedTotalScore = 0;
 
       // START WITH BASELINE POSITIVE SCORING - Award points for good practices
-      console.log('🔍 [SCORING] Starting with baseline positive scoring...');
+      console.log('[DEBUG][SCORING] Starting with baseline positive scoring...');
 
       // Baseline points for just having a component (5 points)
       // REMOVED: Unconditional bonus was allowing 100% scores despite warnings
       // Components must now earn their score through actual quality checks
-      console.log('🔍 [SCORING] Baseline bonuses removed to make warnings count');
+      console.log('[DEBUG][SCORING] Baseline bonuses removed to make warnings count');
 
       // Token and property bonuses removed to prevent grade inflation
       // Score is now based purely on audit checks passing
@@ -2783,20 +3556,20 @@
       // DESIGN TOKEN USAGE SCORING - High impact on overall score
       let tokenPassCount = 0;
       let tokenTotalCount = 0;
-      console.log(`🔍 [TOKEN SCORING START] currentTokenSummary exists: ${!!currentTokenSummary}, totalTokens: ${currentTokenSummary ? currentTokenSummary.totalTokens : 'undefined'}`);
+      console.log(`[DEBUG][TOKEN SCORING START] currentTokenSummary exists: ${!!currentTokenSummary}, totalTokens: ${currentTokenSummary ? currentTokenSummary.totalTokens : 'undefined'}`);
 
       if (currentTokenSummary && currentTokenSummary.totalTokens > 0) {
-        console.log(`🔍 [TOKEN SCORING] Entering token scoring block...`);
+        console.log(`[DEBUG][TOKEN SCORING] Entering token scoring block...`);
         // Filter out likely wrapper/boundary elements from scoring
         const filteredHardCoded = filterWrapperElements(currentTokenSummary);
         const scorableHardCoded = filteredHardCoded.hardCodedValues;
         const scorableTotal = filteredHardCoded.totalTokens;
 
-        console.log(`🔍 [TOKEN SCORING] Original: ${currentTokenSummary.hardCodedValues} hard-coded, ${currentTokenSummary.totalTokens} total`);
-        console.log(`🔍 [TOKEN SCORING] After filtering: ${scorableHardCoded} hard-coded, ${scorableTotal} total`);
+        console.log(`[DEBUG][TOKEN SCORING] Original: ${currentTokenSummary.hardCodedValues} hard-coded, ${currentTokenSummary.totalTokens} total`);
+        console.log(`[DEBUG][TOKEN SCORING] After filtering: ${scorableHardCoded} hard-coded, ${scorableTotal} total`);
 
         if (scorableTotal > 0) {
-          console.log(`🔍 [TOKEN SCORING] scorableTotal > 0, proceeding with scoring...`);
+          console.log(`[DEBUG][TOKEN SCORING] scorableTotal > 0, proceeding with scoring...`);
           // Each token-able property gets weighted scoring (2x weight - important for design systems)
           tokenTotalCount = scorableTotal;
           // IMPORTANT: Use scorable tokens for both numerator and denominator
@@ -2808,13 +3581,13 @@
           weightedTotalScore += tokenTotalCount * tokenWeight;
           weightedPassScore += tokenPassCount * tokenWeight;
 
-          console.log(`🔍 [TOKEN SCORING] Added ${tokenTotalCount * tokenWeight} total token points, ${tokenPassCount * tokenWeight} passing token points`);
-          console.log(`🔍 [TOKEN SCORING] Running totals: ${weightedPassScore} / ${weightedTotalScore}`);
+          console.log(`[DEBUG][TOKEN SCORING] Added ${tokenTotalCount * tokenWeight} total token points, ${tokenPassCount * tokenWeight} passing token points`);
+          console.log(`[DEBUG][TOKEN SCORING] Running totals: ${weightedPassScore} / ${weightedTotalScore}`);
         } else {
-          console.log(`🔍 [TOKEN SCORING] scorableTotal is 0 or negative, skipping token scoring`);
+          console.log(`[DEBUG][TOKEN SCORING] scorableTotal is 0 or negative, skipping token scoring`);
         }
       } else {
-        console.log(`🔍 [TOKEN SCORING] Skipped - no currentTokenSummary or totalTokens is 0`);
+        console.log(`[DEBUG][TOKEN SCORING] Skipped - no currentTokenSummary or totalTokens is 0`);
       }
 
       // States Audit
@@ -2842,7 +3615,7 @@
           // Show positive message for non-interactive components
           html += `
             <div class="audit-item">
-              <span class="audit-status pass">✅</span>
+              <span class="audit-status pass">${ICO.checkCircle}</span>
               <span class="audit-label">No interactive states needed for this component</span>
             </div>
           `;
@@ -2862,9 +3635,9 @@
             weightedTotalScore += 3;
             if (state.found) {
               weightedPassScore += 3;
-              console.log(`🔍 [STATES] "${state.name}" = PASS → +3 points`);
+              console.log(`[DEBUG][STATES] "${state.name}" = PASS → +3 points`);
             } else {
-              console.log(`🔍 [STATES] "${state.name}" = FAIL → 0 points`);
+              console.log(`[DEBUG][STATES] "${state.name}" = FAIL → 0 points`);
             }
 
             html += `
@@ -2904,7 +3677,7 @@
         html += `
           <div class="audit-item">
             <span class="audit-status ${tokenUsagePercentage >= 80 ? 'pass' : tokenUsagePercentage >= 50 ? 'warning' : 'fail'}">${
-              tokenUsagePercentage >= 80 ? '✅' : tokenUsagePercentage >= 50 ? '⚠️' : '❌'
+              tokenUsagePercentage >= 80 ? ICO.checkCircle : tokenUsagePercentage >= 50 ? ICO.warnTriangle : ICO.xCircle
             }</span>
             <span class="audit-label">Token usage: ${currentTokenSummary.actualTokens}/${currentTokenSummary.totalTokens} properties (${tokenUsagePercentage}%)</span>
           </div>
@@ -2914,7 +3687,7 @@
         if (currentTokenSummary.hardCodedValues > 0) {
           html += `
             <div class="audit-item">
-              <span class="audit-status fail">❌</span>
+              <span class="audit-status fail">${ICO.xCircle}</span>
               <span class="audit-label">${currentTokenSummary.hardCodedValues} hard-coded values found (should use design tokens)</span>
             </div>
           `;
@@ -2935,7 +3708,7 @@
         } else {
           html += `
             <div class="audit-item">
-              <span class="audit-status pass">✅</span>
+              <span class="audit-status pass">${ICO.checkCircle}</span>
               <span class="audit-label">All properties use design tokens</span>
             </div>
           `;
@@ -2963,7 +3736,7 @@
         html += `
           <div class="section-header">
             <h4 class="section-title">Accessibility</h4>
-            <div class="tooltip accessibility-tooltip">
+            <div class="tooltip">
               <div class="info-icon">i</div>
               <span class="tooltiptext">
                 <strong>Accessibility</strong><br>
@@ -2982,18 +3755,18 @@
           weightedTotalScore += 2;
           if (status === 'pass') {
             weightedPassScore += 2; // Full credit for pass
-            console.log(`🔍 [ACCESSIBILITY] "${item.check}" = PASS → +2 points`);
+            console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = PASS → +2 points`);
           } else if (status === 'warning') {
-            console.log(`🔍 [ACCESSIBILITY] "${item.check}" = WARNING → 0 points (penalty)`);
+            console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = WARNING → 0 points (penalty)`);
           } else {
-            console.log(`🔍 [ACCESSIBILITY] "${item.check}" = FAIL → 0 points`);
+            console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = FAIL → 0 points`);
           }
           // Warnings and fails get 0 points - must fix to improve score
 
           html += `
             <div class="audit-item">
               <span class="audit-status ${status}">${
-                status === 'pass' ? '✅' : status === 'warning' ? '⚠️' : '❌'
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
               }</span>
               <span class="audit-label">${item.check}</span>
               ${item.suggestion && status === 'fail' ? `<button class="audit-action-button" onclick="handleFixAccessibility('${item.check.replace(/'/g, "\\'")}')" title="Click to fix ${item.check}">Fix</button>` : ''}
@@ -3003,15 +3776,169 @@
         html += '</div>';
       }
 
+      // Layer Naming Audit (Phase 3) — Tree layout grouped by parent path
+      if (currentNamingIssues && currentNamingIssues.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Layer Naming</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Layer Naming</strong><br>
+                Checks layer names for generic or unclear naming patterns. Semantic layer names help developers understand component structure, improve code generation quality, and make components easier to maintain.
+              </span>
+            </div>
+          </div>
+        `;
 
+        // Compute scoring for all naming issues (scoring stays the same)
+        let namingErrorCount = 0, namingWarnCount = 0, namingInfoCount = 0;
+        currentNamingIssues.forEach(issue => {
+          totalCount++;
+          weightedTotalScore += 1.5;
+          if (issue.severity === 'info') { weightedPassScore += 0.75; namingInfoCount++; }
+          else if (issue.severity === 'warning') { namingWarnCount++; }
+          else { namingErrorCount++; }
+        });
+
+        // Summary bar with severity breakdown
+        html += `<div class="naming-tree-summary">
+          <span>${currentNamingIssues.length} naming issue${currentNamingIssues.length !== 1 ? 's' : ''} found</span>
+          <div class="severity-counts">
+            ${namingErrorCount > 0 ? `<span class="sev-count">${ICO.xCircle} ${namingErrorCount}</span>` : ''}
+            ${namingWarnCount > 0 ? `<span class="sev-count">${ICO.warnTriangle} ${namingWarnCount}</span>` : ''}
+            ${namingInfoCount > 0 ? `<span class="sev-count">${ICO.info} ${namingInfoCount}</span>` : ''}
+          </div>
+        </div>`;
+
+        // Group issues by parent path (extract parent from path)
+        const grouped = {};
+        currentNamingIssues.forEach(issue => {
+          const pathParts = issue.path ? issue.path.split(' > ') : ['Root'];
+          // Use all but last segment as group key, or 'Root' for top-level
+          const parentPath = pathParts.length > 1 ? pathParts.slice(0, -1).join(' > ') : 'Root';
+          if (!grouped[parentPath]) grouped[parentPath] = [];
+          grouped[parentPath].push(issue);
+        });
+
+        const groupKeys = Object.keys(grouped);
+        const shouldCollapse = currentNamingIssues.length > 5;
+
+        groupKeys.forEach((groupPath, gi) => {
+          const items = grouped[groupPath];
+          const isCollapsedInitially = shouldCollapse && gi > 0;
+          const groupId = 'naming-group-' + gi;
+
+          html += `<div class="naming-tree-group">`;
+          html += `<div class="naming-tree-group-header" onclick="toggleNamingGroup('${groupId}')">
+            <span class="tree-arrow ${isCollapsedInitially ? 'collapsed' : ''}" id="${groupId}-arrow">▼</span>
+            <span>${escapeHtml(groupPath)}</span>
+            <span class="group-count">${items.length}</span>
+          </div>`;
+          html += `<div class="naming-tree-items ${isCollapsedInitially ? 'collapsed' : ''}" id="${groupId}" style="max-height: ${isCollapsedInitially ? '0' : items.length * 60 + 'px'};">`;
+
+          items.forEach(issue => {
+            const severityIcon = issue.severity === 'error' ? ICO.xCircle : issue.severity === 'warning' ? ICO.warnTriangle : ICO.info;
+            const severityClass = issue.severity === 'error' ? 'fail' : issue.severity === 'warning' ? 'warning' : 'info';
+            const escapedCurrent = issue.currentName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const escapedSuggested = issue.suggestedName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+            html += `
+              <div class="naming-tree-item">
+                <span class="audit-status ${severityClass}">${severityIcon}</span>
+                <div class="audit-content">
+                  <span class="audit-label">
+                    <code style="font-size: 10px; background: var(--surface); padding: 1px 4px; border-radius: 2px;">${escapeHtml(issue.currentName)}</code>
+                    <span class="naming-issue-arrow">&rarr;</span>
+                    <code style="font-size: 10px; background: var(--surface); padding: 1px 4px; border-radius: 2px;">${escapeHtml(issue.suggestedName)}</code>
+                  </span>
+                  <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">${issue.reason}</div>
+                </div>
+                <button class="audit-action-button" data-node-id="${issue.nodeId}" onclick="previewNamingFix('${issue.nodeId}', '${escapedCurrent}', '${escapedSuggested}')" title="Rename this layer">Rename</button>
+              </div>
+            `;
+          });
+
+          html += '</div></div>';
+        });
+
+        // Show expand/collapse all toggle when many issues
+        if (shouldCollapse) {
+          html += `<div style="text-align: center; margin-top: 4px;">
+            <button class="naming-tree-toggle" onclick="toggleAllNamingGroups()">Expand All</button>
+          </div>`;
+        }
+
+        html += '</div>';
+      }
+
+      // Best Practices Gaps (MCP-enhanced recommendations)
+      if (audit.bestPracticesGaps && audit.bestPracticesGaps.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Best Practices</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Best Practices</strong><br>
+                Recommendations based on design system standards from MCP knowledge base. These suggest missing states, properties, or accessibility requirements that would improve your component's completeness and compatibility.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.bestPracticesGaps.forEach(gap => {
+          totalCount++;
+          const severityIcon = gap.severity === 'error' ? ICO.xCircle : gap.severity === 'warning' ? ICO.warnTriangle : ICO.info;
+          const severityClass = gap.severity === 'error' ? 'fail' : gap.severity === 'warning' ? 'warning' : 'info';
+
+          // Best practices gaps impact score
+          weightedTotalScore += 1;
+          if (gap.severity === 'info') {
+            weightedPassScore += 0.5; // Info-level gaps get partial credit
+            console.log(`[DEBUG][BEST PRACTICES] "${gap.message}" = INFO → +0.5 points`);
+          } else {
+            console.log(`[DEBUG][BEST PRACTICES] "${gap.message}" = ${gap.severity.toUpperCase()} → 0 points`);
+          }
+
+          // Phase 7: Check if this gap is actionable
+          let gapActionHtml = '';
+          if (gap.category === 'accessibility' && gap.suggestion && gap.suggestion.toLowerCase().includes('description')) {
+            gapActionHtml = `<button class="audit-action-button" onclick="handleUpdateDescription()" style="margin-top: 6px;">Update Description</button>`;
+          }
+
+          html += `
+            <div class="audit-item">
+              <span class="audit-status ${severityClass}">${severityIcon}</span>
+              <div class="audit-content">
+                <span class="audit-label">${gap.message}</span>
+                <div class="audit-suggestion" style="font-size: 10px; color: var(--text-tertiary); margin-top: 4px;">
+                  ${gap.suggestion}
+                </div>
+                ${gap.missingItems && gap.missingItems.length > 0 ? `
+                  <div class="missing-items" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
+                    ${gap.missingItems.map(item => `
+                      <span class="property-value" style="background: var(--surface); font-size: 10px; border: 1px dashed var(--border);">${item}</span>
+                    `).join('')}
+                  </div>
+                ` : ''}
+                ${gapActionHtml}
+              </div>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
 
       auditContent.innerHTML = html;
 
       // Update audit score using weighted scoring for MCP compatibility focus
       const rawPercentage = weightedTotalScore > 0 ? (weightedPassScore / weightedTotalScore) * 100 : 0;
       const score = weightedTotalScore > 0 ? Math.min(100, Math.round(rawPercentage)) : 0;
-      console.log(`🔍 [FINAL SCORE] Raw calculation: ${weightedPassScore} / ${weightedTotalScore} = ${rawPercentage.toFixed(4)}%`);
-      console.log(`🔍 [FINAL SCORE] After Math.round(): ${score}%`);
+      console.log(`[DEBUG][FINAL SCORE] Raw calculation: ${weightedPassScore} / ${weightedTotalScore} = ${rawPercentage.toFixed(4)}%`);
+      console.log(`[DEBUG][FINAL SCORE] After Math.round(): ${score}%`);
       console.log(`Audit scoring: ${weightedPassScore} weighted points out of ${weightedTotalScore} total = ${score}% (simple: ${passCount}/${totalCount})`);
 
       auditScore.innerHTML = `<span>Score: ${score}%</span>`;
@@ -3047,26 +3974,31 @@
 
       // Use only property recommendations (no slots)
       let allRecommendations = recommendations ? [...recommendations] : [];
+      _currentRecommendations = allRecommendations; // Store for clipboard access
 
-      console.log('🔧 Property recommendations only (slots excluded):', allRecommendations.length);
+      console.log('[CONFIG]Property recommendations only (slots excluded):', allRecommendations.length);
 
       // Add recommendations section if available
       if (allRecommendations && allRecommendations.length > 0) {
         if (html) html += '<div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px;"></div>';
 
         html += '<div class="recommendations-section">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 12px; margin-top: 0; color: var(--primary);">💡 Recommended Properties</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 12px; margin-top: 0; color: var(--primary);">' + ICO.lightbulb + ' Recommended Properties</h4>';
         html += '<p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;">Consider adding these properties that developers typically expect for this component type:</p>';
 
         allRecommendations.forEach(rec => {
           const typeColor = rec.type === 'slot' ? 'var(--warning)' : 'var(--primary)';
-          const typeIcon = rec.type === 'slot' ? '📦' : '⚙️';
+          const typeIcon = rec.type === 'slot' ? ICO.pkg : ICO.gear;
+          const recIndex = allRecommendations.indexOf(rec);
 
           html += `
             <div style="background: var(--surface-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                 <span style="font-weight: 500; font-size: 12px;">${typeIcon} ${rec.name}</span>
                 <span style="background: ${typeColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase;">${rec.type}</span>
+                <button class="copy-btn" data-prop-name="${rec.name}" data-rec-index="${recIndex}" onclick="copyRecommendationByIndex(${recIndex})" title="Copy to clipboard">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>
+                </button>
               </div>
               <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">${rec.description}</p>
               <div style="display: flex; flex-wrap: wrap; gap: 4px;">
@@ -3083,7 +4015,7 @@
       if (!html) {
         html = `
           <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
-            <div style="font-size: 24px; margin-bottom: var(--space-sm);">📋</div>
+            <div style="font-size: 24px; margin-bottom: var(--space-sm);">${ICO.clipboard}</div>
             <p>This component has no configurable properties</p>
             <p style="font-size: 11px; margin-top: var(--space-xs);">Simple components may not have customizable props</p>
           </div>
@@ -3102,7 +4034,7 @@
       // Display token summary if available
       if (currentTokenSummary) {
         html += '<div class="token-summary" style="background: var(--surface-secondary); border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; margin-top: 0;">📊 Token Analysis Summary</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; margin-top: 0;">' + ICO.chart + ' Token Analysis Summary</h4>';
         html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 11px;">';
         html += `<div><strong>Total Items:</strong> ${currentTokenSummary.totalTokens}</div>`;
         html += `<div><strong>Design Tokens:</strong> <span style="color: var(--success)">${currentTokenSummary.actualTokens}</span></div>`;
@@ -3128,11 +4060,21 @@
         html += '</div>';
       }
 
+      // Batch Token Fix Bar (Phase 4)
+      if (currentTokenSummary && currentTokenSummary.hardCodedValues > 0) {
+        html += `
+          <div class="batch-action-bar">
+            <span class="batch-label">${ICO.warnTriangle} ${currentTokenSummary.hardCodedValues} hard-coded value${currentTokenSummary.hardCodedValues !== 1 ? 's' : ''} found</span>
+            <button class="quick-actions-btn" onclick="handleBatchTokenFix()" style="background: var(--warning); font-size: 10px; padding: 3px 10px;">Fix All</button>
+          </div>
+        `;
+      }
+
       // Colors - Enhanced with comprehensive analysis
       if (tokens.colors && Array.isArray(tokens.colors) && tokens.colors.length > 0) {
         console.log('Processing color tokens:', tokens.colors);
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🎨 Color Tokens</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">' + ICO.palette + ' Color Tokens</h4>';
 
         // Separate actual tokens from hard-coded values
         console.log('Color tokens before filtering:', tokens.colors);
@@ -3151,9 +4093,9 @@
         // Show actual design tokens first
         if (actualTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Design Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">' + ICO.target + ' Design Tokens in Use</h5>';
           actualTokens.forEach(token => {
-            const usageIcon = token.usage === 'background' ? '🎨' : '🔲';
+            const usageIcon = token.usage === 'background' ? ICO.palette : ICO.square;
             html += `
               <div class="token-item-compact">
                 <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
@@ -3170,9 +4112,9 @@
         // Show hard-coded colors with enhanced context
         if (hardCodedTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Colors</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">' + ICO.warnTriangle + ' Hard-coded Colors</h5>';
           hardCodedTokens.forEach(token => {
-            const usageIcon = token.usage === 'background' ? '🎨' : '🔲';
+            const usageIcon = token.usage === 'background' ? ICO.palette : ICO.square;
             const contextInfo = token.context ?
               `${token.context.nodeType} in "${token.context.nodeName}"${token.context.isInteractive ? ' (Interactive)' : ''}` :
               'Unknown context';
@@ -3184,6 +4126,9 @@
                 </svg>
               </button>` : '';
 
+            const fixButton = token.context?.nodeId && token.context?.property ?
+              `<button class="fix-btn" onclick="previewTokenFix('${token.context.nodeId}', '${token.context.property || 'fills[0]'}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
+
             html += `
               <div class="token-item-compact warning">
                 <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
@@ -3191,7 +4136,10 @@
                   <div class="token-name">${usageIcon} ${token.value}</div>
                   <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
-                ${selectButton}
+                <div class="token-actions">
+                  ${fixButton}
+                  ${selectButton}
+                </div>
               </div>
             `;
           });
@@ -3201,13 +4149,13 @@
         // Show AI suggested tokens
         if (aiSuggestions.length > 0) {
           html += '<div>';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--primary); margin-bottom: 6px;">💡 AI Suggested Tokens</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--primary); margin-bottom: 6px;">' + ICO.lightbulb + ' AI Suggested Tokens</h5>';
           aiSuggestions.forEach(token => {
             html += `
               <div class="token-item-compact suggestion">
                 <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">💡 ${token.name}</div>
+                  <div class="token-name">${ICO.lightbulb} ${token.name}</div>
                   <div class="token-usage" title="${token.recommendation || token.suggestion || 'AI suggested token'}">${token.recommendation || token.suggestion || 'AI suggested token'}</div>
                 </div>
               </div>
@@ -3223,20 +4171,20 @@
       // Effects - New comprehensive section
       if (tokens.effects && Array.isArray(tokens.effects) && tokens.effects.length > 0) {
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">✨ Effect Tokens</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">' + ICO.sparkle + ' Effect Tokens</h4>';
 
         const actualEffectTokens = tokens.effects.filter(token => token.isActualToken);
         const hardCodedEffects = tokens.effects.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
 
         if (actualEffectTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Effect Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">' + ICO.target + ' Effect Tokens in Use</h5>';
           actualEffectTokens.forEach(token => {
             html += `
               <div class="token-item-compact">
                 <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">✨ ${token.name}</div>
+                  <div class="token-name">${ICO.sparkle} ${token.name}</div>
                   <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
                 </div>
               </div>
@@ -3247,7 +4195,7 @@
 
         if (hardCodedEffects.length > 0) {
           html += '<div>';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Effects</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">' + ICO.warnTriangle + ' Hard-coded Effects</h5>';
           hardCodedEffects.forEach(token => {
             const contextInfo = token.context ? `${token.context.nodeType} in "${token.context.nodeName}"` : 'Unknown context';
 
@@ -3262,7 +4210,7 @@
               <div class="token-item-compact warning">
                 <div class="token-preview-effect" style="width: 20px; height: 20px; background: var(--surface); border-radius: 4px; box-shadow: ${token.value};" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">✨ ${token.type}</div>
+                  <div class="token-name">${ICO.sparkle} ${token.type}</div>
                   <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
                 </div>
                 ${selectButton}
@@ -3278,7 +4226,7 @@
       // Borders - New comprehensive section
       if (tokens.borders && Array.isArray(tokens.borders) && tokens.borders.length > 0) {
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">🔲 Border Tokens</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">' + ICO.square + ' Border Tokens</h4>';
 
         const actualBorderTokens = tokens.borders.filter(token => token.isActualToken);
         const hardCodedBorders = tokens.borders.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
@@ -3286,13 +4234,13 @@
 
         if (actualBorderTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Border Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">' + ICO.target + ' Border Tokens in Use</h5>';
           actualBorderTokens.forEach(token => {
             html += `
               <div class="token-item-compact">
                 <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};" title="${token.value}"></div>
                 <div class="token-details">
-                  <div class="token-name">🔲 ${token.name}</div>
+                  <div class="token-name">${ICO.square} ${token.name}</div>
                   <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
                 </div>
               </div>
@@ -3315,7 +4263,7 @@
           // Stroke Weight Section
           if (strokeWeights.length > 0) {
             html += '<div style="margin-bottom: 12px;">';
-            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Stroke Weight</h5>';
+            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">' + ICO.warnTriangle + ' Hard-coded Stroke Weight</h5>';
             strokeWeights.forEach(token => {
               // Use the enhanced debug context for better information
               let contextInfo = 'Unknown location';
@@ -3345,7 +4293,7 @@
                 <div class="token-item-compact warning">
                   <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: ${token.value} solid var(--border);"></div>
                   <div class="token-details">
-                    <div class="token-name">📏 ${token.value}</div>
+                    <div class="token-name">${ICO.ruler} ${token.value}</div>
                     <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
                     <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">Use appropriate stroke weight token (e.g., stroke.thin, stroke.medium)</div>
                   </div>
@@ -3359,7 +4307,7 @@
           // Border Radius Section
           if (borderRadius.length > 0) {
             html += '<div>';
-            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Border Radius</h5>';
+            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">' + ICO.warnTriangle + ' Hard-coded Border Radius</h5>';
             borderRadius.forEach(token => {
               // Use the enhanced debug context for better information
               let contextInfo = 'Unknown location';
@@ -3389,7 +4337,7 @@
                 <div class="token-item-compact warning">
                   <div class="token-preview-border" style="width: 20px; height: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: ${token.value};"></div>
                   <div class="token-details">
-                    <div class="token-name">🔲 ${token.value}</div>
+                    <div class="token-name">${ICO.square} ${token.value}</div>
                     <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
                     <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion}</div>
                   </div>
@@ -3408,7 +4356,7 @@
       // Spacing - Enhanced with better context
       if (tokens.spacing && Array.isArray(tokens.spacing) && tokens.spacing.length > 0) {
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📏 Spacing Tokens</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">' + ICO.ruler + ' Spacing Tokens</h4>';
 
         const actualSpacingTokens = tokens.spacing.filter(token => token.isActualToken);
         const hardCodedSpacing = tokens.spacing.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
@@ -3416,7 +4364,7 @@
 
         if (actualSpacingTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Spacing Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">' + ICO.target + ' Spacing Tokens in Use</h5>';
           actualSpacingTokens.forEach(token => {
             html += `
               <div class="token-item-compact">
@@ -3432,7 +4380,7 @@
 
         if (hardCodedSpacing.length > 0) {
           html += '<div>';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Spacing</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">' + ICO.warnTriangle + ' Hard-coded Spacing</h5>';
           hardCodedSpacing.forEach(token => {
             // Use the enhanced debug context for better information
             let contextInfo = 'Unknown location';
@@ -3479,17 +4427,17 @@
       // Typography - Enhanced with better context
       if (tokens.typography && Array.isArray(tokens.typography) && tokens.typography.length > 0) {
         html += '<div>';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Typography Tokens</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">' + ICO.text + ' Typography Tokens</h4>';
 
         const actualTypographyTokens = tokens.typography.filter(token => token.isActualToken);
         const hardCodedTypography = tokens.typography.filter(token => !token.isActualToken && !token.isDefaultVariantStyle);
 
         if (actualTypographyTokens.length > 0) {
           html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">🎯 Typography Tokens in Use</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--success); margin-bottom: 6px;">' + ICO.target + ' Typography Tokens in Use</h5>';
           actualTypographyTokens.forEach(token => {
-            const typeIcon = token.type === 'font-size' ? '📝' :
-                           token.type === 'line-height' ? '📏' : '📝';
+            const typeIcon = token.type === 'font-size' ? ICO.text :
+                           token.type === 'line-height' ? ICO.ruler : ICO.text;
             html += `
               <div class="token-item-compact">
                 <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
@@ -3505,10 +4453,10 @@
 
         if (hardCodedTypography.length > 0) {
           html += '<div>';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">⚠️ Hard-coded Typography</h5>';
+          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 6px;">' + ICO.warnTriangle + ' Hard-coded Typography</h5>';
           hardCodedTypography.forEach(token => {
-            const typeIcon = token.type === 'font-size' ? '📝' :
-                           token.type === 'line-height' ? '📏' : '📝';
+            const typeIcon = token.type === 'font-size' ? ICO.text :
+                           token.type === 'line-height' ? ICO.ruler : ICO.text;
             const contextInfo = token.context ?
               `${token.context.fontFamily} in "${token.context.textContent || 'text element'}"` :
               'Unknown context';
@@ -3541,7 +4489,7 @@
       if (html === '') {
         html = `
           <div style="text-align: center; padding: var(--space-lg); color: var(--text-tertiary);">
-            <div style="font-size: 24px; margin-bottom: var(--space-sm);">🎨</div>
+            <div style="font-size: 24px; margin-bottom: var(--space-sm);">${ICO.palette}</div>
             <p><strong>No design tokens detected</strong></p>
             <p style="font-size: 11px; margin-top: var(--space-xs);">This component uses simple styling without extractable design tokens.</p>
             <p style="font-size: 11px; margin-top: var(--space-xs);">Consider using Figma variables for colors, spacing, and typography to improve consistency.</p>
@@ -3572,6 +4520,16 @@
     // Update Metadata Display
     function updateMetadataDisplay(metadata) {
       let html = '';
+
+      // Description Action Bar (Phase 5)
+      if (lastAnalyzedNodeId && metadata.description) {
+        html += `
+          <div class="metadata-action-bar">
+            <span class="action-label">${ICO.lightbulb} AI-generated description available</span>
+            <button class="audit-action-button" onclick="handleUpdateDescription()">Update Description</button>
+          </div>
+        `;
+      }
 
       // Component Info
       html += `<div class="mb-md">`;
@@ -3629,7 +4587,7 @@
 
     // Update MCP Readiness Section
     function updateMCPReadiness(mcpData) {
-      console.log('🔍 [DEBUG] MCP readiness data received:', mcpData);
+      console.log('[DEBUG][DEBUG] MCP readiness data received:', mcpData);
 
       if (!mcpData) {
         mcpReadiness.innerHTML = '<p style="color: var(--text-tertiary); text-align: center; padding: 20px;">MCP readiness analysis not available</p>';
@@ -3649,47 +4607,47 @@
 
       // Strengths
       if (mcpData.strengths && mcpData.strengths.length > 0) {
-        console.log('✅ Found strengths:', mcpData.strengths);
+        console.log('[OK]Found strengths:', mcpData.strengths);
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--success); margin-top: 0;">✅ Strengths</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--success); margin-top: 0;">' + ICO.checkCircle + ' Strengths</h4>';
         mcpData.strengths.forEach(strength => {
           html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${strength}</div>`;
         });
         html += '</div>';
       } else {
-        console.warn('⚠️ No strengths found in MCP data');
+        console.warn('[WARN]No strengths found in MCP data');
       }
 
       // Gaps
       if (mcpData.gaps && mcpData.gaps.length > 0) {
-        console.log('❌ Found gaps:', mcpData.gaps);
+        console.log('[ERR]Found gaps:', mcpData.gaps);
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--error);">❌ Gaps</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--error);">' + ICO.xCircle + ' Gaps</h4>';
         mcpData.gaps.forEach(gap => {
           html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${gap}</div>`;
         });
         html += '</div>';
       } else {
-        console.warn('⚠️ No gaps found in MCP data');
+        console.warn('[WARN]No gaps found in MCP data');
       }
 
       // Recommendations
       if (mcpData.recommendations && mcpData.recommendations.length > 0) {
-        console.log('💡 Found recommendations:', mcpData.recommendations);
+        console.log('[INFO]Found recommendations:', mcpData.recommendations);
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--primary);">💡 Recommendations</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--primary);">' + ICO.lightbulb + ' Recommendations</h4>';
         mcpData.recommendations.forEach(rec => {
           html += `<div style="margin-bottom: 4px; font-size: 12px;">• ${rec}</div>`;
         });
         html += '</div>';
       } else {
-        console.warn('⚠️ No recommendations found in MCP data');
+        console.warn('[WARN]No recommendations found in MCP data');
       }
 
       // Implementation Notes
       if (mcpData.implementationNotes) {
         html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">📝 Implementation Notes</h4>';
+        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">' + ICO.text + ' Implementation Notes</h4>';
         html += `<div style="font-size: 12px; background: var(--surface); padding: 12px; border-radius: 6px; color: var(--text-secondary);">${mcpData.implementationNotes}</div>`;
         html += '</div>';
       }
@@ -4067,7 +5025,7 @@
 
     // Select a specific node in Figma
     function selectFigmaNode(nodeId) {
-      console.log('🎯 Selecting Figma node:', nodeId);
+      console.log('[ACTION]Selecting Figma node:', nodeId);
       sendMessageToPlugin('select-node', { nodeId });
       updateStatus('Selecting node in Figma...', 'info');
     }
@@ -4169,6 +5127,367 @@
       updateStatus('Chat history cleared', 'success');
     }
 
+    // Handle fix preview response
+    function handleFixPreview(data) {
+      if (!data || data.error) {
+        updateStatus(data?.error || 'Failed to generate preview', 'error');
+        return;
+      }
+
+      let previewHtml = '';
+      let title = 'Confirm Fix';
+
+      if (data.type === 'token') {
+        title = 'Apply Token Fix';
+        previewHtml = `
+          <div class="preview-box">
+            <div class="preview-label">Current Value</div>
+            <div class="preview-value">${escapeHtml(data.beforeValue || 'Unknown')}</div>
+          </div>
+          <div class="preview-arrow">↓</div>
+          <div class="preview-box">
+            <div class="preview-label">Will Apply Token</div>
+            <div class="preview-value">${escapeHtml(data.afterValue || data.tokenName || 'Design Token')}</div>
+          </div>
+          ${data.nodeName ? `<p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">On: ${escapeHtml(data.nodeName)}</p>` : ''}
+        `;
+      } else if (data.type === 'naming') {
+        title = 'Rename Layer';
+        previewHtml = `
+          <div class="preview-box">
+            <div class="preview-label">Current Name</div>
+            <div class="preview-value">${escapeHtml(data.beforeValue || 'Unknown')}</div>
+          </div>
+          <div class="preview-arrow">↓</div>
+          <div class="preview-box">
+            <div class="preview-label">New Name</div>
+            <div class="preview-value">${escapeHtml(data.afterValue || data.suggestedName)}</div>
+          </div>
+        `;
+      }
+
+      showFixModal(title, previewHtml, {
+        type: data.type,
+        nodeId: data.nodeId,
+        propertyPath: data.propertyPath,
+        tokenId: data.tokenId,
+        newValue: data.afterValue || data.suggestedName
+      });
+    }
+
+    // Handle fix applied response
+    function handleFixApplied(data) {
+      if (data.success) {
+        updateStatus(`Fix applied: ${data.message || 'Success'}`, 'success');
+        decrementQuickActionsCount(1);
+
+        // Mark only the specific button that triggered this fix
+        if (data.oldName) {
+          const btns = document.querySelectorAll('.audit-action-button[data-node-id]');
+          btns.forEach(btn => {
+            // Match by old name text in the same audit-item
+            const item = btn.closest('.audit-item');
+            if (item && item.textContent.includes(data.oldName)) {
+              btn.textContent = '\u2713';
+              btn.classList.add('fix-applied');
+              btn.disabled = true;
+              item.classList.add('fix-applied-success');
+            }
+          });
+        }
+      } else {
+        updateStatus(`Failed to apply fix: ${data.error || 'Unknown error'}`, 'error');
+      }
+    }
+
+    // Handle batch fix response
+    function handleBatchFixApplied(data) {
+      const successCount = data.success || data.appliedCount || 0;
+      const errorCount = data.errors || data.failedCount || 0;
+      const total = data.total || (successCount + errorCount);
+
+      if (errorCount === 0) {
+        updateStatus(`All ${successCount} fixes applied successfully! Re-analyze to see updated results.`, 'success');
+      } else if (successCount > 0) {
+        updateStatus(`Applied ${successCount}/${total} fixes (${errorCount} failed). Re-analyze to see updated results.`, 'warning');
+      } else {
+        updateStatus(`Failed to apply ${errorCount} fix${errorCount !== 1 ? 'es' : ''}`, 'error');
+      }
+
+      // Update quick actions count
+      decrementQuickActionsCount(successCount);
+
+      // Disable Fix All buttons after batch
+      const fixAllBtns = document.querySelectorAll('.quick-actions-btn');
+      fixAllBtns.forEach(btn => {
+        if (successCount > 0) {
+          btn.textContent = '✓ Applied';
+          btn.disabled = true;
+          btn.classList.add('fix-applied');
+        }
+      });
+    }
+
+    // =============================================
+    // Auto-Fix UI Functions (Phases 2-8)
+    // =============================================
+
+    // Phase 2: Compute fixable issue counts from analysis data
+    function computeFixableCounts(data) {
+      const counts = { tokens: 0, naming: 0, accessibility: 0, total: 0 };
+
+      // Count hard-coded token values
+      if (data.tokens && data.tokens.summary) {
+        counts.tokens = data.tokens.summary.hardCodedValues || 0;
+      }
+
+      // Count naming issues
+      if (data.namingIssues && data.namingIssues.length > 0) {
+        counts.naming = data.namingIssues.length;
+      }
+
+      // Count failed accessibility checks
+      if (data.audit && data.audit.accessibility) {
+        counts.accessibility = data.audit.accessibility.filter(
+          item => item.status === 'fail'
+        ).length;
+      }
+
+      counts.total = counts.tokens + counts.naming + counts.accessibility;
+      return counts;
+    }
+
+    // Phase 2: Render Quick Actions bar at top of analysis results
+    function renderQuickActionsBar(counts) {
+      if (counts.total === 0) return '';
+
+      quickActionsFixCount = counts.total;
+
+      let statsHtml = '';
+      if (counts.tokens > 0) {
+        statsHtml += `<span class="stat-chip">${counts.tokens} token${counts.tokens !== 1 ? 's' : ''}</span>`;
+      }
+      if (counts.naming > 0) {
+        statsHtml += `<span class="stat-chip">${counts.naming} naming</span>`;
+      }
+      if (counts.accessibility > 0) {
+        statsHtml += `<span class="stat-chip">${counts.accessibility} a11y</span>`;
+      }
+
+      return `
+        <div class="fix-summary-bar" id="fix-summary-bar">
+          <div class="fix-summary-stats">
+            <strong>${counts.total} fixable issue${counts.total !== 1 ? 's' : ''}</strong>
+            ${statsHtml}
+          </div>
+          <button class="quick-actions-btn" onclick="handleFixAll()">Fix All</button>
+        </div>
+      `;
+    }
+
+    // Phase 2: Handle "Fix All" from Quick Actions bar
+    function handleFixAll() {
+      const fixes = [];
+
+      // Collect naming fixes
+      if (currentNamingIssues && currentNamingIssues.length > 0) {
+        currentNamingIssues.forEach(issue => {
+          fixes.push({
+            type: 'naming',
+            nodeId: issue.nodeId,
+            newValue: issue.suggestedName
+          });
+        });
+      }
+
+      // Collect token fixes (hard-coded values with context)
+      if (currentFixableTokens && currentFixableTokens.length > 0) {
+        currentFixableTokens.forEach(token => {
+          if (token.context && token.context.nodeId && token.context.property) {
+            fixes.push({
+              type: 'token',
+              nodeId: token.context.nodeId,
+              propertyPath: token.context.property,
+              newValue: token.value
+            });
+          }
+        });
+      }
+
+      if (fixes.length === 0) {
+        updateStatus('No automatically fixable issues found', 'info');
+        return;
+      }
+
+      // Show batch confirmation
+      const previewHtml = `
+        <div style="margin-bottom: 12px;">
+          <p style="font-size: 12px; margin-bottom: 8px;">This will apply <strong>${fixes.length}</strong> fixes:</p>
+          <ul style="font-size: 11px; color: var(--text-secondary); padding-left: 16px;">
+            ${currentNamingIssues.length > 0 ? `<li>${currentNamingIssues.length} layer rename${currentNamingIssues.length !== 1 ? 's' : ''}</li>` : ''}
+            ${currentFixableTokens.length > 0 ? `<li>${currentFixableTokens.length} token binding${currentFixableTokens.length !== 1 ? 's' : ''}</li>` : ''}
+          </ul>
+        </div>
+      `;
+
+      showFixModal('Apply All Fixes', previewHtml, {
+        type: 'batch',
+        fixes: fixes
+      });
+    }
+
+    // Phase 4: Handle batch token fix
+    function handleBatchTokenFix() {
+      if (!currentFixableTokens || currentFixableTokens.length === 0) {
+        updateStatus('No fixable token issues found', 'info');
+        return;
+      }
+
+      const fixes = currentFixableTokens
+        .filter(token => token.context && token.context.nodeId && token.context.property)
+        .map(token => ({
+          type: 'token',
+          nodeId: token.context.nodeId,
+          propertyPath: token.context.property,
+          newValue: token.value
+        }));
+
+      if (fixes.length === 0) {
+        updateStatus('No token fixes have sufficient context to apply', 'info');
+        return;
+      }
+
+      const previewHtml = `
+        <div style="margin-bottom: 12px;">
+          <p style="font-size: 12px;">Apply token bindings to <strong>${fixes.length}</strong> hard-coded value${fixes.length !== 1 ? 's' : ''}?</p>
+          <p style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">This will attempt to find and bind matching design tokens.</p>
+        </div>
+      `;
+
+      showFixModal('Fix All Hard-coded Values', previewHtml, {
+        type: 'batch',
+        fixes: fixes
+      });
+    }
+
+    // Phase 5: Handle update description
+    function handleUpdateDescription() {
+      if (!lastAnalyzedNodeId || !currentMetadata) {
+        updateStatus('No component analyzed yet', 'info');
+        return;
+      }
+
+      const currentDesc = currentMetadata.description || '';
+
+      const previewHtml = `
+        <div style="margin-bottom: 12px;">
+          <label style="font-size: 11px; font-weight: 500; display: block; margin-bottom: 4px;">Component Description:</label>
+          <textarea id="description-textarea" style="
+            width: 100%;
+            min-height: 80px;
+            padding: 8px;
+            font-size: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            resize: vertical;
+            font-family: inherit;
+            box-sizing: border-box;
+          ">${escapeHtml(currentDesc)}</textarea>
+          <p style="font-size: 10px; color: var(--text-tertiary); margin-top: 4px;">This will update the component description in Figma.</p>
+        </div>
+      `;
+
+      showFixModal('Update Component Description', previewHtml, {
+        type: 'description',
+        nodeId: lastAnalyzedNodeId,
+        description: currentDesc
+      });
+    }
+
+    // Store recommendations globally for copy access
+    let _currentRecommendations = [];
+
+    // Phase 6: Copy property recommendation by index
+    function copyRecommendationByIndex(index) {
+      const rec = _currentRecommendations[index];
+      if (!rec) {
+        updateStatus('Recommendation not found', 'error');
+        return;
+      }
+      const text = `${rec.name} (${rec.type}): ${(rec.examples || []).join(', ')}`;
+      copyToClipboard(text, `[data-rec-index="${index}"]`);
+    }
+
+    // Clipboard helper with fallback for Figma plugin iframe
+    function copyToClipboard(text, btnSelector) {
+      const showSuccess = () => {
+        const btn = document.querySelector(`.copy-btn${btnSelector || ''}`);
+        if (btn) {
+          btn.classList.add('copied');
+          const origHTML = btn.innerHTML;
+          btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>';
+          setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.innerHTML = origHTML;
+          }, 2000);
+        }
+        updateStatus('Copied to clipboard', 'success');
+      };
+
+      // Try modern API first, fall back to execCommand
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showSuccess).catch(() => {
+          fallbackCopy(text, showSuccess);
+        });
+      } else {
+        fallbackCopy(text, showSuccess);
+      }
+    }
+
+    function fallbackCopy(text, onSuccess) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        if (onSuccess) onSuccess();
+      } catch (e) {
+        updateStatus('Failed to copy to clipboard', 'error');
+      }
+      document.body.removeChild(ta);
+    }
+
+    // Phase 8: Handle description updated response
+    function handleDescriptionUpdated(data) {
+      if (data.success) {
+        updateStatus('Component description updated!', 'success');
+        // Update local metadata
+        if (currentMetadata) {
+          currentMetadata.description = data.newDescription;
+        }
+      } else {
+        updateStatus(`Failed to update description: ${data.error || 'Unknown error'}`, 'error');
+      }
+    }
+
+    // Phase 8: Update quick actions count after fix
+    function decrementQuickActionsCount(amount) {
+      quickActionsFixCount = Math.max(0, quickActionsFixCount - (amount || 1));
+      const bar = document.getElementById('fix-summary-bar');
+      if (bar) {
+        const countEl = bar.querySelector('strong');
+        if (countEl) {
+          if (quickActionsFixCount === 0) {
+            bar.remove();
+          } else {
+            countEl.textContent = `${quickActionsFixCount} fixable issue${quickActionsFixCount !== 1 ? 's' : ''}`;
+          }
+        }
+      }
+    }
+
     // Chat UI Functions
     function addChatMessage(role, content, sources = null) {
       const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
@@ -4214,7 +5533,7 @@
           messageHTML += `
             <div class="chat-sources">
               <div class="chat-sources-title">
-                📚 Sources
+                ${ICO.book} Sources
               </div>
               ${uniqueSources.map(source => `
                 <div class="chat-source">

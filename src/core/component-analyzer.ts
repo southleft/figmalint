@@ -3,7 +3,17 @@
 import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
 import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
-import { fetchClaude, extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
+import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
+import { callProvider, ProviderId } from '../api/providers';
+import ComponentConsistencyEngine, { ComponentBestPractices, BestPracticesGap } from './consistency-engine';
+import { analyzeNamingIssues } from '../fixes/naming-fixer';
+
+// Create a shared consistency engine instance for best practices analysis
+const consistencyEngine = new ComponentConsistencyEngine({
+  enableCaching: true,
+  enableMCPIntegration: true,
+  mcpServerUrl: 'https://design-systems-mcp.southleft-llc.workers.dev/mcp'
+});
 
 /**
  * Extract comprehensive component context for analysis
@@ -1174,7 +1184,8 @@ export async function processEnhancedAnalysis(
   context: ComponentContext,
   apiKey: string,
   model: string,
-  options: EnhancedAnalysisOptions = {}
+  options: EnhancedAnalysisOptions = {},
+  providerId: ProviderId = 'anthropic'
 ): Promise<EnhancedAnalysisResult> {
   console.log('🎯 Starting enhanced component analysis...');
 
@@ -1219,8 +1230,13 @@ export async function processEnhancedAnalysis(
 
     // Step 1: Use Claude for direct Figma data extraction and analysis
     const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
-    const claudeResponse = await fetchClaude(claudePrompt, apiKey, model);
-    const claudeData = extractJSONFromResponse(claudeResponse);
+    const llmResponse = await callProvider(providerId, apiKey, {
+      prompt: claudePrompt,
+      model,
+      maxTokens: 2048,
+      temperature: 0.1,
+    });
+    const claudeData = extractJSONFromResponse(llmResponse.content);
 
     if (!claudeData) {
       throw new Error('Failed to extract JSON from Claude response');
@@ -1249,8 +1265,13 @@ export async function processEnhancedAnalysis(
     // Fallback to Claude-only analysis
     console.log('📝 Using Claude-only analysis...');
     const prompt = createEnhancedMetadataPrompt(context);
-    const response = await fetchClaude(prompt, apiKey, model);
-    analysisResult = extractJSONFromResponse(response);
+    const llmFallbackResponse = await callProvider(providerId, apiKey, {
+      prompt,
+      model,
+      maxTokens: 2048,
+      temperature: 0.1,
+    });
+    analysisResult = extractJSONFromResponse(llmFallbackResponse.content);
 
     if (!analysisResult) {
       throw new Error('Failed to extract JSON from response');
@@ -1606,7 +1627,7 @@ function generatePropertyCheatSheet(
 /**
  * Process analysis result from Claude and convert to EnhancedAnalysisResult
  */
-async function processAnalysisResult(
+export async function processAnalysisResult(
   filteredData: any,
   context: ComponentContext,
   options: EnhancedAnalysisOptions
@@ -1733,11 +1754,15 @@ async function processAnalysisResult(
     console.log('📤 Sending to UI - metadata.states:', metadata.states);
     console.log('📤 Sending to UI - metadata.mcpReadiness:', metadata.mcpReadiness);
 
-    // Create audit results
-    const audit: DetailedAuditResults = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
+    // Create audit results with best practices analysis
+    const audit: DetailedAuditResults = await createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
 
     // Generate property recommendations if the component has few properties
     const recommendations = generatePropertyRecommendations(context.name, actualProperties);
+
+    // Analyze naming issues (depth-limited to 5 for performance)
+    const namingIssues = analyzeNamingIssues(node, 5);
+    console.log(`📛 Found ${namingIssues.length} naming issues`);
 
     console.log('✅ Analysis result processed successfully');
 
@@ -1746,7 +1771,8 @@ async function processAnalysisResult(
       tokens,
       audit,
       properties: actualProperties,
-      recommendations
+      recommendations,
+      namingIssues
     };
   } catch (error) {
     console.error('Error processing analysis result:', error);
@@ -1757,7 +1783,7 @@ async function processAnalysisResult(
 /**
  * Create audit results from Claude analysis data
  */
-function createAuditResults(
+async function createAuditResults(
   filteredData: any,
   context: ComponentContext,
   node: SceneNode,
@@ -1765,7 +1791,32 @@ function createAuditResults(
   actualStates: string[],
   tokens: TokenAnalysis,
   componentDescription?: string
-): DetailedAuditResults {
+): Promise<DetailedAuditResults> {
+  // Get component family for best practices lookup
+  const componentFamily = context.additionalContext?.componentFamily || 'generic';
+
+  // Get best practices from MCP/built-in knowledge
+  let bestPractices: ComponentBestPractices;
+  let bestPracticesGaps: BestPracticesGap[] = [];
+
+  try {
+    console.log(`🔍 Getting best practices for ${componentFamily}...`);
+    bestPractices = await consistencyEngine.getComponentBestPractices(componentFamily);
+
+    // Analyze component against best practices
+    const propertyNames = actualProperties.map(p => p.name);
+    bestPracticesGaps = consistencyEngine.analyzeAgainstBestPractices(
+      context,
+      actualStates,
+      propertyNames,
+      bestPractices
+    );
+
+    console.log(`✅ Best practices analysis complete: ${bestPracticesGaps.length} gaps found`);
+  } catch (error) {
+    console.warn('⚠️ Failed to analyze best practices:', error);
+  }
+
   return {
     // Basic state checking
     states: actualStates.map(state => ({
@@ -1788,7 +1839,9 @@ function createAuditResults(
           ? 'Component has description for MCP/AI context'
           : 'Add a component description to help MCP and AI understand the component purpose and usage'
       }
-    ]
+    ],
+    // Best practices gaps from MCP knowledge
+    bestPracticesGaps: bestPracticesGaps.length > 0 ? bestPracticesGaps : undefined
   };
 }
 
