@@ -3129,14 +3129,18 @@ ${scoringCriteria}
      */
     analyzeAgainstBestPractices(componentContext, currentStates, currentProperties, bestPractices) {
       const gaps = [];
+      const familyLower = bestPractices.family.toLowerCase();
+      const isNonInteractive = ["banner", "alert", "notification", "toast", "snackbar", "announcement"].some(
+        (pattern) => familyLower.includes(pattern)
+      );
       const missingStates = bestPractices.expectedStates.filter(
         (state) => !currentStates.some((s) => s.toLowerCase().includes(state.toLowerCase()))
       );
       if (missingStates.length > 0) {
         gaps.push({
           category: "states",
-          severity: "warning",
-          message: `Missing interactive states: ${missingStates.join(", ")}`,
+          severity: isNonInteractive ? "info" : "warning",
+          message: `Missing expected states: ${missingStates.join(", ")}`,
           suggestion: `Add visual designs for: ${missingStates.join(", ")}`,
           missingItems: missingStates
         });
@@ -6012,6 +6016,9 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
         case "update-description":
           await handleUpdateDescription(data);
           break;
+        case "add-component-property":
+          await handleAddComponentProperty(data);
+          break;
         default:
           console.warn("Unknown message type:", type);
       }
@@ -6866,6 +6873,165 @@ Respond naturally and helpfully to the user's question.`;
         error: errorMessage
       });
       figma.notify(`Failed to update description: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleAddComponentProperty(data) {
+    try {
+      const { nodeId, propertyName, propertyType, defaultValue } = data;
+      const node = await figma.getNodeByIdAsync(nodeId);
+      if (!node) {
+        sendMessageToUI("property-added", {
+          success: false,
+          propertyName,
+          message: "Node not found"
+        });
+        figma.notify("Node not found", { error: true });
+        return;
+      }
+      let targetNode = null;
+      if (node.type === "COMPONENT") {
+        const component = node;
+        if (component.parent && component.parent.type === "COMPONENT_SET") {
+          targetNode = component.parent;
+        } else {
+          targetNode = component;
+        }
+      } else if (node.type === "COMPONENT_SET") {
+        targetNode = node;
+      } else if (node.type === "INSTANCE") {
+        const mainComponent = await node.getMainComponentAsync();
+        if (mainComponent) {
+          if (mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
+            targetNode = mainComponent.parent;
+          } else {
+            targetNode = mainComponent;
+          }
+        }
+      }
+      if (!targetNode) {
+        sendMessageToUI("property-added", {
+          success: false,
+          propertyName,
+          message: "Selected node is not a component"
+        });
+        figma.notify("Selected node is not a component", { error: true });
+        return;
+      }
+      const existingDefs = targetNode.componentPropertyDefinitions;
+      for (const key of Object.keys(existingDefs)) {
+        const baseName = key.replace(/#\d+:\d+$/, "");
+        if (baseName.toLowerCase() === propertyName.toLowerCase()) {
+          sendMessageToUI("property-added", {
+            success: false,
+            propertyName,
+            message: `Property "${propertyName}" already exists`
+          });
+          figma.notify(`Property "${propertyName}" already exists`, { error: true });
+          return;
+        }
+      }
+      let figmaType;
+      switch (propertyType.toLowerCase()) {
+        case "boolean":
+          figmaType = "BOOLEAN";
+          break;
+        case "text":
+          figmaType = "TEXT";
+          break;
+        case "slot":
+          figmaType = "INSTANCE_SWAP";
+          break;
+        case "variant":
+          if (targetNode.type === "COMPONENT_SET") {
+            figmaType = "VARIANT";
+          } else {
+            figmaType = "TEXT";
+          }
+          break;
+        default:
+          figmaType = "TEXT";
+      }
+      targetNode.addComponentProperty(propertyName, figmaType, defaultValue);
+      let stagingNote = "";
+      if (figmaType === "VARIANT" && targetNode.type === "COMPONENT_SET" && data.variantOptions && data.variantOptions.length > 1) {
+        const componentSet = targetNode;
+        const existingChildren = [...componentSet.children];
+        const additionalOptions = data.variantOptions.slice(1);
+        const searchStr = `${propertyName}=${defaultValue}`;
+        const page = figma.currentPage;
+        let containerNode = componentSet;
+        while (containerNode.parent && containerNode.parent.type !== "PAGE") {
+          containerNode = containerNode.parent;
+        }
+        const absX = containerNode.absoluteTransform[0][2];
+        const absY = containerNode.absoluteTransform[1][2];
+        const stagingX = absX;
+        const stagingY = absY + containerNode.height + 50;
+        const section = figma.createSection();
+        section.name = `FigmaLint: ${propertyName} Variants`;
+        page.appendChild(section);
+        section.x = stagingX;
+        section.y = stagingY;
+        const label = figma.createText();
+        await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+        label.fontName = { family: "Inter", style: "Medium" };
+        label.characters = `New "${propertyName}" variants \u2014 drag into the ComponentSet`;
+        label.fontSize = 14;
+        label.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
+        section.appendChild(label);
+        label.x = 24;
+        label.y = 24;
+        const padding = 24;
+        const childGap = 32;
+        let currentY = label.y + label.height + 24;
+        let maxWidth = label.width + padding * 2;
+        for (const option of additionalOptions) {
+          const replaceStr = `${propertyName}=${option}`;
+          const optionLabel = figma.createText();
+          await figma.loadFontAsync({ family: "Inter", style: "Semi Bold" });
+          optionLabel.fontName = { family: "Inter", style: "Semi Bold" };
+          optionLabel.characters = `${propertyName}=${option}`;
+          optionLabel.fontSize = 12;
+          optionLabel.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.3, b: 0.9 } }];
+          section.appendChild(optionLabel);
+          optionLabel.x = padding;
+          optionLabel.y = currentY;
+          currentY += optionLabel.height + 12;
+          let rowX = padding;
+          let rowMaxHeight = 0;
+          for (const child of existingChildren) {
+            const clone = child.clone();
+            clone.name = clone.name.replace(searchStr, replaceStr);
+            section.appendChild(clone);
+            clone.x = rowX;
+            clone.y = currentY;
+            rowX += clone.width + childGap;
+            rowMaxHeight = Math.max(rowMaxHeight, clone.height);
+          }
+          maxWidth = Math.max(maxWidth, rowX - childGap + padding);
+          currentY += rowMaxHeight + childGap;
+        }
+        section.resizeWithoutConstraints(
+          Math.max(maxWidth, 400),
+          currentY + padding
+        );
+        stagingNote = ` \u2014 new variants created in staging section to the right`;
+      }
+      sendMessageToUI("property-added", {
+        success: true,
+        propertyName,
+        message: `Property "${propertyName}" added successfully${stagingNote}`
+      });
+      figma.notify(`Property "${propertyName}" added${stagingNote ? " (see staging section)" : ""}`, { timeout: 3e3 });
+    } catch (error) {
+      console.error("Error adding component property:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("property-added", {
+        success: false,
+        propertyName: data.propertyName,
+        message: errorMessage
+      });
+      figma.notify(`Failed to add property: ${errorMessage}`, { error: true });
     }
   }
 

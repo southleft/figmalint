@@ -1290,6 +1290,12 @@ ${scoringCriteria}
   ): BestPracticesGap[] {
     const gaps: BestPracticesGap[] = [];
 
+    // Detect non-interactive component patterns
+    const familyLower = bestPractices.family.toLowerCase();
+    const isNonInteractive = ['banner', 'alert', 'notification', 'toast', 'snackbar', 'announcement'].some(
+      pattern => familyLower.includes(pattern)
+    );
+
     // Check for missing states
     const missingStates = bestPractices.expectedStates.filter(
       state => !currentStates.some(s => s.toLowerCase().includes(state.toLowerCase()))
@@ -1298,8 +1304,8 @@ ${scoringCriteria}
     if (missingStates.length > 0) {
       gaps.push({
         category: 'states',
-        severity: 'warning',
-        message: `Missing interactive states: ${missingStates.join(', ')}`,
+        severity: isNonInteractive ? 'info' : 'warning',
+        message: `Missing expected states: ${missingStates.join(', ')}`,
         suggestion: `Add visual designs for: ${missingStates.join(', ')}`,
         missingItems: missingStates
       });

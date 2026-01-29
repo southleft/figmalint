@@ -4,46 +4,93 @@
   <meta charset="utf-8">
   <title>FigmaLint</title>
   <style>
-    /* Modern UI Design System for FigmaLint */
+    /* Carbon-Inspired Design System for FigmaLint */
     :root {
-      /* Color Palette - Figma-inspired */
-      --primary: #18A0FB;
-      --primary-hover: #0090F0;
-      --primary-light: #E6F4FF;
-      --secondary: #5E6470;
-      --background: #FFFFFF;
-      --surface: #F5F5F5;
-      --surface-hover: #EBEBEB;
-      --border: #E1E1E1;
-      --text-primary: #1C1C1C;
-      --text-secondary: #5E6470;
-      --text-tertiary: #8B8B8B;
-      --success: #06C167;
-      --error: #F24822;
-      --warning: #FFAA00;
-      --info: #18A0FB;
+      /* Carbon-inspired color tokens */
+      --background: #f4f4f4;
+      --surface: #ffffff;
+      --surface-alt: #e0e0e0;
+      --surface-hover: #e8e8e8;
+      --border: #e0e0e0;
+      --border-strong: #8d8d8d;
+      --text-primary: #161616;
+      --text-secondary: #525252;
+      --text-tertiary: #a8a8a8;
+      --text-on-color: #ffffff;
 
-      /* Spacing System */
-      --space-xs: 4px;
-      --space-sm: 8px;
-      --space-md: 16px;
-      --space-lg: 24px;
-      --space-xl: 32px;
+      /* Interactive */
+      --interactive: #0f62fe;
+      --interactive-hover: #0353e9;
+      --interactive-active: #002d9c;
+      --interactive-light: #edf5ff;
 
-      /* Border Radius */
-      --radius-sm: 4px;
-      --radius-md: 8px;
-      --radius-lg: 12px;
+      /* Semantic status */
+      --success: #198038;
+      --success-bg: #defbe6;
+      --success-text: #198038;
+      --warning: #f1c21b;
+      --warning-bg: #fdf6dd;
+      --warning-text: #8e6a00;
+      --error: #da1e28;
+      --error-bg: #fff1f1;
+      --error-text: #da1e28;
+      --info: #0043ce;
+      --info-bg: #edf5ff;
+      --info-text: #0043ce;
 
-      /* Shadows */
-      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-      --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.08);
-      --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.1);
+      /* Carbon spacing scale (2px base) */
+      --spacing-01: 2px;
+      --spacing-02: 4px;
+      --spacing-03: 8px;
+      --spacing-04: 12px;
+      --spacing-05: 16px;
+      --spacing-06: 24px;
+      --spacing-07: 32px;
+      --spacing-08: 40px;
+      --spacing-09: 48px;
+
+      /* Carbon border radius */
+      --radius-sm: 2px;
+      --radius-md: 4px;
+      --radius-lg: 8px;
+
+      /* Typography */
+      --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-size-xs: 0.6875rem;   /* 11px */
+      --font-size-sm: 0.75rem;     /* 12px */
+      --font-size-md: 0.875rem;    /* 14px */
+      --font-size-lg: 1rem;        /* 16px */
+      --font-weight-regular: 400;
+      --font-weight-medium: 500;
+      --font-weight-semibold: 600;
+      --line-height-tight: 1.25;
+      --line-height-normal: 1.5;
+
+      /* Shadows (subtle, Carbon-like) */
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 2px 6px rgba(0,0,0,0.08);
+      --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
+
+      /* Z-index scale */
+      --z-dropdown: 100;
+      --z-tooltip: 200;
+      --z-modal: 300;
 
       /* Transitions */
       --transition-fast: 150ms ease;
       --transition-base: 250ms ease;
       --transition-slow: 350ms ease;
+
+      /* Legacy aliases (keep JS references working) */
+      --primary: var(--interactive);
+      --primary-hover: var(--interactive-hover);
+      --primary-light: var(--interactive-light);
+      --secondary: var(--text-secondary);
+      --space-xs: var(--spacing-02);
+      --space-sm: var(--spacing-03);
+      --space-md: var(--spacing-05);
+      --space-lg: var(--spacing-06);
+      --space-xl: var(--spacing-07);
     }
 
     * {
@@ -51,13 +98,13 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+      font-family: var(--font-family);
       margin: 0;
       padding: 0;
       background-color: var(--background);
       color: var(--text-primary);
-      font-size: 13px;
-      line-height: 1.6;
+      font-size: var(--font-size-sm);
+      line-height: var(--line-height-normal);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
@@ -71,13 +118,13 @@
 
     /* Header Section */
     .header {
-      padding: var(--space-md) var(--space-md) var(--space-sm);
-      background: var(--background);
+      padding: var(--spacing-05) var(--spacing-05) var(--spacing-03);
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
       min-height: 60px;
       position: relative;
       z-index: 10;
-      margin-bottom: var(--space-sm);
+      margin-bottom: var(--spacing-03);
     }
 
     /* Ensure header bottom padding is maintained */
@@ -98,14 +145,14 @@
     .plugin-icon {
       width: 20px;
       height: 20px;
-      background: var(--primary);
+      background: var(--interactive);
       border-radius: var(--radius-sm);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-weight: 600;
-      font-size: 11px;
+      color: var(--text-on-color);
+      font-weight: var(--font-weight-semibold);
+      font-size: var(--font-size-xs);
     }
 
     .plugin-name {
@@ -124,12 +171,12 @@
     /* Tabs Navigation */
     .tabs-navigation {
       display: flex;
-      padding: 0 var(--space-md) 0;
+      padding: 0 var(--spacing-05) 0;
       border-bottom: 1px solid var(--border);
-      background: var(--background);
+      background: var(--surface);
       position: sticky;
       top: 0;
-      z-index: 100;
+      z-index: var(--z-dropdown);
     }
 
 
@@ -145,17 +192,15 @@
 
     /* Card Component */
     .card {
-      background: var(--background);
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
-      padding: var(--space-md);
-      box-shadow: var(--shadow-sm);
-      transition: all var(--transition-base);
+      padding: var(--spacing-05);
+      transition: border-color var(--transition-fast);
     }
 
     .card:hover {
-      box-shadow: var(--shadow-md);
-      border-color: var(--primary-light);
+      border-color: var(--border-strong);
     }
 
     .card-header {
@@ -185,19 +230,19 @@
 
     /* Collapsible Sections */
     .collapsible {
-      margin-bottom: var(--space-md);
+      margin-bottom: var(--spacing-05);
     }
 
     .collapsible-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: var(--space-sm) var(--space-md);
+      padding: var(--spacing-03) var(--spacing-05);
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast);
       user-select: none;
     }
 
@@ -211,12 +256,12 @@
     }
 
     .collapsible-title {
-      font-size: 13px;
-      font-weight: 600;
+      font-size: var(--font-size-md);
+      font-weight: var(--font-weight-semibold);
       color: var(--text-primary);
       display: flex;
       align-items: center;
-      gap: var(--space-sm);
+      gap: var(--spacing-03);
     }
 
     .collapsible-title > .tooltip {
@@ -225,6 +270,10 @@
 
     .collapsible-icon {
       transition: transform var(--transition-fast);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      width: 16px;
+      text-align: center;
     }
 
     .collapsible-header.active .collapsible-icon {
@@ -233,8 +282,8 @@
 
     .collapsible-content {
       display: none;
-      padding: var(--space-md);
-      background: var(--background);
+      padding: var(--spacing-05);
+      background: var(--surface);
       border: 1px solid var(--border);
       border-top: none;
       border-bottom-left-radius: var(--radius-md);
@@ -273,15 +322,15 @@
 
     input, textarea, select {
       width: 100%;
-      padding: 6px 12px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      font-size: 12px;
+      padding: var(--spacing-03) var(--spacing-04);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm);
       font-family: inherit;
-      background: var(--background);
+      background: var(--surface);
       color: var(--text-primary);
-      transition: all var(--transition-fast);
-      min-height: 30px;
+      transition: border-color var(--transition-fast);
+      min-height: 32px;
     }
 
     textarea {
@@ -295,8 +344,8 @@
 
     input:focus, textarea:focus, select:focus {
       outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px var(--primary-light);
+      border-color: var(--interactive);
+      box-shadow: 0 0 0 2px var(--interactive);
     }
 
     input::placeholder, textarea::placeholder {
@@ -310,59 +359,64 @@
       pointer-events: none;
     }
 
-    /* Button Styles */
+    /* Button Styles (Carbon spec) */
     .button {
-      padding: 6px 14px;
+      padding: var(--spacing-02) var(--spacing-04);
       border: none;
-      border-radius: var(--radius-md);
-      font-size: 12px;
-      font-weight: 500;
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-medium);
       font-family: inherit;
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast), border-color var(--transition-fast);
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: var(--space-xs);
-      min-height: 30px;
+      gap: var(--spacing-02);
+      min-height: 32px;
     }
 
     .button-primary {
-      background: var(--primary);
-      color: white;
+      background: var(--interactive);
+      color: var(--text-on-color);
     }
 
     .button-primary:hover:not(:disabled) {
-      background: var(--primary-hover);
-      transform: translateY(-1px);
-      box-shadow: var(--shadow-md);
+      background: var(--interactive-hover);
     }
 
     .button-primary:active:not(:disabled) {
-      transform: translateY(0);
-      box-shadow: var(--shadow-sm);
+      background: var(--interactive-active);
     }
 
     .button-secondary {
-      background: var(--surface);
+      background: transparent;
       color: var(--text-primary);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-strong);
     }
 
     .button-secondary:hover:not(:disabled) {
       background: var(--surface-hover);
-      border-color: var(--text-tertiary);
+      border-color: var(--text-primary);
     }
 
     .button-ghost {
       background: transparent;
-      color: var(--primary);
+      color: var(--interactive);
       border: 1px solid transparent;
     }
 
     .button-ghost:hover:not(:disabled) {
-      background: var(--primary-light);
-      border-color: var(--border);
+      background: var(--interactive-light);
+    }
+
+    .button-danger {
+      background: var(--error);
+      color: var(--text-on-color);
+    }
+
+    .button-danger:hover:not(:disabled) {
+      background: #ba1b23;
     }
 
     .button:disabled {
@@ -372,9 +426,9 @@
 
     .button-group {
       display: flex;
-      gap: var(--space-sm);
+      gap: var(--spacing-03);
       align-items: center;
-      margin-bottom: var(--space-md);
+      margin-bottom: var(--spacing-05);
     }
 
     .button-icon {
@@ -382,15 +436,16 @@
       height: 16px;
     }
 
-    /* Status Messages */
+    /* Status Messages (Carbon inline notification) */
     .status-banner {
-      padding: var(--space-sm) var(--space-md);
-      border-radius: var(--radius-md);
-      font-size: 12px;
+      padding: var(--spacing-04);
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-sm);
       display: flex;
       align-items: center;
-      gap: var(--space-sm);
-      transition: all var(--transition-base);
+      gap: var(--spacing-03);
+      transition: background var(--transition-fast);
+      border-left: 4px solid transparent;
     }
 
     .status-icon {
@@ -400,41 +455,54 @@
     }
 
     .status-info {
-      background: var(--primary-light);
-      color: var(--primary);
-      border: 1px solid var(--primary);
+      background: var(--info-bg);
+      color: var(--info-text);
+      border-left-color: var(--info);
     }
 
     .status-success {
-      background: #E7F9F0;
-      color: var(--success);
-      border: 1px solid var(--success);
+      background: var(--success-bg);
+      color: var(--success-text);
+      border-left-color: var(--success);
     }
 
     .status-error {
-      background: #FFEBE7;
-      color: var(--error);
-      border: 1px solid var(--error);
+      background: var(--error-bg);
+      color: var(--error-text);
+      border-left-color: var(--error);
     }
 
     .status-warning {
-      background: #FFF4E0;
-      color: #946800;
-      border: 1px solid #D4960A;
+      background: var(--warning-bg);
+      color: var(--warning-text);
+      border-left-color: var(--warning);
     }
 
     /* Audit View Styles */
     .audit-section:not(:last-child) {
-      margin-bottom: var(--space-lg);
+      margin-bottom: var(--spacing-06);
     }
 
     .audit-item {
       display: flex;
-      padding: var(--space-sm);
+      padding: var(--spacing-03);
       background: var(--surface);
-      border-radius: var(--radius-sm);
-      margin-bottom: var(--space-sm);
-      gap: var(--space-sm);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--spacing-03);
+      gap: var(--spacing-03);
+    }
+
+    .audit-item.pass-item {
+      background: var(--success-bg);
+    }
+
+    .audit-item.fail-item {
+      background: var(--error-bg);
+    }
+
+    .audit-item.warning-item {
+      background: var(--warning-bg);
     }
 
     .audit-status {
@@ -452,7 +520,7 @@
     }
 
     .audit-status.warning {
-      color: var(--warning);
+      color: var(--warning-text);
     }
 
     .audit-status.info {
@@ -467,13 +535,13 @@
 
     .audit-label {
       flex: 1;
-      font-size: 12px;
+      font-size: var(--font-size-sm);
       color: var(--text-primary);
     }
 
     .audit-action {
-      font-size: 11px;
-      color: var(--primary);
+      font-size: var(--font-size-xs);
+      color: var(--interactive);
       cursor: pointer;
       text-decoration: none;
     }
@@ -483,19 +551,19 @@
     }
 
     .audit-action-button {
-      font-size: 11px;
-      color: var(--primary);
+      font-size: var(--font-size-xs);
+      color: var(--interactive);
       background: transparent;
-      border: 1px solid var(--primary);
+      border: 1px solid var(--interactive);
       border-radius: var(--radius-sm);
-      padding: 2px 8px;
+      padding: var(--spacing-02) var(--spacing-04);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast);
+      min-height: 24px;
     }
 
     .audit-action-button:hover {
-      background: var(--primary-light);
-      transform: translateY(-1px);
+      background: var(--interactive-light);
     }
 
     /* Property Cheat Sheet */
@@ -530,11 +598,11 @@
     .property-value {
       display: inline-block;
       padding: 2px 6px;
-      background: var(--primary-light);
-      color: var(--primary);
+      background: var(--interactive-light);
+      color: var(--interactive);
       border-radius: var(--radius-sm);
-      font-size: 11px;
-      margin-right: var(--space-xs);
+      font-size: var(--font-size-xs);
+      margin-right: var(--spacing-02);
     }
 
     /* Token Analysis */
@@ -581,41 +649,38 @@
     }
 
     .token-item-enhanced:hover {
-      border-color: var(--primary);
-      transform: translateY(-1px);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-color: var(--interactive);
     }
 
     .token-item-enhanced.suggestion {
-      background: var(--primary-light);
-      border-color: var(--primary);
+      background: var(--interactive-light);
+      border-left: 3px solid var(--interactive);
     }
 
     /* Compact Token Display */
     .token-item-compact {
       display: flex;
-      padding: 8px;
-      background: var(--background);
+      padding: var(--spacing-03);
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 6px;
-      gap: 8px;
-      transition: all var(--transition-fast);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--spacing-02);
+      gap: var(--spacing-03);
+      transition: border-color var(--transition-fast);
     }
 
     .token-item-compact:hover {
-      background: var(--surface);
-      border-color: var(--primary);
+      border-color: var(--interactive);
     }
 
     .token-item-compact.warning {
-      background: #FFF8F0;
-      border-color: var(--warning);
+      background: var(--warning-bg);
+      border-left: 3px solid var(--warning);
     }
 
     .token-item-compact.suggestion {
-      background: #F0F4FF;
-      border-color: var(--primary);
+      background: var(--interactive-light);
+      border-left: 3px solid var(--interactive);
     }
 
     .token-swatch-spacing {
@@ -659,16 +724,20 @@
     }
 
     .token-name {
-      font-size: 11px;
-      font-weight: 600;
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
       color: var(--text-primary);
       margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .token-usage {
       font-size: 10px;
       color: var(--text-secondary);
-      margin-bottom: 2px;
+      line-height: var(--line-height-tight);
+      word-wrap: break-word;
     }
 
     .token-value {
@@ -680,7 +749,7 @@
     .token-preview-spacing {
       max-width: 40px;
       min-height: 8px;
-      border-radius: 2px;
+      border-radius: var(--radius-sm);
     }
 
     .token-preview-text {
@@ -693,34 +762,6 @@
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       color: var(--text-primary);
-    }
-
-    /* Compact Token Layout */
-    .token-item-compact {
-      display: flex;
-      padding: var(--space-sm);
-      background: var(--surface);
-      border-radius: var(--radius-sm);
-      margin-bottom: var(--space-xs);
-      gap: var(--space-sm);
-      border: 1px solid var(--border);
-      transition: all var(--transition-base);
-    }
-
-    .token-item-compact:hover {
-      border-color: var(--primary);
-      transform: translateY(-1px);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    .token-item-compact.warning {
-      background: rgba(255, 244, 224, 0.3);
-      border-color: var(--warning);
-    }
-
-    .token-item-compact.suggestion {
-      background: var(--primary-light);
-      border-color: var(--primary);
     }
 
     .token-swatch {
@@ -741,7 +782,7 @@
       height: 12px;
       min-width: 8px;
       max-width: 40px;
-      border-radius: 2px;
+      border-radius: var(--radius-sm);
       border: 1px solid rgba(0,0,0,0.1);
       flex-shrink: 0;
     }
@@ -751,22 +792,7 @@
       min-width: 0;
     }
 
-    .token-name {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 2px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .token-usage {
-      font-size: 10px;
-      color: var(--text-secondary);
-      line-height: 1.3;
-      word-wrap: break-word;
-    }
+    /* (.token-name and .token-usage consolidated above) */
 
     /* Playground Grid */
     .playground-grid {
@@ -927,7 +953,7 @@
 
     /* Footer Links */
     .footer-links {
-      padding: var(--space-sm);
+      padding: var(--spacing-03);
       text-align: center;
       border-top: 1px solid var(--border);
       background: var(--surface);
@@ -935,11 +961,11 @@
     }
 
     .footer-link {
-      font-size: 11px;
+      font-size: var(--font-size-xs);
       color: var(--text-secondary);
       text-decoration: none;
-      transition: all var(--transition-fast);
-      padding: var(--space-xs) var(--space-sm);
+      transition: color var(--transition-fast);
+      padding: var(--spacing-02) var(--spacing-03);
       border-radius: var(--radius-sm);
       display: inline-block;
       background: transparent;
@@ -947,11 +973,8 @@
     }
 
     .footer-link:hover {
-      color: var(--primary);
-      text-decoration: none;
-      background: var(--primary-light);
-      border-color: var(--primary);
-      transform: translateY(-1px);
+      color: var(--interactive);
+      text-decoration: underline;
     }
 
     /* Utility Classes */
@@ -959,7 +982,7 @@
       display: none !important;
     }
 
-    /* Tooltip Styles */
+    /* Tooltip Styles (JS-positioned) */
     .tooltip {
       position: relative;
       display: inline-block;
@@ -968,76 +991,70 @@
     }
 
     .tooltip .tooltiptext {
-      visibility: hidden;
-      width: 280px;
-      background-color: var(--text-primary);
-      color: var(--background);
+      display: none;
+    }
+
+    .tooltip-popup {
+      position: fixed;
+      z-index: var(--z-tooltip);
+      background: var(--surface);
+      color: var(--text-primary);
       text-align: left;
       border-radius: var(--radius-md);
-      padding: var(--space-sm);
-      position: absolute;
-      z-index: 1000;
-      bottom: calc(100% + 8px);
-      right: -8px;
-      opacity: 0;
-      transition: opacity var(--transition-base);
-      font-size: 11px;
+      padding: var(--spacing-03) var(--spacing-04);
+      font-size: var(--font-size-xs);
       line-height: 1.4;
-      box-shadow: var(--shadow-lg);
+      box-shadow: var(--shadow-md);
+      border: 1px solid var(--border);
+      max-width: 280px;
+      pointer-events: none;
     }
 
-    .tooltip .tooltiptext::after {
+    .tooltip-popup::before {
       content: "";
       position: absolute;
-      top: 100%;
-      right: 12px;
+      left: 16px;
       border-width: 5px;
       border-style: solid;
-      border-color: var(--text-primary) transparent transparent transparent;
     }
 
-    .tooltip:hover .tooltiptext {
-      visibility: visible;
-      opacity: 1;
+    .tooltip-popup.tooltip-above::before {
+      top: 100%;
+      border-color: var(--border) transparent transparent transparent;
     }
 
-    /* For tooltips inside section-header, anchor to left of the header block */
-    .section-header .tooltip .tooltiptext,
-    .collapsible-title .tooltip .tooltiptext {
-      right: auto;
-      left: -200px;
-    }
-
-    .section-header .tooltip .tooltiptext::after,
-    .collapsible-title .tooltip .tooltiptext::after {
-      right: auto;
-      left: calc(100% - 28px);
+    .tooltip-popup.tooltip-below::before {
+      bottom: 100%;
+      border-color: transparent transparent var(--border) transparent;
     }
 
     .section-header {
       display: flex;
       align-items: center;
-      margin-bottom: 8px;
+      margin-bottom: var(--spacing-03);
     }
 
     .section-title {
-      font-size: 12px;
-      font-weight: 600;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
       margin: 0;
     }
 
     .info-icon {
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
       background: var(--text-tertiary);
-      color: var(--background);
+      color: var(--surface);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 9px;
-      font-weight: 600;
-      margin-left: 6px;
+      font-size: 10px;
+      font-weight: var(--font-weight-semibold);
+      margin-left: var(--spacing-02);
     }
 
     .mt-sm { margin-top: var(--space-sm); }
@@ -1095,7 +1112,7 @@
     }
 
     input:checked + .toggle-slider {
-      background-color: var(--primary);
+      background-color: var(--interactive);
     }
 
     input:checked + .toggle-slider:before {
@@ -1122,28 +1139,27 @@
     }
 
     .tab-button {
-      padding: var(--space-sm) var(--space-md) calc(var(--space-sm) + 1px);
+      padding: var(--spacing-03) var(--spacing-05) calc(var(--spacing-03) + 1px);
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
       color: var(--text-secondary);
-      font-size: 13px;
-      font-weight: 500;
+      font-size: var(--font-size-md);
+      font-weight: var(--font-weight-medium);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: color var(--transition-fast), border-color var(--transition-fast);
       position: relative;
       margin-bottom: -1px;
     }
 
     .tab-button:hover:not(.active) {
       color: var(--text-primary);
-      background: var(--surface);
-      border-bottom-color: var(--primary);
+      border-bottom-color: var(--border-strong);
     }
 
     .tab-button.active {
-      color: var(--primary);
-      border-bottom-color: var(--primary);
+      color: var(--interactive);
+      border-bottom-color: var(--interactive);
     }
 
     .tab-button:disabled {
@@ -1253,17 +1269,17 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
-      padding: var(--space-xs) var(--space-sm);
-      font-size: 11px;
+      padding: var(--spacing-02) var(--spacing-03);
+      font-size: var(--font-size-xs);
       color: var(--text-primary);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast), border-color var(--transition-fast);
     }
 
     .chat-suggestion:hover {
-      background: var(--primary-light);
-      border-color: var(--primary);
-      transform: translateY(-1px);
+      background: var(--interactive-light);
+      border-color: var(--interactive);
+      color: var(--interactive);
     }
 
     .chat-container {
@@ -1306,8 +1322,8 @@
     }
 
     .chat-message.user .chat-message-content {
-      background: var(--primary);
-      color: white;
+      background: var(--interactive);
+      color: var(--text-on-color);
       border-bottom-right-radius: var(--radius-sm);
     }
 
@@ -1415,23 +1431,22 @@
     }
 
     .chat-send-button {
-      padding: 8px;
+      padding: var(--spacing-03);
       min-width: 36px;
       height: 36px;
-      background: var(--primary);
-      color: white;
+      background: var(--interactive);
+      color: var(--text-on-color);
       border: none;
       border-radius: var(--radius-md);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast);
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .chat-send-button:hover:not(:disabled) {
-      background: var(--primary-hover);
-      transform: translateY(-1px);
+      background: var(--interactive-hover);
     }
 
     .chat-send-button:disabled {
@@ -1567,33 +1582,17 @@
     .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
     .loading-dots span:nth-child(3) { animation-delay: 0s; }
 
-    /* Chat suggestion and loading styles */
-    .chat-suggestion {
-      padding: var(--space-xs) var(--space-sm);
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      font-size: 11px;
-      color: var(--text-secondary);
-      cursor: pointer;
-      transition: all var(--transition-fast);
-    }
-
-    .chat-suggestion:hover {
-      background: var(--primary-light);
-      border-color: var(--primary);
-      color: var(--primary);
-    }
+    /* (duplicate chat-suggestion removed - consolidated above) */
 
     /* Select node button styles */
     .select-node-btn {
-      background: var(--primary);
-      color: white;
+      background: var(--interactive);
+      color: var(--text-on-color);
       border: none;
       border-radius: var(--radius-sm);
-      padding: 6px;
+      padding: var(--spacing-02);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1604,13 +1603,11 @@
     }
 
     .select-node-btn:hover {
-      background: var(--primary-hover);
-      transform: translateY(-1px);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      background: var(--interactive-hover);
     }
 
     .select-node-btn:active {
-      transform: translateY(0);
+      background: var(--interactive-active);
     }
 
     .select-node-btn svg {
@@ -1618,14 +1615,7 @@
       height: 14px;
     }
 
-    /* Update token item layout to accommodate select button */
-    .token-item-compact {
-      display: flex;
-      gap: var(--space-sm);
-      padding: var(--space-xs);
-      border-radius: var(--radius-sm);
-      margin-bottom: var(--space-xs);
-    }
+    /* Token item layout - select button accommodation */
 
     .token-item-compact .token-details {
       flex: 1;
@@ -1666,15 +1656,14 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      backdrop-filter: blur(2px);
+      background: rgba(22, 22, 22, 0.5);
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: var(--z-modal);
       opacity: 0;
       visibility: hidden;
-      transition: all var(--transition-fast);
+      transition: opacity var(--transition-fast), visibility var(--transition-fast);
     }
 
     .modal-overlay.active {
@@ -1683,11 +1672,11 @@
     }
 
     .modal-container {
-      background: var(--background);
+      background: var(--surface);
       border-radius: var(--radius-lg);
       box-shadow: var(--shadow-lg);
       width: 90%;
-      max-width: 360px;
+      max-width: 480px;
       max-height: 80vh;
       overflow: hidden;
       transform: scale(0.95);
@@ -1771,20 +1760,21 @@
 
     /* Fix Button Styles */
     .fix-btn {
-      font-size: 10px;
-      padding: 2px 6px;
-      background: var(--primary-light);
-      color: var(--primary);
-      border: 1px solid var(--primary);
+      font-size: var(--font-size-xs);
+      padding: var(--spacing-02) var(--spacing-04);
+      background: var(--interactive-light);
+      color: var(--interactive);
+      border: 1px solid var(--interactive);
       border-radius: var(--radius-sm);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast), color var(--transition-fast);
       white-space: nowrap;
+      min-height: 24px;
     }
 
     .fix-btn:hover {
-      background: var(--primary);
-      color: white;
+      background: var(--interactive);
+      color: var(--text-on-color);
     }
 
     .fix-btn:disabled {
@@ -1804,11 +1794,12 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: var(--primary-light);
-      border: 1px solid var(--primary);
-      border-radius: var(--radius-md);
-      padding: 8px 12px;
-      margin-bottom: 12px;
+      background: var(--interactive-light);
+      border: 1px solid var(--interactive);
+      border-left: 4px solid var(--interactive);
+      border-radius: var(--radius-sm);
+      padding: var(--spacing-03) var(--spacing-04);
+      margin-bottom: var(--spacing-04);
     }
 
     .fix-summary-stats {
@@ -1829,27 +1820,26 @@
     }
 
     .quick-actions-btn {
-      font-size: 11px;
-      padding: 4px 12px;
-      background: var(--primary);
-      color: white;
+      font-size: var(--font-size-xs);
+      padding: var(--spacing-02) var(--spacing-04);
+      background: var(--interactive);
+      color: var(--text-on-color);
       border: none;
       border-radius: var(--radius-sm);
       cursor: pointer;
-      transition: all var(--transition-fast);
+      transition: background var(--transition-fast);
       white-space: nowrap;
-      font-weight: 500;
+      font-weight: var(--font-weight-medium);
+      min-height: 24px;
     }
 
     .quick-actions-btn:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
+      background: var(--interactive-hover);
     }
 
     .quick-actions-btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
-      transform: none;
     }
 
     /* Batch Action Bar (token section) */
@@ -1857,12 +1847,13 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: #FFF4E0;
+      background: var(--warning-bg);
       border: 1px solid var(--warning);
-      border-radius: var(--radius-md);
-      padding: 8px 12px;
-      margin-bottom: 12px;
-      font-size: 11px;
+      border-left: 4px solid var(--warning);
+      border-radius: var(--radius-sm);
+      padding: var(--spacing-03) var(--spacing-04);
+      margin-bottom: var(--spacing-04);
+      font-size: var(--font-size-xs);
     }
 
     .batch-action-bar .batch-label {
@@ -2033,9 +2024,38 @@
 
     .fix-btn.fix-applied {
       background: var(--success);
-      color: white;
+      color: var(--text-on-color);
       border-color: var(--success);
       pointer-events: none;
+    }
+
+    .add-property-btn {
+      height: 24px;
+      padding: 0 8px;
+      font-size: 11px;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--interactive);
+      background: transparent;
+      color: var(--interactive);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .add-property-btn:hover {
+      background: var(--interactive);
+      color: var(--text-on-color);
+    }
+
+    .add-property-btn.property-added {
+      background: var(--success);
+      color: var(--text-on-color);
+      border-color: var(--success);
+      pointer-events: none;
+    }
+
+    .recommendation-card-added {
+      opacity: 0.4;
     }
 
     /* Inline icon system */
@@ -2043,9 +2063,9 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 14px;
-      height: 14px;
-      vertical-align: -2px;
+      width: 16px;
+      height: 16px;
+      vertical-align: -3px;
       flex-shrink: 0;
     }
 
@@ -2054,8 +2074,8 @@
       height: 100%;
     }
 
-    .ico-sm { width: 12px; height: 12px; }
-    .ico-lg { width: 16px; height: 16px; vertical-align: -3px; }
+    .ico-sm { width: 12px; height: 12px; vertical-align: -2px; }
+    .ico-lg { width: 20px; height: 20px; vertical-align: -4px; }
 
     /* Provider indicator dots */
     .provider-dot {
@@ -2069,6 +2089,21 @@
     .provider-dot.anthropic { background: #7C3AED; }
     .provider-dot.openai { background: #10A37F; }
     .provider-dot.google { background: #4285F4; }
+
+    /* Custom scrollbar (thin, Carbon-style) */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--surface-alt);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--border-strong);
+    }
   </style>
 </head>
 <body>
@@ -2452,11 +2487,11 @@
 
     // SVG Icon library for professional UI
     const ICO = {
-      check:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg></span>',
-      x:         '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></span>',
-      warn:      '<span class="ico" style="color:var(--warning)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.083 11.398c.634 1.187-.169 2.555-1.543 2.555H1.917C.543 15-.26 13.632.374 12.445L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm0 9a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
-      info:      '<span class="ico" style="color:var(--info)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 8a8 8 0 1116 0A8 8 0 010 8zm8-6.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM6.5 7.75A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.75h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-2h-.25a.75.75 0 01-.75-.75zM8 6a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
-      lightbulb: '<span class="ico" style="color:var(--warning)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 01-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 00-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863.5 8 .5s5.5 1.81 5.5 4.75c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.32-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.75.75 0 01-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75zM6 15.25a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5h-2.5a.75.75 0 01-.75-.75zM5.75 12a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg></span>',
+      check:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Pass"><title>Pass</title><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg></span>',
+      x:         '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Fail"><title>Fail</title><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></span>',
+      warn:      '<span class="ico" style="color:var(--warning)"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Warning"><title>Warning</title><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.083 11.398c.634 1.187-.169 2.555-1.543 2.555H1.917C.543 15-.26 13.632.374 12.445L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm0 9a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
+      info:      '<span class="ico" style="color:var(--info)"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Info"><title>Info</title><path d="M0 8a8 8 0 1116 0A8 8 0 010 8zm8-6.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM6.5 7.75A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.75h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-2h-.25a.75.75 0 01-.75-.75zM8 6a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
+      lightbulb: '<span class="ico" style="color:var(--warning)"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Suggestion"><title>Suggestion</title><path d="M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 01-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 00-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863.5 8 .5s5.5 1.81 5.5 4.75c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.32-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.75.75 0 01-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75zM6 15.25a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5h-2.5a.75.75 0 01-.75-.75zM5.75 12a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg></span>',
       chart:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1.75V13.5h13.75a.75.75 0 010 1.5H.75a.75.75 0 01-.75-.75V1.75a.75.75 0 011.5 0zm14.28 2.53l-5.25 5.25a.75.75 0 01-1.06 0L7 7.06 4.28 9.78a.75.75 0 01-1.06-1.06l3.25-3.25a.75.75 0 011.06 0L10 7.94l4.72-4.72a.75.75 0 111.06 1.06z"/></svg></span>',
       palette:   '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A7.996 7.996 0 0010.41 1c-.13.02-.26.04-.39.07A6.5 6.5 0 108 14.5c.2 0 .39-.01.58-.03A4 4 0 0011.5 8h-2a2 2 0 01-2-2V4.5A4 4 0 018 0zm0 3.5a1 1 0 110-2 1 1 0 010 2zm3 1a1 1 0 110-2 1 1 0 010 2zM4.5 7a1 1 0 110-2 1 1 0 010 2zM4 10a1 1 0 112 0 1 1 0 01-2 0z"/></svg></span>',
       target:    '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z"/><path d="M8 4.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM6 8a2 2 0 114 0 2 2 0 01-4 0z"/><circle cx="8" cy="8" r="1"/></svg></span>',
@@ -2468,11 +2503,11 @@
       message:   '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 13H8.06l-2.573 2.573A1.458 1.458 0 013 14.543V13H1.75A1.75 1.75 0 010 11.25v-8.5C0 1.784.784 1 1.75 1zm.25 1.75v8.5c0 .138.112.25.25.25h2a.75.75 0 01.75.75v2.19l2.72-2.72a.749.749 0 01.53-.22h6a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H2a.25.25 0 00-.25.25z"/></svg></span>',
       book:      '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.75A.75.75 0 01.75 1h4.253c1.227 0 2.317.59 3 1.501A3.744 3.744 0 0111.006 1h4.245a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75h-4.507a2.25 2.25 0 00-1.591.659l-.622.621a.75.75 0 01-1.06 0l-.622-.621A2.25 2.25 0 005.258 13H.75a.75.75 0 01-.75-.75V1.75zm7.251 10.324l.004-5.073-.002-2.253A2.25 2.25 0 005.003 2.5H1.5v9h3.757a3.75 3.75 0 011.994.574zM8.755 4.75l-.004 7.322a3.752 3.752 0 011.992-.572H14.5v-9h-3.495a2.25 2.25 0 00-2.25 2.25z"/></svg></span>',
       trash:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zM4.496 6.675l.66 6.6a.25.25 0 00.249.225h5.19a.25.25 0 00.249-.225l.66-6.6a.75.75 0 011.492.15l-.66 6.6A1.748 1.748 0 0110.595 15h-5.19a1.75 1.75 0 01-1.741-1.575l-.66-6.6a.75.75 0 111.492-.15z"/></svg></span>',
-      checkCircle: '<span class="ico" style="color:var(--success)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 118 0a8 8 0 010 16zm3.78-9.72a.751.751 0 00-.018-1.042.751.751 0 00-1.042-.018L6.75 9.19 5.28 7.72a.751.751 0 00-1.042.018.751.751 0 00-.018 1.042l2 2a.75.75 0 001.06 0l4.5-4.5z"/></svg></span>',
-      xCircle:     '<span class="ico" style="color:var(--error)"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2.343 13.657A8 8 0 1113.658 2.343 8 8 0 012.343 13.657zM6.03 4.97a.751.751 0 00-1.042.018.751.751 0 00-.018 1.042L6.94 8 4.97 9.97a.749.749 0 00.326 1.275.749.749 0 00.734-.215L8 9.06l1.97 1.97a.749.749 0 001.275-.326.749.749 0 00-.215-.734L9.06 8l1.97-1.97a.749.749 0 00-.326-1.275.749.749 0 00-.734.215L8 6.94 6.03 4.97z"/></svg></span>',
-      warnTriangle:'<span class="ico" style="color:#946800"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.083 11.398c.634 1.187-.169 2.555-1.543 2.555H1.917C.543 15-.26 13.632.374 12.445L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm0 9a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
-      sparkle:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.53 1.282a.5.5 0 01.94 0l1.478 4.03a.5.5 0 00.296.296l4.03 1.478a.5.5 0 010 .94l-4.03 1.478a.5.5 0 00-.296.296l-1.478 4.03a.5.5 0 01-.94 0L6.052 9.8a.5.5 0 00-.296-.296L1.726 8.026a.5.5 0 010-.94L5.756 5.608a.5.5 0 00.296-.296L7.53 1.282z"/></svg></span>',
-      clipboard:   '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.75 1a.75.75 0 00-.75.75v.5c0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75v-.5a.75.75 0 00-.75-.75h-4.5z"/><path d="M3.5 3.75a.75.75 0 01.75-.75H5v.5A1.75 1.75 0 006.75 5h2.5A1.75 1.75 0 0011 3.5V3h.75a.75.75 0 01.75.75v9.5a.75.75 0 01-.75.75h-8.5a.75.75 0 01-.75-.75v-9.5z"/></svg></span>',
+      checkCircle: '<span class="ico" style="color:var(--success)"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Pass"><title>Pass</title><path d="M8 16A8 8 0 118 0a8 8 0 010 16zm3.78-9.72a.751.751 0 00-.018-1.042.751.751 0 00-1.042-.018L6.75 9.19 5.28 7.72a.751.751 0 00-1.042.018.751.751 0 00-.018 1.042l2 2a.75.75 0 001.06 0l4.5-4.5z"/></svg></span>',
+      xCircle:     '<span class="ico" style="color:var(--error)"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Fail"><title>Fail</title><path d="M2.343 13.657A8 8 0 1113.658 2.343 8 8 0 012.343 13.657zM6.03 4.97a.751.751 0 00-1.042.018.751.751 0 00-.018 1.042L6.94 8 4.97 9.97a.749.749 0 00.326 1.275.749.749 0 00.734-.215L8 9.06l1.97 1.97a.749.749 0 001.275-.326.749.749 0 00-.215-.734L9.06 8l1.97-1.97a.749.749 0 00-.326-1.275.749.749 0 00-.734.215L8 6.94 6.03 4.97z"/></svg></span>',
+      warnTriangle:'<span class="ico" style="color:var(--warning-text)"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Warning"><title>Warning</title><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.083 11.398c.634 1.187-.169 2.555-1.543 2.555H1.917C.543 15-.26 13.632.374 12.445L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm0 9a1 1 0 100-2 1 1 0 000 2z"/></svg></span>',
+      sparkle:     '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="AI Suggestion"><title>AI Suggestion</title><path d="M7.53 1.282a.5.5 0 01.94 0l1.478 4.03a.5.5 0 00.296.296l4.03 1.478a.5.5 0 010 .94l-4.03 1.478a.5.5 0 00-.296.296l-1.478 4.03a.5.5 0 01-.94 0L6.052 9.8a.5.5 0 00-.296-.296L1.726 8.026a.5.5 0 010-.94L5.756 5.608a.5.5 0 00.296-.296L7.53 1.282z"/></svg></span>',
+      clipboard:   '<span class="ico"><svg viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="Copy"><title>Copy</title><path d="M5.75 1a.75.75 0 00-.75.75v.5c0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75v-.5a.75.75 0 00-.75-.75h-4.5z"/><path d="M3.5 3.75a.75.75 0 01.75-.75H5v.5A1.75 1.75 0 006.75 5h2.5A1.75 1.75 0 0011 3.5V3h.75a.75.75 0 01.75.75v9.5a.75.75 0 01-.75.75h-8.5a.75.75 0 01-.75-.75v-9.5z"/></svg></span>',
     };
 
     // Filter out wrapper/boundary elements from token scoring
@@ -2573,6 +2608,7 @@
     let currentFixableTokens = [];
     let lastAnalyzedNodeId = null;
     let quickActionsFixCount = 0;
+    let lastRecIndex = null;
 
     // Chat State Management
     let chatHistory = [];
@@ -2735,6 +2771,15 @@
           fixes: fixes,
           confirmAll: true
         });
+      } else if (type === 'add-property') {
+        lastRecIndex = pendingFix.recIndex;
+        sendMessageToPlugin('add-component-property', {
+          nodeId: pendingFix.nodeId,
+          propertyName: pendingFix.propertyName,
+          propertyType: pendingFix.propertyType,
+          defaultValue: pendingFix.defaultValue,
+          variantOptions: pendingFix.variantOptions
+        });
       }
 
       hideFixModal();
@@ -2815,6 +2860,74 @@
         type: 'naming',
         nodeId,
         newValue: suggestedName
+      });
+    }
+
+    // Preview adding a recommended property to the component
+    function previewAddProperty(index) {
+      const rec = _currentRecommendations[index];
+      if (!rec) {
+        updateStatus('Recommendation not found', 'error');
+        return;
+      }
+      if (!lastAnalyzedNodeId) {
+        updateStatus('No component selected', 'error');
+        return;
+      }
+
+      const recType = (rec.type || '').toLowerCase();
+      const typeLabels = {
+        boolean: 'Boolean',
+        text: 'Text',
+        slot: 'Instance Swap',
+        variant: 'Variant'
+      };
+      const typeLabel = typeLabels[recType] || 'Text';
+
+      let defaultValue = '';
+      if (recType === 'boolean') {
+        defaultValue = 'true';
+      } else if (rec.examples && rec.examples.length > 0) {
+        defaultValue = rec.examples[0];
+      }
+
+      const previewHtml = `
+        <div class="preview-box">
+          <div class="preview-label">Property Name</div>
+          <div class="preview-value" style="font-weight: 600;">${escapeHtml(rec.name)}</div>
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: 8px;">
+          <div class="preview-box" style="flex: 1;">
+            <div class="preview-label">Type</div>
+            <div class="preview-value">${escapeHtml(typeLabel)}</div>
+          </div>
+          <div class="preview-box" style="flex: 1;">
+            <div class="preview-label">Default Value</div>
+            <div class="preview-value">${escapeHtml(defaultValue)}</div>
+          </div>
+        </div>
+        <div class="preview-box" style="margin-top: 8px;">
+          <div class="preview-label">Description</div>
+          <div class="preview-value" style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(rec.description)}</div>
+        </div>
+        ${rec.examples && rec.examples.length > 0 ? `
+          <div class="preview-box" style="margin-top: 8px;">
+            <div class="preview-label">Examples</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">
+              ${rec.examples.map(ex => `<span class="property-value">${escapeHtml(ex)}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+      `;
+
+      showFixModal('Add Component Property', previewHtml, {
+        type: 'add-property',
+        recIndex: index,
+        nodeId: lastAnalyzedNodeId,
+        propertyName: rec.name,
+        propertyType: recType,
+        defaultValue: defaultValue,
+        variantOptions: recType === 'variant' ? rec.examples : undefined
       });
     }
 
@@ -3013,6 +3126,62 @@
       const content = header.nextElementSibling;
       content.classList.toggle('active');
     }
+
+    // JS-based viewport-aware tooltip system
+    (function initTooltipSystem() {
+      let activeTooltip = null;
+
+      document.addEventListener('mouseover', function(e) {
+        const trigger = e.target.closest('.tooltip');
+        if (!trigger) return;
+
+        const textEl = trigger.querySelector('.tooltiptext');
+        if (!textEl) return;
+
+        // Remove any existing tooltip
+        if (activeTooltip) {
+          activeTooltip.remove();
+          activeTooltip = null;
+        }
+
+        const popup = document.createElement('div');
+        popup.className = 'tooltip-popup';
+        popup.innerHTML = textEl.innerHTML;
+        document.body.appendChild(popup);
+        activeTooltip = popup;
+
+        const rect = trigger.getBoundingClientRect();
+        const popupRect = popup.getBoundingClientRect();
+        const margin = 4;
+
+        // Try above first
+        let top = rect.top - popupRect.height - 8;
+        if (top < margin) {
+          // Flip below
+          top = rect.bottom + 8;
+          popup.classList.add('tooltip-below');
+        } else {
+          popup.classList.add('tooltip-above');
+        }
+
+        // Clamp horizontal position within viewport
+        let left = rect.left + rect.width / 2 - popupRect.width / 2;
+        left = Math.max(margin, Math.min(left, window.innerWidth - popupRect.width - margin));
+
+        popup.style.top = top + 'px';
+        popup.style.left = left + 'px';
+      });
+
+      document.addEventListener('mouseout', function(e) {
+        const trigger = e.target.closest('.tooltip');
+        if (!trigger) return;
+
+        if (activeTooltip) {
+          activeTooltip.remove();
+          activeTooltip = null;
+        }
+      });
+    })();
 
     // Handle API Key Changes
     function handleApiKeyChange() {
@@ -3313,6 +3482,9 @@
           break;
         case 'description-updated':
           handleDescriptionUpdated(data);
+          break;
+        case 'property-added':
+          handlePropertyAdded(data);
           break;
         default:
           console.log('Unknown message type:', type);
@@ -3986,23 +4158,23 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 12px; margin-top: 0; color: var(--primary);">' + ICO.lightbulb + ' Recommended Properties</h4>';
         html += '<p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;">Consider adding these properties that developers typically expect for this component type:</p>';
 
-        allRecommendations.forEach(rec => {
-          const typeColor = rec.type === 'slot' ? 'var(--warning)' : 'var(--primary)';
-          const typeIcon = rec.type === 'slot' ? ICO.pkg : ICO.gear;
-          const recIndex = allRecommendations.indexOf(rec);
+        allRecommendations.forEach((rec, index) => {
+          const typeColor = rec.type === 'slot' ? 'var(--warning)' : 'var(--interactive)';
 
           html += `
-            <div style="background: var(--surface-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 8px;">
+            <div class="recommendation-card" id="rec-card-${index}" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                <span style="font-weight: 500; font-size: 12px;">${typeIcon} ${rec.name}</span>
-                <span style="background: ${typeColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 9px; text-transform: uppercase;">${rec.type}</span>
-                <button class="copy-btn" data-prop-name="${rec.name}" data-rec-index="${recIndex}" onclick="copyRecommendationByIndex(${recIndex})" title="Copy to clipboard">
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>
-                </button>
+                <span style="font-weight: 600; font-size: 12px;">${rec.name}</span>
+                <span style="background: ${typeColor}; color: var(--text-on-color); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 9px; text-transform: uppercase; font-weight: 500;">${rec.type}</span>
               </div>
-              <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">${rec.description}</p>
+              <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 6px 0;">${rec.description}</p>
               <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                ${rec.examples.map(example => `<span class="property-value" style="background: var(--surface); font-size: 10px;">${example}</span>`).join('')}
+                ${rec.examples.map(example => `<span class="property-value">${example}</span>`).join('')}
+              </div>
+              <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+                <button class="add-property-btn" id="add-prop-btn-${index}"
+                  onclick="previewAddProperty(${index})"
+                  title="Add this property to the component">+ Add Property</button>
               </div>
             </div>
           `;
@@ -5181,7 +5353,7 @@
         updateStatus(`Fix applied: ${data.message || 'Success'}`, 'success');
         decrementQuickActionsCount(1);
 
-        // Mark only the specific button that triggered this fix
+        // Mark the specific button and dim the parent token item
         if (data.oldName) {
           const btns = document.querySelectorAll('.audit-action-button[data-node-id]');
           btns.forEach(btn => {
@@ -5195,8 +5367,49 @@
             }
           });
         }
+
+        // Also dim token items with fix-applied buttons
+        const fixBtns = document.querySelectorAll('.fix-btn.fix-applied');
+        fixBtns.forEach(btn => {
+          const tokenItem = btn.closest('.token-item-compact');
+          if (tokenItem) {
+            tokenItem.style.opacity = '0.4';
+            const nameEl = tokenItem.querySelector('.token-name');
+            if (nameEl) {
+              nameEl.style.textDecoration = 'line-through';
+            }
+          }
+        });
+
+        // Update fix summary count
+        updateFixSummaryCount();
       } else {
         updateStatus(`Failed to apply fix: ${data.error || 'Unknown error'}`, 'error');
+      }
+    }
+
+    // Update the fix summary bar with remaining fixable count
+    function updateFixSummaryCount() {
+      const allFixBtns = document.querySelectorAll('.fix-btn');
+      const appliedBtns = document.querySelectorAll('.fix-btn.fix-applied');
+      const remaining = allFixBtns.length - appliedBtns.length;
+
+      const summaryStats = document.querySelector('.fix-summary-stats');
+      if (summaryStats) {
+        const chip = summaryStats.querySelector('.stat-chip');
+        if (chip && remaining >= 0) {
+          chip.textContent = remaining > 0 ? `${remaining} fixable` : 'All fixed';
+        }
+      }
+
+      if (remaining === 0) {
+        const summaryBar = document.querySelector('.fix-summary-bar');
+        if (summaryBar) {
+          const msgEl = document.createElement('span');
+          msgEl.style.cssText = 'font-size:var(--font-size-xs);color:var(--success-text);font-weight:var(--font-weight-medium);';
+          msgEl.textContent = 'All fixed \u2014 Re-analyze to verify';
+          summaryBar.appendChild(msgEl);
+        }
       }
     }
 
@@ -5469,6 +5682,28 @@
         }
       } else {
         updateStatus(`Failed to update description: ${data.error || 'Unknown error'}`, 'error');
+      }
+    }
+
+    function handlePropertyAdded(data) {
+      if (data.success) {
+        updateStatus(data.message || `Property "${data.propertyName}" added successfully!`, 'success');
+        if (lastRecIndex !== null) {
+          const card = document.getElementById('rec-card-' + lastRecIndex);
+          const btn = document.getElementById('add-prop-btn-' + lastRecIndex);
+          if (btn) {
+            btn.textContent = '\u2713 Added';
+            btn.classList.add('property-added');
+            btn.disabled = true;
+          }
+          if (card) {
+            card.classList.add('recommendation-card-added');
+          }
+        }
+        lastRecIndex = null;
+      } else {
+        updateStatus(`Failed to add property: ${data.message || 'Unknown error'}`, 'error');
+        lastRecIndex = null;
       }
     }
 

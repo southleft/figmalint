@@ -123,6 +123,9 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
       case 'update-description':
         await handleUpdateDescription(data);
         break;
+      case 'add-component-property':
+        await handleAddComponentProperty(data);
+        break;
       default:
         console.warn('Unknown message type:', type);
     }
@@ -1294,5 +1297,215 @@ async function handleUpdateDescription(data: { nodeId: string; description: stri
       error: errorMessage
     });
     figma.notify(`Failed to update description: ${errorMessage}`, { error: true });
+  }
+}
+
+/**
+ * Handle adding a component property via the Figma Plugin API
+ */
+async function handleAddComponentProperty(data: {
+  nodeId: string;
+  propertyName: string;
+  propertyType: string;
+  defaultValue: string;
+  variantOptions?: string[];
+}): Promise<void> {
+  try {
+    const { nodeId, propertyName, propertyType, defaultValue } = data;
+    const node = await figma.getNodeByIdAsync(nodeId);
+
+    if (!node) {
+      sendMessageToUI('property-added', {
+        success: false,
+        propertyName,
+        message: 'Node not found'
+      });
+      figma.notify('Node not found', { error: true });
+      return;
+    }
+
+    // Resolve to the target component node.
+    // For variant properties, we must target the parent ComponentSet, not
+    // a child variant Component — the Figma API only supports adding VARIANT
+    // properties on ComponentSetNode.
+    let targetNode: ComponentNode | ComponentSetNode | null = null;
+
+    if (node.type === 'COMPONENT') {
+      const component = node as ComponentNode;
+      if (component.parent && component.parent.type === 'COMPONENT_SET') {
+        targetNode = component.parent as ComponentSetNode;
+      } else {
+        targetNode = component;
+      }
+    } else if (node.type === 'COMPONENT_SET') {
+      targetNode = node as ComponentSetNode;
+    } else if (node.type === 'INSTANCE') {
+      const mainComponent = await (node as InstanceNode).getMainComponentAsync();
+      if (mainComponent) {
+        if (mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
+          targetNode = mainComponent.parent as ComponentSetNode;
+        } else {
+          targetNode = mainComponent;
+        }
+      }
+    }
+
+    if (!targetNode) {
+      sendMessageToUI('property-added', {
+        success: false,
+        propertyName,
+        message: 'Selected node is not a component'
+      });
+      figma.notify('Selected node is not a component', { error: true });
+      return;
+    }
+
+    // Check for duplicate property names (strip #id:suffix from keys)
+    const existingDefs = targetNode.componentPropertyDefinitions;
+    for (const key of Object.keys(existingDefs)) {
+      const baseName = key.replace(/#\d+:\d+$/, '');
+      if (baseName.toLowerCase() === propertyName.toLowerCase()) {
+        sendMessageToUI('property-added', {
+          success: false,
+          propertyName,
+          message: `Property "${propertyName}" already exists`
+        });
+        figma.notify(`Property "${propertyName}" already exists`, { error: true });
+        return;
+      }
+    }
+
+    // Map recommendation types to Figma property types
+    let figmaType: ComponentPropertyType;
+    switch (propertyType.toLowerCase()) {
+      case 'boolean':
+        figmaType = 'BOOLEAN';
+        break;
+      case 'text':
+        figmaType = 'TEXT';
+        break;
+      case 'slot':
+        figmaType = 'INSTANCE_SWAP';
+        break;
+      case 'variant':
+        if (targetNode.type === 'COMPONENT_SET') {
+          figmaType = 'VARIANT';
+        } else {
+          figmaType = 'TEXT';
+        }
+        break;
+      default:
+        figmaType = 'TEXT';
+    }
+
+    targetNode.addComponentProperty(propertyName, figmaType, defaultValue);
+
+    // For VARIANT properties on a ComponentSet with multiple options,
+    // create a staging frame adjacent to the ComponentSet containing
+    // cloned variants for each additional option. Positioning clones
+    // inside the ComponentSet is unreliable because Figma's internal
+    // layout engine overrides manual x/y placement on children.
+    let stagingNote = '';
+    if (
+      figmaType === 'VARIANT' &&
+      targetNode.type === 'COMPONENT_SET' &&
+      data.variantOptions &&
+      data.variantOptions.length > 1
+    ) {
+      const componentSet = targetNode as ComponentSetNode;
+      const existingChildren = [...componentSet.children] as SceneNode[];
+      const additionalOptions = data.variantOptions.slice(1);
+      const searchStr = `${propertyName}=${defaultValue}`;
+
+      // Walk up to the topmost frame containing the ComponentSet to get
+      // absolute page coordinates (componentSet.x/y are parent-relative)
+      const page = figma.currentPage;
+      let containerNode: SceneNode = componentSet;
+      while (containerNode.parent && containerNode.parent.type !== 'PAGE') {
+        containerNode = containerNode.parent as SceneNode;
+      }
+      const absX = containerNode.absoluteTransform[0][2];
+      const absY = containerNode.absoluteTransform[1][2];
+      const stagingX = absX;
+      const stagingY = absY + containerNode.height + 50;
+
+      const section = figma.createSection();
+      section.name = `FigmaLint: ${propertyName} Variants`;
+      page.appendChild(section);
+      section.x = stagingX;
+      section.y = stagingY;
+
+      // Add a label text node inside the section
+      const label = figma.createText();
+      await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
+      label.fontName = { family: 'Inter', style: 'Medium' };
+      label.characters = `New "${propertyName}" variants — drag into the ComponentSet`;
+      label.fontSize = 14;
+      label.fills = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.4 } }];
+      section.appendChild(label);
+      label.x = 24;
+      label.y = 24;
+
+      // Clone existing children for each additional option value
+      const padding = 24;
+      const childGap = 32;
+      let currentY = label.y + label.height + 24;
+      let maxWidth = label.width + padding * 2;
+
+      for (const option of additionalOptions) {
+        const replaceStr = `${propertyName}=${option}`;
+
+        // Add option label
+        const optionLabel = figma.createText();
+        await figma.loadFontAsync({ family: 'Inter', style: 'Semi Bold' });
+        optionLabel.fontName = { family: 'Inter', style: 'Semi Bold' };
+        optionLabel.characters = `${propertyName}=${option}`;
+        optionLabel.fontSize = 12;
+        optionLabel.fills = [{ type: 'SOLID', color: { r: 0.6, g: 0.3, b: 0.9 } }];
+        section.appendChild(optionLabel);
+        optionLabel.x = padding;
+        optionLabel.y = currentY;
+        currentY += optionLabel.height + 12;
+
+        // Clone each existing variant child with the new option value
+        let rowX = padding;
+        let rowMaxHeight = 0;
+        for (const child of existingChildren) {
+          const clone = child.clone();
+          clone.name = clone.name.replace(searchStr, replaceStr);
+          section.appendChild(clone);
+          clone.x = rowX;
+          clone.y = currentY;
+          rowX += clone.width + childGap;
+          rowMaxHeight = Math.max(rowMaxHeight, clone.height);
+        }
+        maxWidth = Math.max(maxWidth, rowX - childGap + padding);
+        currentY += rowMaxHeight + childGap;
+      }
+
+      // Resize the section to fit all content
+      section.resizeWithoutConstraints(
+        Math.max(maxWidth, 400),
+        currentY + padding
+      );
+
+      stagingNote = ` — new variants created in staging section to the right`;
+    }
+
+    sendMessageToUI('property-added', {
+      success: true,
+      propertyName,
+      message: `Property "${propertyName}" added successfully${stagingNote}`
+    });
+    figma.notify(`Property "${propertyName}" added${stagingNote ? ' (see staging section)' : ''}`, { timeout: 3000 });
+  } catch (error) {
+    console.error('Error adding component property:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    sendMessageToUI('property-added', {
+      success: false,
+      propertyName: data.propertyName,
+      message: errorMessage
+    });
+    figma.notify(`Failed to add property: ${errorMessage}`, { error: true });
   }
 }

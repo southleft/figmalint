@@ -195,7 +195,8 @@ export type UIMessageType =
   | 'apply-token-fix'
   | 'apply-naming-fix'
   | 'apply-batch-fix'
-  | 'update-description';
+  | 'update-description'
+  | 'add-component-property';
 
 // Auto-fix Types
 export interface FixRequest {
