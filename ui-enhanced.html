@@ -4045,65 +4045,6 @@
         html += '</div>';
       }
 
-      // Best Practices Gaps (MCP-enhanced recommendations)
-      if (audit.bestPracticesGaps && audit.bestPracticesGaps.length > 0) {
-        html += '<div class="audit-section">';
-        html += `
-          <div class="section-header">
-            <h4 class="section-title">Best Practices</h4>
-            <div class="tooltip">
-              <div class="info-icon">i</div>
-              <span class="tooltiptext">
-                <strong>Best Practices</strong><br>
-                Recommendations based on design system standards from MCP knowledge base. These suggest missing states, properties, or accessibility requirements that would improve your component's completeness and compatibility.
-              </span>
-            </div>
-          </div>
-        `;
-
-        audit.bestPracticesGaps.forEach(gap => {
-          totalCount++;
-          const severityIcon = gap.severity === 'error' ? ICO.xCircle : gap.severity === 'warning' ? ICO.warnTriangle : ICO.info;
-          const severityClass = gap.severity === 'error' ? 'fail' : gap.severity === 'warning' ? 'warning' : 'info';
-
-          // Best practices gaps impact score
-          weightedTotalScore += 1;
-          if (gap.severity === 'info') {
-            weightedPassScore += 0.5; // Info-level gaps get partial credit
-            console.log(`[DEBUG][BEST PRACTICES] "${gap.message}" = INFO → +0.5 points`);
-          } else {
-            console.log(`[DEBUG][BEST PRACTICES] "${gap.message}" = ${gap.severity.toUpperCase()} → 0 points`);
-          }
-
-          // Phase 7: Check if this gap is actionable
-          let gapActionHtml = '';
-          if (gap.category === 'accessibility' && gap.suggestion && gap.suggestion.toLowerCase().includes('description')) {
-            gapActionHtml = `<button class="audit-action-button" onclick="handleUpdateDescription()" style="margin-top: 6px;">Update Description</button>`;
-          }
-
-          html += `
-            <div class="audit-item">
-              <span class="audit-status ${severityClass}">${severityIcon}</span>
-              <div class="audit-content">
-                <span class="audit-label">${gap.message}</span>
-                <div class="audit-suggestion" style="font-size: 10px; color: var(--text-tertiary); margin-top: 4px;">
-                  ${gap.suggestion}
-                </div>
-                ${gap.missingItems && gap.missingItems.length > 0 ? `
-                  <div class="missing-items" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
-                    ${gap.missingItems.map(item => `
-                      <span class="property-value" style="background: var(--surface); font-size: 10px; border: 1px dashed var(--border);">${item}</span>
-                    `).join('')}
-                  </div>
-                ` : ''}
-                ${gapActionHtml}
-              </div>
-            </div>
-          `;
-        });
-        html += '</div>';
-      }
-
       auditContent.innerHTML = html;
 
       // Update audit score using weighted scoring for MCP compatibility focus

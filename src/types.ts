@@ -233,13 +233,6 @@ export interface EnhancedAnalysisOptions {
 export interface DetailedAuditResults {
   states: Array<{ name: string; found: boolean }>;
   accessibility: Array<{ check: string; status: 'pass' | 'fail' | 'warning'; suggestion: string }>;
-  bestPracticesGaps?: Array<{
-    category: 'states' | 'properties' | 'accessibility';
-    severity: 'error' | 'warning' | 'info';
-    message: string;
-    suggestion: string;
-    missingItems: string[];
-  }>;
 }
 
 export interface EnhancedAnalysisResult {

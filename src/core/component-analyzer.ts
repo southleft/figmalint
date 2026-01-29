@@ -5,15 +5,7 @@ import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
-import ComponentConsistencyEngine, { ComponentBestPractices, BestPracticesGap } from './consistency-engine';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
-
-// Create a shared consistency engine instance for best practices analysis
-const consistencyEngine = new ComponentConsistencyEngine({
-  enableCaching: true,
-  enableMCPIntegration: true,
-  mcpServerUrl: 'https://design-systems-mcp.southleft-llc.workers.dev/mcp'
-});
 
 /**
  * Extract comprehensive component context for analysis
@@ -1792,31 +1784,6 @@ async function createAuditResults(
   tokens: TokenAnalysis,
   componentDescription?: string
 ): Promise<DetailedAuditResults> {
-  // Get component family for best practices lookup
-  const componentFamily = context.additionalContext?.componentFamily || 'generic';
-
-  // Get best practices from MCP/built-in knowledge
-  let bestPractices: ComponentBestPractices;
-  let bestPracticesGaps: BestPracticesGap[] = [];
-
-  try {
-    console.log(`🔍 Getting best practices for ${componentFamily}...`);
-    bestPractices = await consistencyEngine.getComponentBestPractices(componentFamily);
-
-    // Analyze component against best practices
-    const propertyNames = actualProperties.map(p => p.name);
-    bestPracticesGaps = consistencyEngine.analyzeAgainstBestPractices(
-      context,
-      actualStates,
-      propertyNames,
-      bestPractices
-    );
-
-    console.log(`✅ Best practices analysis complete: ${bestPracticesGaps.length} gaps found`);
-  } catch (error) {
-    console.warn('⚠️ Failed to analyze best practices:', error);
-  }
-
   return {
     // Basic state checking
     states: actualStates.map(state => ({
@@ -1839,9 +1806,7 @@ async function createAuditResults(
           ? 'Component has description for MCP/AI context'
           : 'Add a component description to help MCP and AI understand the component purpose and usage'
       }
-    ],
-    // Best practices gaps from MCP knowledge
-    bestPracticesGaps: bestPracticesGaps.length > 0 ? bestPracticesGaps : undefined
+    ]
   };
 }
 
