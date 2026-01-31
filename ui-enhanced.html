@@ -6123,8 +6123,13 @@
       messageDiv.innerHTML = messageHTML;
       chatMessages.appendChild(messageDiv);
 
-      // Scroll to bottom
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+      // User messages: scroll to bottom so they see their sent message
+      // Assistant messages: scroll to the top of the new message so they can read from the start
+      if (role === 'user') {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      } else {
+        messageDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
 
     function showChatLoading(isLoading) {
