@@ -293,10 +293,14 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       }
 
       // Border-related variables
-      if (boundVars.strokeWeight) {
-        console.log('   📏 Processing strokeWeight variable...');
-        variableProcessingPromises.push(processSingleVariable(boundVars.strokeWeight, 'strokeWeight', borderSet, borders, 'border'));
-      }
+      // Stroke weight variables (uniform and individual sides)
+      const strokeWeightProps = ['strokeWeight', 'strokeTopWeight', 'strokeRightWeight', 'strokeBottomWeight', 'strokeLeftWeight'] as const;
+      strokeWeightProps.forEach(prop => {
+        if ((boundVars as any)[prop]) {
+          console.log(`   📏 Processing ${prop} variable...`);
+          variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, borderSet, borders, 'border'));
+        }
+      });
 
       // Border radius variables
       const radiusProps = ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius'] as const;
@@ -443,9 +447,11 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       const hasVisibleStrokes = hasStrokes && currentNode.strokes.some(stroke => stroke.visible !== false);
       const hasStrokeWeightVariable = 'boundVariables' in currentNode &&
                                       currentNode.boundVariables &&
-                                      currentNode.boundVariables.strokeWeight;
+                                      (['strokeWeight', 'strokeTopWeight', 'strokeRightWeight', 'strokeBottomWeight', 'strokeLeftWeight'].some(prop =>
+                                        (currentNode.boundVariables as any)[prop]));
 
-      console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}`);
+      const boundVarKeys = ('boundVariables' in currentNode && currentNode.boundVariables) ? Object.keys(currentNode.boundVariables) : [];
+      console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}, boundVariable keys: [${boundVarKeys.join(', ')}]`);
 
       if (hasStrokeWeightVariable) {
         console.log(`   🔗 ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);

@@ -344,10 +344,13 @@
           console.log("   \u2728 Processing effects variables...");
           variableProcessingPromises.push(processVariableArray(boundVars.effects, "effects", effectSet, effects, "effect"));
         }
-        if (boundVars.strokeWeight) {
-          console.log("   \u{1F4CF} Processing strokeWeight variable...");
-          variableProcessingPromises.push(processSingleVariable(boundVars.strokeWeight, "strokeWeight", borderSet, borders, "border"));
-        }
+        const strokeWeightProps = ["strokeWeight", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight"];
+        strokeWeightProps.forEach((prop) => {
+          if (boundVars[prop]) {
+            console.log(`   \u{1F4CF} Processing ${prop} variable...`);
+            variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, borderSet, borders, "border"));
+          }
+        });
         const radiusProps = ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"];
         radiusProps.forEach((prop) => {
           if (boundVars[prop]) {
@@ -462,8 +465,9 @@
         console.log(`\u{1F50D} Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
         const hasStrokes = "strokes" in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
         const hasVisibleStrokes = hasStrokes && currentNode.strokes.some((stroke) => stroke.visible !== false);
-        const hasStrokeWeightVariable = "boundVariables" in currentNode && currentNode.boundVariables && currentNode.boundVariables.strokeWeight;
-        console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}`);
+        const hasStrokeWeightVariable = "boundVariables" in currentNode && currentNode.boundVariables && ["strokeWeight", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight"].some((prop) => currentNode.boundVariables[prop]);
+        const boundVarKeys = "boundVariables" in currentNode && currentNode.boundVariables ? Object.keys(currentNode.boundVariables) : [];
+        console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}, boundVariable keys: [${boundVarKeys.join(", ")}]`);
         if (hasStrokeWeightVariable) {
           console.log(`   \u{1F517} ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
         } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
