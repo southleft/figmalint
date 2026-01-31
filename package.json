@@ -1,6 +1,6 @@
 {
   "name": "figmalint",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "FigmaLint - Component linting for Figma that audits design system compliance, MCP compatibility, accessibility, and generates developer handoff documentation.",
   "main": "dist/code.js",
   "scripts": {

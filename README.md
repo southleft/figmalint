@@ -1,181 +1,170 @@
 # FigmaLint
 
-A powerful Figma plugin that serves as an **intelligent design system auditor and educational companion**. FigmaLint bridges the gap between design and development by analyzing components against best practices and providing actionable feedback.
+An AI-powered Figma plugin that audits components for design system compliance, accessibility, and developer readiness — then helps you fix what it finds.
 
-## 🎯 Mission
+FigmaLint analyzes your components against real standards, surfaces hard-coded values and naming issues, and produces structured documentation ready for developer handoff or AI code generation.
 
-FigmaLint empowers designers to create development-ready components by providing real-time analysis and educational feedback. Unlike traditional plugins that modify your designs, FigmaLint acts as a knowledgeable reviewer that helps you understand and implement best practices.
+## Features
 
-### Core Philosophy
-- **Educational First**: Learn while you design with contextual feedback
-- **Non-Destructive**: Analyzes without modifying your components
-- **Developer-Friendly**: Ensures components meet engineering requirements
-- **AI-Powered**: Leverages Claude AI for intelligent, context-aware analysis
+### Multi-Provider AI Analysis
 
-## ✨ Core Features
+Choose your preferred AI provider and model:
 
-### 🔍 Component Analysis
-- Analyzes selected Figma components for completeness
-- Identifies missing interactive states (hover, focus, disabled)
-- Checks for proper naming conventions
-- Validates accessibility considerations
+- **Anthropic** — Claude Opus 4.5, Sonnet 4.5, Haiku 4.5
+- **OpenAI** — GPT-5.2, GPT-5.2 Pro, GPT-5 Mini
+- **Google** — Gemini 3 Pro, Gemini 2.5 Pro, Gemini 2.5 Flash
 
-### 🎨 Design Token Detection
-- Detects both Figma Variables and Named Styles
-- Identifies hard-coded values that should use tokens
-- Categorizes tokens by type (colors, spacing, typography, effects, borders)
-- Provides recommendations for token usage
+Switch providers and models at any time. API keys are stored per provider and auto-detected from key format.
 
-### 📊 Audit & Recommendations
-- **States Audit**: Shows missing interactive states for buttons, inputs, etc.
-- **Accessibility Audit**: Flags potential accessibility issues
-- **Naming Audit**: Suggests improvements to layer naming
-- **Token Opportunities**: Recommends where to use design tokens
+### Component Analysis
 
-### 📋 Property Cheat Sheet
-- Lists actual Figma component properties and variants
-- Shows available values for each property
-- Provides context for how properties should be used
+- Detects missing interactive states (hover, focus, disabled, pressed, active)
+- Evaluates accessibility against WCAG standards — contrast ratio, touch target size, focus indicators, font size
+- Checks component readiness — property configuration, descriptions, structure
+- Identifies component variants and maps their relationships
+- Lists nested component instances used within the design
 
-## 🎨 Key Capabilities
+### Design Token Detection
 
-### Smart Token Detection
-- **Comprehensive Analysis**: Automatically detects Figma Variables, Named Styles, and hard-coded values
-- **Contextual Recommendations**: Suggests semantic token names based on component context
-- **Visual Feedback**: Color swatches and visual previews for detected tokens
-- **Detailed Reporting**: Shows exactly where hard-coded values exist in your component hierarchy
+- Detects Figma Variables, Named Styles, and hard-coded values
+- Categorizes tokens by type: colors, spacing, typography, effects, borders
+- Distinguishes actual design tokens from hard-coded values with per-node deduplication
+- Provides AI-driven suggestions for mapping hard-coded values to tokens
+- Filters wrapper/boundary elements from scoring to reduce false positives
 
-### Intelligent Auditing
-- **State Completeness**: Identifies missing interactive states (hover, focus, disabled, etc.)
-- **Accessibility Validation**: Checks against WCAG guidelines and best practices
-- **Naming Conventions**: Suggests improvements for layer and component naming
-- **Component Structure**: Validates proper hierarchy and organization
+### Auto-Fix
 
-## 🏗️ Architecture
+Apply fixes directly from the analysis results:
+
+- **Token binding** — Bind hard-coded colors and spacing values to design system variables. Fuzzy matching finds the closest token with property-aware scoring (stroke weight matches stroke tokens, padding matches spacing tokens, etc.)
+- **Layer renaming** — Detects generic Figma names (Frame 1, Rectangle 4) and suggests semantic alternatives. Six naming strategies: Semantic, BEM, prefix-based, kebab-case, camelCase, snake_case. Recognizes 30+ semantic layer types.
+- **Add component properties** — Stage recommended Boolean, Text, Instance Swap, or Variant properties from AI suggestions.
+- **Batch operations** — Fix All buttons to resolve all token or naming issues at once.
+
+### AI-Powered Descriptions
+
+Generates structured component descriptions with:
+
+- Brief summary of the component and its variants
+- PURPOSE, BEHAVIOR, COMPOSITION, USAGE, and CODE GENERATION NOTES sections
+- Nested component inventory so AI tools know what sub-components already exist
+- Comparison UI showing whether the Figma description matches the AI-generated one
+- Side-by-side review modal for approving description updates
+
+### Component Audit Scoring
+
+Each component receives a readiness score based on:
+
+- Design token adoption (weighted 2x)
+- Interactive state coverage (weighted 3x)
+- Accessibility checks (contrast, touch targets, focus, font size)
+- Component readiness checks (descriptions, property configuration)
+- Score-aware AI Interpretation that adapts messaging to actual results
+
+### Design Systems Chat
+
+A conversational interface for asking questions about your selected component. Supports multi-turn conversation with context about the component's properties, tokens, states, and structure.
+
+### Developer Handoff
+
+Three export formats:
+
+- **Markdown** — Comprehensive documentation with variants table, properties API, property quick reference, states with pass/fail status, slots, design token breakdown (tokens in use vs hard-coded), accessibility info and audit results, component readiness, naming issues, and AI interpretation. Ready for ZeroHeight, Knapsack, or Supernova.
+- **AI Prompt** — A structured specification you can paste into any AI tool to generate production-ready component code. Includes the full component spec, design tokens, accessibility requirements, and implementation notes.
+- **JSON** — Complete analysis data including metadata, token analysis, audit results, naming issues, and properties for programmatic use.
+
+## Getting Started
+
+### From Figma Community
+
+1. Visit [FigmaLint on Figma Community](https://www.figma.com/community/plugin/1521241390290871981/figmalint)
+2. Click "Install"
+
+### Manual Installation (Development)
+
+1. Clone this repository
+2. `npm install`
+3. `npm run build`
+4. In Figma: Plugins > Development > Import plugin from manifest
+5. Select the `manifest.json` from the project root
+
+### Setup
+
+1. Select a provider (Anthropic, OpenAI, or Google)
+2. Choose a model
+3. Enter your API key
+4. Select a component and click Analyze
+
+## Architecture
 
 ```
 src/
-├── types.ts                 # TypeScript definitions
-├── api/claude.ts            # AI analysis integration
+├── code.ts                      # Plugin entry point
+├── types.ts                     # TypeScript definitions
+├── api/
+│   ├── claude.ts                # Prompt construction and AI integration
+│   └── providers/
+│       ├── types.ts             # Provider type system
+│       ├── index.ts             # Provider registry and routing
+│       ├── anthropic.ts         # Anthropic (Claude) provider
+│       ├── openai.ts            # OpenAI (GPT) provider
+│       └── google.ts            # Google (Gemini) provider
 ├── core/
-│   ├── component-analyzer.ts # Component analysis logic
-│   └── token-analyzer.ts     # Token detection & analysis
-├── utils/figma-helpers.ts    # Figma API utilities
-├── ui/message-handler.ts     # UI communication
-├── code.ts                   # Plugin entry point
-└── ui.html                   # Plugin interface
+│   ├── component-analyzer.ts    # Component analysis and prompt building
+│   ├── token-analyzer.ts        # Design token detection and categorization
+│   └── consistency-engine.ts    # Design system consistency checks
+├── fixes/
+│   ├── token-fixer.ts           # Token binding (color + spacing variables)
+│   └── naming-fixer.ts          # Layer renaming with semantic detection
+├── ui/
+│   └── message-handler.ts       # Plugin ↔ UI message routing
+└── utils/
+    └── figma-helpers.ts         # Figma API utilities
+
+ui-enhanced.html                 # Plugin interface (single-file HTML/CSS/JS)
 ```
 
-## 🚀 Getting Started
-
-### Installation
-
-#### From Figma Community
-1. Visit [FigmaLint on Figma Community](https://www.figma.com/community/plugin/1521241390290871981/figmalint)
-2. Click "Install" to add to your Figma workspace
-
-#### Manual Installation (Development)
-1. Clone this repository
-2. Run `npm install` to install dependencies
-3. Run `npm run build` to compile the plugin
-4. In Figma: Plugins → Development → Import plugin from manifest
-5. Select the `manifest.json` file from the project root
-
-### Usage
-
-1. **Select a component** - Choose any Frame, Component, Component Set, or Instance
-2. **Launch FigmaLint** - Run from Plugins menu
-3. **Configure API** - Add your Claude API key (one-time setup)
-4. **Analyze** - Click "Analyze Component" for instant feedback
-5. **Review & Export** - Study recommendations and export metadata as needed
-
-## 🛠️ Development Setup
+## Development
 
 ### Prerequisites
-- Node.js 16+ and npm
-- TypeScript knowledge helpful but not required
-- Claude API key from [Anthropic Console](https://console.anthropic.com)
 
-### Local Development
+- Node.js 16+
+- An API key from [Anthropic](https://console.anthropic.com), [OpenAI](https://platform.openai.com), or [Google AI Studio](https://aistudio.google.com)
+
+### Commands
+
 ```bash
-# Install dependencies
-npm install
-
-# Development build with watch mode
-npm run dev
-
-# Production build
-npm run build
-
-# Type checking
-npm run lint
-
-# Clean build artifacts
-npm run clean
+npm install          # Install dependencies
+npm run dev          # Development build with watch mode
+npm run build        # Production build
+npm run lint         # Type checking
+npm run clean        # Clean build artifacts
 ```
 
-### Project Structure
-- `src/core/` - Core analysis logic
-- `src/api/` - Claude AI integration
-- `src/ui/` - User interface components
-- `src/utils/` - Helper utilities
-- `dist/` - Compiled plugin files
+## Privacy & Security
 
-## 💡 Use Cases
+- API keys stored in Figma's local storage per provider
+- Component data is never stored externally
+- Analysis calls go directly to the selected provider's API
+- Auto-fix operations modify only the properties you approve
+- Open source
 
-### For Designers
-- **Learning Tool**: Understand design system best practices
-- **Quality Assurance**: Validate components before handoff
-- **Documentation**: Generate component specifications automatically
-- **Consistency**: Ensure adherence to design system standards
-
-### For Design Teams
-- **Design System Audits**: Assess component library health
-- **Onboarding**: Help new team members learn standards
-- **Migration Planning**: Identify token adoption opportunities
-- **Quality Gates**: Establish component review standards
-
-### For Developer Handoff
-- **Metadata Export**: Structured JSON for development
-- **State Documentation**: Complete interaction specifications
-- **Token Mapping**: Clear design token references
-- **Accessibility Notes**: WCAG compliance information
-
-## 🔐 Privacy & Security
-
-FigmaLint is designed with privacy in mind:
-- **Local Storage**: API keys stored securely in Figma's local storage
-- **No Data Retention**: Component data is never stored externally
-- **Direct API Calls**: Analysis happens directly through Claude API
-- **Read-Only**: Plugin only reads components, never modifies them
-- **Open Source**: Full transparency through open source code
-
-## 🤝 Contributing
-
-Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation:
+## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes
+4. Push and open a Pull Request
 
-## 📝 License
+## License
 
-This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+ISC — see [LICENSE](LICENSE) for details.
 
-## 🙏 Acknowledgments
+## Support
 
-- Built with [Claude AI](https://www.anthropic.com) by Anthropic
-- Inspired by the design systems community
-- Thanks to all contributors and users
-
-## 📧 Support
-
-- **Issues**: Report bugs and request features through GitHub Issues
+- **Issues**: [GitHub Issues](https://github.com/southleft/figmalint/issues)
 - **Discussions**: Share ideas and get help from the community
-- **Contributing**: See our Contributing section above
 
 ---
 
-Made with ❤️ for the design community
+Built by [Southleft](https://southleft.com)
