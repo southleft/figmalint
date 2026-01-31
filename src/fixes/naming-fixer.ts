@@ -731,7 +731,12 @@ export function generateTextName(node: TextNode): string {
   // For very short text (1-2 words), use it directly
   const words = trimmedText.split(/\s+/);
   if (words.length <= 2 && trimmedText.length <= 30) {
-    return `text-${toKebabCase(trimmedText)}`;
+    const kebab = toKebabCase(trimmedText);
+    // If toKebabCase stripped all characters (e.g., "#", symbols), use a descriptive fallback
+    if (kebab) {
+      return `text-${kebab}`;
+    }
+    return 'text-content';
   }
 
   // For longer text, create a summary
@@ -784,7 +789,8 @@ export function generateTextName(node: TextNode): string {
   }
 
   // Default: use first two words
-  return `text-${toKebabCase(words.slice(0, 2).join(' '))}`;
+  const defaultKebab = toKebabCase(words.slice(0, 2).join(' '));
+  return defaultKebab ? `text-${defaultKebab}` : 'text-content';
 }
 
 /**

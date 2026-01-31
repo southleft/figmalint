@@ -203,6 +203,20 @@ export async function callProvider(
     }
 
     const data = await response.json();
+    console.log(`${provider.name} API response status: ${response.status}`);
+    console.log(`${provider.name} API response keys:`, Object.keys(data));
+    if (providerId === 'google') {
+      console.log(`Gemini response candidates:`, data.candidates ? data.candidates.length : 'none');
+      if (data.candidates?.[0]) {
+        console.log(`Gemini candidate[0] keys:`, Object.keys(data.candidates[0]));
+        if (data.candidates[0].content) {
+          console.log(`Gemini content parts:`, data.candidates[0].content.parts?.length || 'none');
+        }
+      }
+      if (data.error) {
+        console.log(`Gemini error:`, JSON.stringify(data.error));
+      }
+    }
     return provider.parseResponse(data);
 
   } catch (error) {

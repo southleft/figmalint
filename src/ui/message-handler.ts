@@ -1019,7 +1019,12 @@ async function handleApplyTokenFix(data: FixRequest): Promise<void> {
       result = await applySpacingFix(sceneNode, data.propertyPath, data.tokenId);
     }
 
-    sendMessageToUI('fix-applied', result);
+    sendMessageToUI('fix-applied', {
+      ...result,
+      fixType: 'token',
+      nodeId: data.nodeId,
+      propertyPath: data.propertyPath
+    });
 
     if (result.success) {
       figma.notify(`Applied token to ${sceneNode.name}`, { timeout: 2000 });
@@ -1029,7 +1034,7 @@ async function handleApplyTokenFix(data: FixRequest): Promise<void> {
   } catch (error) {
     console.error('Error applying token fix:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    sendMessageToUI('fix-applied', { success: false, error: errorMessage });
+    sendMessageToUI('fix-applied', { success: false, error: errorMessage, fixType: 'token', nodeId: data.nodeId });
     figma.notify(`Failed to apply fix: ${errorMessage}`, { error: true });
   }
 }
@@ -1055,10 +1060,26 @@ async function handleApplyNamingFix(data: FixRequest): Promise<void> {
     const newName = data.newValue || suggestLayerName(sceneNode);
     const oldName = sceneNode.name;
 
+    // Skip if name is already the target value
+    if (oldName === newName) {
+      sendMessageToUI('fix-applied', {
+        success: true,
+        fixType: 'naming',
+        nodeId: data.nodeId,
+        message: `Layer already named "${newName}"`,
+        oldName,
+        newName
+      });
+      figma.notify(`Layer already named "${newName}"`, { timeout: 2000 });
+      return;
+    }
+
     const success = renameLayer(sceneNode, newName);
 
     const result = {
       success,
+      fixType: 'naming',
+      nodeId: data.nodeId,
       message: success
         ? `Renamed "${oldName}" to "${newName}"`
         : `Failed to rename layer`,

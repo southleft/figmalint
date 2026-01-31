@@ -462,8 +462,11 @@
         console.log(`\u{1F50D} Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
         const hasStrokes = "strokes" in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
         const hasVisibleStrokes = hasStrokes && currentNode.strokes.some((stroke) => stroke.visible !== false);
-        console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}`);
-        if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
+        const hasStrokeWeightVariable = "boundVariables" in currentNode && currentNode.boundVariables && currentNode.boundVariables.strokeWeight;
+        console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}`);
+        if (hasStrokeWeightVariable) {
+          console.log(`   \u{1F517} ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
+        } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
           const strokeWeightValue = `${currentNode.strokeWeight}px`;
           let strokeColor = void 0;
           const firstVisibleStroke = currentNode.strokes.find((stroke) => stroke.visible !== false && stroke.type === "SOLID");
@@ -826,6 +829,14 @@ Evaluate based on these criteria that actually matter for development:
       "description": "What this property controls"
     }
   ],
+  "recommendedProperties": [
+    {
+      "name": "Figma property name to add (e.g. 'Size', 'Icon Before')",
+      "type": "VARIANT|BOOLEAN|TEXT|INSTANCE_SWAP",
+      "description": "Why this property improves the component for design system usage and developer handoff",
+      "examples": ["specific example values relevant to this component"]
+    }
+  ],
   "audit": {
     "tokenOpportunities": ["Specific recommendations for design token implementation in Figma"],
     "structureIssues": ["Component structure improvements for better design system integration"]
@@ -856,6 +867,14 @@ Evaluate based on these criteria that actually matter for development:
 4. **Component Architecture**: Evaluate how the component is structured in Figma
 5. **Practical Recommendations**: Suggest improvements that designers can actually implement
 
+**Recommended Properties Guidelines:**
+For the "recommendedProperties" field, compare the component's EXISTING properties against best practices from established design systems (Material Design, Carbon, Ant Design, Polaris, Lightning, Spectrum, etc.):
+- Only recommend Figma component properties that do NOT already exist on this component
+- Use Figma property types: VARIANT (for enumerated options like size/style), BOOLEAN (for toggles like show/hide icon), TEXT (for editable text like labels), INSTANCE_SWAP (for swappable sub-components like icons)
+- Each recommendation must be specific to THIS component type and its actual structure \u2014 do not suggest generic properties that don't apply
+- If the component already has comprehensive properties, return an empty array \u2014 never force recommendations
+- Consider what developers will need when consuming this component in code
+
 **CRITICAL: AVOID ALL Development-Only Concerns:**
 - Do NOT suggest implementing ARIA attributes, accessibility APIs, or semantic HTML (this is code-level)
 - Do NOT suggest adding keyboard navigation, event handlers, or interactive behaviors (this is code-level)
@@ -876,7 +895,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   }
   function extractJSONFromResponse(response) {
     try {
-      console.log("\u{1F50D} Starting JSON extraction from Claude response...");
+      console.log("\u{1F50D} Starting JSON extraction from LLM response...");
       console.log("\u{1F4DD} Response length:", response.length);
       console.log("\u{1F4DD} Response preview (first 200 chars):", response.substring(0, 200));
       try {
@@ -912,9 +931,9 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       }
       throw new Error("No valid JSON found in response after trying all strategies");
     } catch (error) {
-      console.error("\u274C Failed to parse JSON from Claude response:", error);
+      console.error("\u274C Failed to parse JSON from LLM response:", error);
       console.log("\u{1F4DD} Full response for debugging:", response);
-      throw new Error("Invalid JSON response from Claude API");
+      throw new Error("Invalid JSON response from LLM API");
     }
   }
   function extractBalancedJson(response) {
@@ -1706,26 +1725,35 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         );
       }
       if (!geminiResponse.candidates || geminiResponse.candidates.length === 0) {
+        const keys = Object.keys(geminiResponse);
         throw new LLMError(
-          "No candidates returned in Gemini response",
+          `No candidates in Gemini response. Response keys: [${keys.join(", ")}]${geminiResponse.error ? `. Error: ${geminiResponse.error.message}` : ""}`,
           "INVALID_REQUEST" /* INVALID_REQUEST */
         );
       }
       const candidate = geminiResponse.candidates[0];
       if (candidate.finishReason === "SAFETY") {
         throw new LLMError(
-          "Response blocked due to safety filters",
+          "Gemini response blocked by safety filters. Try rephrasing the prompt.",
           "INVALID_REQUEST" /* INVALID_REQUEST */
         );
       }
       const parts = (_a = candidate.content) == null ? void 0 : _a.parts;
-      if (!parts || parts.length === 0 || !parts[0].text) {
+      if (!parts || parts.length === 0) {
         throw new LLMError(
-          "No text content in Gemini response",
+          `No content parts in Gemini response. Finish reason: ${candidate.finishReason || "unknown"}. Has content: ${!!candidate.content}`,
           "INVALID_REQUEST" /* INVALID_REQUEST */
         );
       }
-      const text = parts[0].text;
+      const textPart = parts.find((p) => typeof p.text === "string");
+      if (!textPart || !textPart.text) {
+        const partTypes = parts.map((p) => Object.keys(p).join(",")).join("; ");
+        throw new LLMError(
+          `No text content in Gemini response parts. Part types: [${partTypes}]. Finish reason: ${candidate.finishReason || "unknown"}`,
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const text = textPart.text;
       const llmResponse = {
         content: text,
         model: "gemini"
@@ -1941,6 +1969,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     return provider;
   }
   async function callProvider(providerId, apiKey, config) {
+    var _a, _b;
     const provider = getProvider(providerId);
     const validation = provider.validateApiKey(apiKey);
     if (!validation.isValid) {
@@ -1973,6 +2002,20 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         throw provider.handleError(response.status, errorData);
       }
       const data = await response.json();
+      console.log(`${provider.name} API response status: ${response.status}`);
+      console.log(`${provider.name} API response keys:`, Object.keys(data));
+      if (providerId === "google") {
+        console.log(`Gemini response candidates:`, data.candidates ? data.candidates.length : "none");
+        if ((_a = data.candidates) == null ? void 0 : _a[0]) {
+          console.log(`Gemini candidate[0] keys:`, Object.keys(data.candidates[0]));
+          if (data.candidates[0].content) {
+            console.log(`Gemini content parts:`, ((_b = data.candidates[0].content.parts) == null ? void 0 : _b.length) || "none");
+          }
+        }
+        if (data.error) {
+          console.log(`Gemini error:`, JSON.stringify(data.error));
+        }
+      }
       return provider.parseResponse(data);
     } catch (error) {
       if (error instanceof LLMError) {
@@ -2470,7 +2513,11 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     }
     const words = trimmedText.split(/\s+/);
     if (words.length <= 2 && trimmedText.length <= 30) {
-      return `text-${toKebabCase(trimmedText)}`;
+      const kebab = toKebabCase(trimmedText);
+      if (kebab) {
+        return `text-${kebab}`;
+      }
+      return "text-content";
     }
     const firstWord = words[0].toLowerCase();
     const headingKeywords = ["welcome", "about", "contact", "services", "features", "pricing"];
@@ -2510,7 +2557,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         return `text-success-${toKebabCase(words.slice(0, 2).join(" "))}`;
       }
     }
-    return `text-${toKebabCase(words.slice(0, 2).join(" "))}`;
+    const defaultKebab = toKebabCase(words.slice(0, 2).join(" "));
+    return defaultKebab ? `text-${defaultKebab}` : "text-content";
   }
   function generateContainerName(node) {
     const layerType = detectLayerType(node);
@@ -3280,7 +3328,128 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         }
       }
     } else if (node.type === "INSTANCE") {
-      console.log("\u{1F50D} [DEBUG] Instance case already handled in priority 1");
+      const instance = node;
+      console.log("\u{1F50D} [DEBUG] Processing INSTANCE node (fallback \u2014 Priority 1 may have been skipped)");
+      if (actualProperties.length === 0) {
+        try {
+          const mainComponent = await instance.getMainComponentAsync();
+          if (mainComponent) {
+            if (mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
+              const componentSet = mainComponent.parent;
+              console.log("\u{1F50D} [DEBUG] Instance fallback: extracting from parent component set:", componentSet.name);
+              try {
+                if ("componentPropertyDefinitions" in componentSet) {
+                  const propertyDefinitions = componentSet.componentPropertyDefinitions;
+                  if (propertyDefinitions && typeof propertyDefinitions === "object") {
+                    for (const propName in propertyDefinitions) {
+                      const prop = propertyDefinitions[propName];
+                      let displayName = propName;
+                      let values = [];
+                      let defaultValue = "";
+                      if (propName.includes("#")) {
+                        displayName = propName.split("#")[0];
+                      }
+                      switch (prop.type) {
+                        case "VARIANT":
+                          values = prop.variantOptions || [];
+                          defaultValue = String(prop.defaultValue) || values[0] || "default";
+                          break;
+                        case "BOOLEAN":
+                          values = ["true", "false"];
+                          defaultValue = prop.defaultValue ? "true" : "false";
+                          break;
+                        case "TEXT":
+                          values = [String(prop.defaultValue || "Text content")];
+                          defaultValue = String(prop.defaultValue || "Text content");
+                          break;
+                        case "INSTANCE_SWAP":
+                          if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
+                            values = prop.preferredValues.map((v) => v.key || v.name || "Component instance");
+                          } else {
+                            values = ["Component instance"];
+                          }
+                          defaultValue = values[0] || "Component instance";
+                          break;
+                        default:
+                          values = ["Property value"];
+                          defaultValue = "Default";
+                      }
+                      actualProperties.push({ name: displayName, values, default: defaultValue });
+                    }
+                    console.log(`\u{1F50D} [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from component set`);
+                  }
+                }
+              } catch (error) {
+                console.warn("\u{1F50D} [WARN] Instance fallback: could not access componentPropertyDefinitions:", error);
+              }
+              if (actualProperties.length === 0) {
+                try {
+                  const variantProps = componentSet.variantGroupProperties;
+                  if (variantProps) {
+                    for (const propName in variantProps) {
+                      const prop = variantProps[propName];
+                      if (!actualProperties.find((p) => p.name === propName)) {
+                        actualProperties.push({
+                          name: propName,
+                          values: prop.values,
+                          default: prop.values[0] || "default"
+                        });
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.warn("\u{1F50D} [WARN] Instance fallback: could not access variantGroupProperties:", error);
+                }
+              }
+            } else {
+              console.log("\u{1F50D} [DEBUG] Instance fallback: extracting from standalone main component");
+              try {
+                if ("componentPropertyDefinitions" in mainComponent) {
+                  const propertyDefinitions = mainComponent.componentPropertyDefinitions;
+                  if (propertyDefinitions && typeof propertyDefinitions === "object") {
+                    for (const propName in propertyDefinitions) {
+                      const prop = propertyDefinitions[propName];
+                      let displayName = propName;
+                      let values = [];
+                      let defaultValue = "";
+                      if (propName.includes("#")) {
+                        displayName = propName.split("#")[0];
+                      }
+                      switch (prop.type) {
+                        case "BOOLEAN":
+                          values = ["true", "false"];
+                          defaultValue = prop.defaultValue ? "true" : "false";
+                          break;
+                        case "TEXT":
+                          values = [String(prop.defaultValue || "Text content")];
+                          defaultValue = String(prop.defaultValue || "Text content");
+                          break;
+                        case "INSTANCE_SWAP":
+                          if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
+                            values = prop.preferredValues.map((v) => v.key || v.name || "Component instance");
+                          } else {
+                            values = ["Component instance"];
+                          }
+                          defaultValue = values[0] || "Component instance";
+                          break;
+                        default:
+                          values = ["Property value"];
+                          defaultValue = "Default";
+                      }
+                      actualProperties.push({ name: displayName, values, default: defaultValue });
+                    }
+                    console.log(`\u{1F50D} [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from main component`);
+                  }
+                }
+              } catch (error) {
+                console.warn("\u{1F50D} [WARN] Instance fallback: could not access componentPropertyDefinitions on main component:", error);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn("\u{1F50D} [WARN] Instance fallback: could not get main component:", error);
+        }
+      }
     }
     const uniqueProperties = [];
     actualProperties.forEach((prop) => {
@@ -3497,26 +3666,26 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const useMCP = options.useMCP !== false && mcpServerUrl;
     let analysisResult;
     if (useMCP) {
-      console.log("\u{1F504} Using hybrid Claude + MCP approach...");
-      const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
+      console.log(`\u{1F504} Using hybrid LLM + MCP approach (${providerId})...`);
+      const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
       const llmResponse = await callProvider(providerId, apiKey, {
-        prompt: claudePrompt,
+        prompt: llmPrompt,
         model,
         maxTokens: 2048,
         temperature: 0.1
       });
-      const claudeData = extractJSONFromResponse(llmResponse.content);
-      if (!claudeData) {
-        throw new Error("Failed to extract JSON from Claude response");
+      const llmData = extractJSONFromResponse(llmResponse.content);
+      if (!llmData) {
+        throw new Error("Failed to extract JSON from LLM response");
       }
       let mcpEnhancements = null;
       try {
-        mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, claudeData);
+        mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, llmData);
         console.log("\u2705 MCP enhancements received");
       } catch (mcpError) {
-        console.warn("\u26A0\uFE0F MCP enhancement failed, continuing with Claude data only:", mcpError);
+        console.warn("\u26A0\uFE0F MCP enhancement failed, continuing with LLM data only:", mcpError);
       }
-      analysisResult = mergClaudeAndMCPResults(claudeData, mcpEnhancements, {
+      analysisResult = mergClaudeAndMCPResults(llmData, mcpEnhancements, {
         node,
         context,
         actualProperties,
@@ -3525,7 +3694,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         componentDescription
       });
     } else {
-      console.log("\u{1F4DD} Using Claude-only analysis...");
+      console.log(`\u{1F4DD} Using ${providerId}-only analysis...`);
       const prompt = createEnhancedMetadataPrompt(context);
       const llmFallbackResponse = await callProvider(providerId, apiKey, {
         prompt,
@@ -3573,6 +3742,7 @@ ${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
 3. All states detected in the component
 4. Token usage analysis
 5. Structural patterns and variants
+6. Recommended properties this component SHOULD have but currently LACKS
 
 Return JSON in this exact format:
 {
@@ -3600,10 +3770,20 @@ Return JSON in this exact format:
     "layers": ${context.hierarchy.length},
     "hasSlots": ${context.detectedSlots.length > 0},
     "complexity": "low|medium|high"
-  }
+  },
+  "recommendedProperties": [
+    {
+      "name": "Figma property name to add",
+      "type": "VARIANT|BOOLEAN|TEXT|INSTANCE_SWAP",
+      "description": "Why this property improves the component",
+      "examples": ["specific example values"]
+    }
+  ]
 }
 
-Focus ONLY on what's actually in the Figma component. Do not add theoretical properties or states.`;
+For "recommendedProperties": Compare the EXISTING properties listed above against design system best practices (Material Design, Carbon, Ant Design, Polaris, etc.). Only recommend Figma component properties that do NOT already exist. Use Figma property types (VARIANT, BOOLEAN, TEXT, INSTANCE_SWAP). If the component already has comprehensive properties, return an empty array.
+
+Focus ONLY on what's actually in the Figma component for existing data. Recommendations should draw from your knowledge of design system best practices.`;
   }
   async function getMCPBestPractices(context, mcpServerUrl, claudeData) {
     var _a, _b;
@@ -3713,6 +3893,7 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       default: p.default
     }));
     merged.states = merged.states || fallbackData.actualStates;
+    merged.recommendedProperties = claudeData.recommendedProperties || [];
     return merged;
   }
   function generateMCPReadinessFromBestPractices(mcpEnhancements, claudeData, fallbackData) {
@@ -3787,7 +3968,7 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       } else {
         throw new Error("No component selected");
       }
-      const actualProperties = await extractActualComponentProperties(node);
+      const actualProperties = await extractActualComponentProperties(node, node);
       const actualStates = await extractActualComponentStates(node);
       let componentDescription = "";
       if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
@@ -3870,7 +4051,13 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       console.log("\u{1F4E4} Sending to UI - metadata.states:", metadata.states);
       console.log("\u{1F4E4} Sending to UI - metadata.mcpReadiness:", metadata.mcpReadiness);
       const audit = await createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
-      const recommendations = generatePropertyRecommendations(context.name, actualProperties);
+      const recommendations = (filteredData.recommendedProperties || []).map((rec) => ({
+        name: rec.name || "",
+        type: rec.type || "VARIANT",
+        description: rec.description || "",
+        examples: rec.examples || []
+      })).filter((rec) => rec.name);
+      console.log(`\u{1F4A1} AI-generated property recommendations: ${recommendations.length}`);
       const namingIssues = analyzeNamingIssues(node, 5);
       console.log(`\u{1F4DB} Found ${namingIssues.length} naming issues`);
       console.log("\u2705 Analysis result processed successfully");
@@ -4104,267 +4291,6 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       }
     }
     return notes.join(". ") + ".";
-  }
-  function generatePropertyRecommendations(componentName, existingProperties) {
-    const recommendations = [];
-    const lowerName = componentName.toLowerCase();
-    console.log("\u{1F50D} [RECOMMENDATIONS] Generating recommendations for:", componentName, "with", existingProperties.length, "existing properties");
-    const hasProperty = (name) => {
-      const lowerName2 = name.toLowerCase();
-      return existingProperties.some((prop) => {
-        const propName = prop.name.toLowerCase();
-        return propName === lowerName2 || propName.includes(lowerName2) || lowerName2.includes(propName) || // Handle common variations
-        lowerName2 === "text" && (propName === "label" || propName.includes("text")) || lowerName2 === "label" && (propName === "text" || propName.includes("label"));
-      });
-    };
-    if (lowerName.includes("avatar") || lowerName.includes("profile") || lowerName.includes("user")) {
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Different sizes for various use cases (list items, headers, etc.)",
-          examples: ["xs (24px)", "sm (32px)", "md (40px)", "lg (56px)", "xl (80px)"]
-        });
-      }
-      if (!hasProperty("initials") && !hasProperty("text")) {
-        recommendations.push({
-          name: "Initials",
-          type: "TEXT",
-          description: "User initials displayed when no image is available",
-          examples: ["JD", "AS", "MT"]
-        });
-      }
-      if (!hasProperty("image") && !hasProperty("src")) {
-        recommendations.push({
-          name: "Image",
-          type: "INSTANCE_SWAP",
-          description: "User profile image or placeholder",
-          examples: ["User photo", "Default avatar", "Company logo"]
-        });
-      }
-      if (!hasProperty("status") && !hasProperty("indicator")) {
-        recommendations.push({
-          name: "Status Indicator",
-          type: "BOOLEAN",
-          description: "Online/offline status or notification badge",
-          examples: ["true (show indicator)", "false (no indicator)"]
-        });
-      }
-      if (!hasProperty("border") && !hasProperty("ring")) {
-        recommendations.push({
-          name: "Border",
-          type: "BOOLEAN",
-          description: "Optional border around the avatar",
-          examples: ["true (with border)", "false (no border)"]
-        });
-      }
-    } else if (lowerName.includes("button") || lowerName.includes("btn")) {
-      if (!hasProperty("variant") && !hasProperty("style")) {
-        recommendations.push({
-          name: "Variant",
-          type: "VARIANT",
-          description: "Visual style variants for different hierarchy levels",
-          examples: ["primary", "secondary", "tertiary", "danger", "ghost"]
-        });
-      }
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Button sizes for different contexts",
-          examples: ["sm", "md", "lg", "xl"]
-        });
-      }
-      if (!hasProperty("state")) {
-        recommendations.push({
-          name: "State",
-          type: "VARIANT",
-          description: "Interactive states for user feedback",
-          examples: ["default", "hover", "focus", "pressed", "disabled"]
-        });
-      }
-      if (!hasProperty("icon") && !hasProperty("before") && !hasProperty("after")) {
-        recommendations.push({
-          name: "Icon Before",
-          type: "INSTANCE_SWAP",
-          description: "Optional icon before the button text",
-          examples: ["Plus icon", "Arrow icon", "No icon"]
-        });
-      }
-      if (!hasProperty("text") && !hasProperty("label")) {
-        recommendations.push({
-          name: "Text",
-          type: "TEXT",
-          description: "Button label text",
-          examples: ["Click me", "Submit", "Cancel", "Save changes"]
-        });
-      }
-    } else if (lowerName.includes("input") || lowerName.includes("field") || lowerName.includes("form")) {
-      if (!hasProperty("label")) {
-        recommendations.push({
-          name: "Label",
-          type: "TEXT",
-          description: "Input label for accessibility and clarity",
-          examples: ["Email address", "Full name", "Password"]
-        });
-      }
-      if (!hasProperty("placeholder")) {
-        recommendations.push({
-          name: "Placeholder",
-          type: "TEXT",
-          description: "Placeholder text shown when input is empty",
-          examples: ["Enter your email...", "Type here..."]
-        });
-      }
-      if (!hasProperty("state")) {
-        recommendations.push({
-          name: "State",
-          type: "VARIANT",
-          description: "Input states for different interactions",
-          examples: ["default", "focus", "error", "disabled", "success"]
-        });
-      }
-      if (!hasProperty("required")) {
-        recommendations.push({
-          name: "Required",
-          type: "BOOLEAN",
-          description: "Whether the field is required",
-          examples: ["true (required)", "false (optional)"]
-        });
-      }
-      if (!hasProperty("error") && !hasProperty("helper")) {
-        recommendations.push({
-          name: "Helper Text",
-          type: "TEXT",
-          description: "Helper or error message below the input",
-          examples: ["This field is required", "Must be a valid email"]
-        });
-      }
-    } else if (lowerName.includes("card")) {
-      if (!hasProperty("variant") && !hasProperty("elevation")) {
-        recommendations.push({
-          name: "Elevation",
-          type: "VARIANT",
-          description: "Card elevation/shadow level",
-          examples: ["none", "low", "medium", "high"]
-        });
-      }
-      if (!hasProperty("interactive") && !hasProperty("clickable")) {
-        recommendations.push({
-          name: "Interactive",
-          type: "BOOLEAN",
-          description: "Whether the card is clickable/interactive",
-          examples: ["true (clickable)", "false (static)"]
-        });
-      }
-      if (!hasProperty("image") && !hasProperty("media")) {
-        recommendations.push({
-          name: "Media",
-          type: "INSTANCE_SWAP",
-          description: "Optional image or media at the top of the card",
-          examples: ["Product image", "Hero image", "No media"]
-        });
-      }
-    } else if (lowerName.includes("badge") || lowerName.includes("tag") || lowerName.includes("chip")) {
-      if (!hasProperty("variant") && !hasProperty("color")) {
-        recommendations.push({
-          name: "Variant",
-          type: "VARIANT",
-          description: "Badge color/style variants",
-          examples: ["primary", "secondary", "success", "warning", "error"]
-        });
-      }
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Badge sizes for different contexts",
-          examples: ["sm", "md", "lg"]
-        });
-      }
-      if (!hasProperty("text") && !hasProperty("label")) {
-        recommendations.push({
-          name: "Text",
-          type: "TEXT",
-          description: "Badge text content",
-          examples: ["New", "Beta", "Sale", "5", "Premium"]
-        });
-      }
-      if (!hasProperty("removable") && !hasProperty("close")) {
-        recommendations.push({
-          name: "Removable",
-          type: "BOOLEAN",
-          description: "Whether the badge can be removed/dismissed",
-          examples: ["true (show close button)", "false (static)"]
-        });
-      }
-    } else if (lowerName.includes("icon")) {
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Icon sizes for different use cases",
-          examples: ["12px", "16px", "20px", "24px", "32px"]
-        });
-      }
-      if (!hasProperty("color") && !hasProperty("variant")) {
-        recommendations.push({
-          name: "Color",
-          type: "VARIANT",
-          description: "Icon color variants",
-          examples: ["default", "muted", "primary", "success", "warning", "error"]
-        });
-      }
-    }
-    if (recommendations.length === 0) {
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Component sizes for different contexts",
-          examples: ["sm", "md", "lg"]
-        });
-      }
-      if (!hasProperty("variant") && !hasProperty("style")) {
-        recommendations.push({
-          name: "Variant",
-          type: "VARIANT",
-          description: "Visual style variants",
-          examples: ["primary", "secondary", "tertiary"]
-        });
-      }
-    }
-    const filteredRecommendations = recommendations.filter((rec) => {
-      const recName = rec.name.toLowerCase();
-      const similarExists = existingProperties.some((existing) => {
-        const existingName = existing.name.toLowerCase();
-        if (existingName === recName) return true;
-        if (existingName.includes(recName) || recName.includes(existingName)) return true;
-        const semanticMatches = [
-          ["text", "label", "content"],
-          ["size", "scale", "dimension"],
-          ["variant", "style", "type", "kind"],
-          ["state", "status", "mode"],
-          ["color", "theme", "palette"],
-          ["icon", "symbol", "graphic"]
-        ];
-        for (const group of semanticMatches) {
-          if (group.includes(recName) && group.some((term) => existingName.includes(term))) {
-            return true;
-          }
-        }
-        return false;
-      });
-      return !similarExists;
-    });
-    if (recommendations.length > filteredRecommendations.length) {
-      const filtered = recommendations.filter((rec) => !filteredRecommendations.includes(rec));
-      console.log("\u{1F50D} [RECOMMENDATIONS] Filtered out duplicates:", filtered.map((r) => r.name));
-    }
-    console.log(`\u{1F50D} [RECOMMENDATIONS] Generated ${filteredRecommendations.length} recommendations for ${componentName}`);
-    console.log("\u{1F50D} [RECOMMENDATIONS] Existing properties:", existingProperties.map((p) => p.name));
-    console.log("\u{1F50D} [RECOMMENDATIONS] Final recommendations:", filteredRecommendations.map((r) => r.name));
-    return filteredRecommendations;
   }
   function deduplicateRecommendations(items) {
     if (items.length <= 1) return items;
@@ -6065,7 +5991,11 @@ Respond naturally and helpfully to the user's question.`;
       } else {
         result = await applySpacingFix(sceneNode, data.propertyPath, data.tokenId);
       }
-      sendMessageToUI("fix-applied", result);
+      sendMessageToUI("fix-applied", __spreadProps(__spreadValues({}, result), {
+        fixType: "token",
+        nodeId: data.nodeId,
+        propertyPath: data.propertyPath
+      }));
       if (result.success) {
         figma.notify(`Applied token to ${sceneNode.name}`, { timeout: 2e3 });
       } else {
@@ -6074,7 +6004,7 @@ Respond naturally and helpfully to the user's question.`;
     } catch (error) {
       console.error("Error applying token fix:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      sendMessageToUI("fix-applied", { success: false, error: errorMessage });
+      sendMessageToUI("fix-applied", { success: false, error: errorMessage, fixType: "token", nodeId: data.nodeId });
       figma.notify(`Failed to apply fix: ${errorMessage}`, { error: true });
     }
   }
@@ -6092,9 +6022,23 @@ Respond naturally and helpfully to the user's question.`;
       const sceneNode = node;
       const newName = data.newValue || suggestLayerName(sceneNode);
       const oldName = sceneNode.name;
+      if (oldName === newName) {
+        sendMessageToUI("fix-applied", {
+          success: true,
+          fixType: "naming",
+          nodeId: data.nodeId,
+          message: `Layer already named "${newName}"`,
+          oldName,
+          newName
+        });
+        figma.notify(`Layer already named "${newName}"`, { timeout: 2e3 });
+        return;
+      }
       const success = renameLayer(sceneNode, newName);
       const result = {
         success,
+        fixType: "naming",
+        nodeId: data.nodeId,
         message: success ? `Renamed "${oldName}" to "${newName}"` : `Failed to rename layer`,
         oldName,
         newName: success ? newName : oldName

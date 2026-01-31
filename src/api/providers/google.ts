@@ -54,6 +54,8 @@ interface GeminiResponse {
     content?: {
       parts?: Array<{
         text?: string;
+        thought?: boolean;
+        [key: string]: unknown;
       }>;
     };
     finishReason?: string;
@@ -190,8 +192,9 @@ class GoogleProvider implements LLMProvider {
 
     // Validate response structure
     if (!geminiResponse.candidates || geminiResponse.candidates.length === 0) {
+      const keys = Object.keys(geminiResponse as Record<string, unknown>);
       throw new LLMError(
-        'No candidates returned in Gemini response',
+        `No candidates in Gemini response. Response keys: [${keys.join(', ')}]${geminiResponse.error ? `. Error: ${geminiResponse.error.message}` : ''}`,
         LLMErrorCode.INVALID_REQUEST
       );
     }
@@ -201,21 +204,31 @@ class GoogleProvider implements LLMProvider {
     // Check for blocked content
     if (candidate.finishReason === 'SAFETY') {
       throw new LLMError(
-        'Response blocked due to safety filters',
+        'Gemini response blocked by safety filters. Try rephrasing the prompt.',
         LLMErrorCode.INVALID_REQUEST
       );
     }
 
-    // Extract text from response
+    // Extract text from response — some models return thought parts before text parts
     const parts = candidate.content?.parts;
-    if (!parts || parts.length === 0 || !parts[0].text) {
+    if (!parts || parts.length === 0) {
       throw new LLMError(
-        'No text content in Gemini response',
+        `No content parts in Gemini response. Finish reason: ${candidate.finishReason || 'unknown'}. Has content: ${!!candidate.content}`,
         LLMErrorCode.INVALID_REQUEST
       );
     }
 
-    const text = parts[0].text;
+    // Find the first part that has text (skip thought/other parts)
+    const textPart = parts.find((p: { text?: string }) => typeof p.text === 'string');
+    if (!textPart || !textPart.text) {
+      const partTypes = parts.map((p: Record<string, unknown>) => Object.keys(p).join(',')).join('; ');
+      throw new LLMError(
+        `No text content in Gemini response parts. Part types: [${partTypes}]. Finish reason: ${candidate.finishReason || 'unknown'}`,
+        LLMErrorCode.INVALID_REQUEST
+      );
+    }
+
+    const text = textPart.text;
 
     // Build standardized response
     const llmResponse: LLMResponse = {

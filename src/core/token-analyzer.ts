@@ -435,16 +435,21 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       console.log(`🔍 [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
     }
 
-    // Extract stroke weight only if there are visible strokes
+    // Extract stroke weight only if there are visible strokes and no bound variable
     if ('strokeWeight' in currentNode && typeof currentNode.strokeWeight === 'number') {
       console.log(`🔍 Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
 
       const hasStrokes = 'strokes' in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
       const hasVisibleStrokes = hasStrokes && currentNode.strokes.some(stroke => stroke.visible !== false);
+      const hasStrokeWeightVariable = 'boundVariables' in currentNode &&
+                                      currentNode.boundVariables &&
+                                      currentNode.boundVariables.strokeWeight;
 
-      console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}`);
+      console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}`);
 
-      if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
+      if (hasStrokeWeightVariable) {
+        console.log(`   🔗 ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
+      } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
         
         const strokeWeightValue = `${currentNode.strokeWeight}px`;
         // Get the color of the first visible stroke
