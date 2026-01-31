@@ -2454,7 +2454,7 @@
                   <div class="info-icon">i</div>
                   <span class="tooltiptext">
                     <strong>Developer Handoff</strong><br>
-                    Provides structured component documentation in formats developers expect (JSON, TypeScript, documentation). This speeds up implementation and reduces back-and-forth communication during the design-to-code process.
+                    Export comprehensive component documentation for developer tools (ZeroHeight, Knapsack, Supernova), AI code generation prompts, or complete analysis data as JSON. Includes properties, variants, design tokens, accessibility, and audit results.
                   </span>
                 </div>
               </div>
@@ -2462,8 +2462,9 @@
             <div class="collapsible-content" id="developer-export">
               <div class="export-options" style="margin-bottom: var(--space-md);">
                 <select id="export-format" class="w-full">
-                  <option value="json">JSON: Complete component metadata</option>
                   <option value="markdown" selected>Markdown: Developer documentation</option>
+                  <option value="ai-prompt">AI Prompt: Code generation ready</option>
+                  <option value="json">JSON: Complete analysis data</option>
                 </select>
                 <button class="button button-secondary" id="export-metadata" disabled>
                   Export for Developers
@@ -3229,26 +3230,49 @@
 
       const format = exportFormatSelect.value;
       let content = '';
+      let mimeType = 'text/markdown';
+      let fileExt = 'md';
+      let label = 'Markdown';
 
       if (format === 'json') {
-        content = JSON.stringify(currentMetadata, null, 2);
+        // Full analysis data, not just metadata
+        const exportData = {
+          component: currentMetadata.component,
+          description: currentMetadata.description,
+          score: currentAuditScore,
+          metadata: currentMetadata,
+          tokens: currentAnalysisData ? currentAnalysisData.tokens : null,
+          audit: currentAuditResults,
+          properties: currentAnalysisData ? currentAnalysisData.properties : null,
+          namingIssues: currentNamingIssues.length > 0 ? currentNamingIssues : null,
+          existingDescription: currentExistingDescription || null,
+          exportedAt: new Date().toISOString()
+        };
+        content = JSON.stringify(exportData, null, 2);
+        mimeType = 'application/json';
+        fileExt = 'json';
+        label = 'JSON';
       } else if (format === 'markdown') {
         content = generateMarkdownDocumentation(currentMetadata);
+        label = 'Markdown';
+      } else if (format === 'ai-prompt') {
+        content = generateAIPrompt(currentMetadata);
+        label = 'AI Prompt';
       }
 
       if (content) {
-        // Download file
-        const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/markdown' });
+        const blob = new Blob([content], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${currentMetadata.component || 'component'}-${format.toLowerCase()}.${format === 'json' ? 'json' : 'md'}`;
+        const componentName = (currentMetadata.component || 'component').toLowerCase().replace(/\s+/g, '-');
+        a.download = `${componentName}-${format}.${fileExt}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        updateStatus(`${format.toUpperCase()} exported successfully!`, 'success');
+        updateStatus(`${label} exported successfully!`, 'success');
       } else {
         updateStatus('No content to export', 'error');
       }
@@ -3256,31 +3280,205 @@
 
     // Generate Markdown Documentation
     function generateMarkdownDocumentation(metadata) {
-      let content = `# ${metadata.component}\n\n`;
-      content += `${metadata.description}\n\n`;
+      const data = currentAnalysisData || {};
+      const audit = currentAuditResults || {};
+      const tokenData = data.tokens || {};
+      const tokenSummary = currentTokenSummary || {};
+      const namingIssues = currentNamingIssues || [];
+      const properties = data.properties || [];
 
-      if (metadata.usage) {
-        content += `## Usage\n\n${metadata.usage}\n\n`;
+      let content = `# ${metadata.component}\n\n`;
+
+      // Score badge
+      if (currentAuditScore > 0) {
+        content += `> **Design System Readiness: ${currentAuditScore}%**\n\n`;
       }
 
+      // Description
+      content += `${metadata.description}\n\n`;
+
+      // --- Variants ---
+      if (metadata.variants && Object.keys(metadata.variants).length > 0) {
+        content += `## Variants\n\n`;
+        content += `| Variant Group | Options |\n`;
+        content += `|---------------|--------|\n`;
+        Object.entries(metadata.variants).forEach(([group, options]) => {
+          const optionList = Array.isArray(options) ? options.join(', ') : String(options);
+          content += `| ${group} | ${optionList} |\n`;
+        });
+        content += `\n`;
+      }
+
+      // --- Properties API ---
       if (metadata.props && metadata.props.length > 0) {
         content += `## Properties\n\n`;
         content += `| Property | Type | Default | Required | Description |\n`;
         content += `|----------|------|---------|----------|-------------|\n`;
         metadata.props.forEach(prop => {
-          content += `| ${prop.name} | \`${prop.type}\` | \`${prop.defaultValue}\` | ${prop.required ? 'Yes' : 'No'} | ${prop.description} |\n`;
+          if (typeof prop === 'string') {
+            content += `| ${prop} | - | - | - | - |\n`;
+          } else {
+            content += `| ${prop.name || '-'} | \`${prop.type || '-'}\` | \`${prop.defaultValue || '-'}\` | ${prop.required ? 'Yes' : 'No'} | ${prop.description || '-'} |\n`;
+          }
         });
         content += `\n`;
       }
 
+      // --- Property Quick Reference ---
+      if (properties.length > 0) {
+        content += `## Property Quick Reference\n\n`;
+        content += `| Property | Values | Default |\n`;
+        content += `|----------|--------|---------|\n`;
+        properties.forEach(prop => {
+          const values = Array.isArray(prop.values) ? prop.values.join(', ') : String(prop.values || '-');
+          content += `| ${prop.name} | ${values} | \`${prop.default || '-'}\` |\n`;
+        });
+        content += `\n`;
+      }
+
+      // --- States ---
       if (metadata.states && metadata.states.length > 0) {
         content += `## States\n\n`;
-        metadata.states.forEach(state => {
-          content += `- \`${state}\`\n`;
+        // If we have audit state data, show found/missing status
+        if (audit.states && audit.states.length > 0) {
+          audit.states.forEach(state => {
+            const icon = state.found ? '✅' : '❌';
+            content += `- ${icon} \`${state.name}\`\n`;
+          });
+        } else {
+          metadata.states.forEach(state => {
+            content += `- \`${state}\`\n`;
+          });
+        }
+        content += `\n`;
+      }
+
+      // --- Slots ---
+      if (metadata.slots && metadata.slots.length > 0) {
+        content += `## Slots / Content Areas\n\n`;
+        metadata.slots.forEach(slot => {
+          content += `- ${slot}\n`;
         });
         content += `\n`;
       }
 
+      // --- Usage ---
+      if (metadata.usage) {
+        content += `## Usage Guidelines\n\n${metadata.usage}\n\n`;
+      }
+
+      // --- Design Tokens ---
+      const categories = ['colors', 'spacing', 'typography', 'effects', 'borders'];
+      const hasTokenData = categories.some(cat => tokenData[cat] && tokenData[cat].length > 0);
+
+      if (hasTokenData) {
+        content += `## Design Tokens\n\n`;
+
+        // Summary
+        if (tokenSummary.totalTokens) {
+          content += `| Metric | Count |\n`;
+          content += `|--------|-------|\n`;
+          content += `| Total items | ${tokenSummary.totalTokens} |\n`;
+          content += `| Design tokens | ${tokenSummary.actualTokens} |\n`;
+          content += `| Hard-coded values | ${tokenSummary.hardCodedValues} |\n`;
+          if (tokenSummary.aiSuggestions > 0) {
+            content += `| AI suggestions | ${tokenSummary.aiSuggestions} |\n`;
+          }
+          content += `\n`;
+        }
+
+        // Per-category details
+        categories.forEach(cat => {
+          if (!tokenData[cat] || tokenData[cat].length === 0) return;
+
+          const categoryLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+          const tokens = tokenData[cat];
+          const actual = tokens.filter(t => t.isActualToken);
+          const hardCoded = tokens.filter(t => !t.isActualToken && t.source === 'hard-coded' && !t.isDefaultVariantStyle);
+
+          content += `### ${categoryLabel}\n\n`;
+
+          if (actual.length > 0) {
+            content += `**Tokens in use:**\n`;
+            actual.forEach(t => {
+              content += `- \`${t.name}\` → ${t.value}`;
+              if (t.recommendation) content += ` — ${t.recommendation}`;
+              content += `\n`;
+            });
+            content += `\n`;
+          }
+
+          if (hardCoded.length > 0) {
+            content += `**Hard-coded values (need tokens):**\n`;
+            hardCoded.forEach(t => {
+              content += `- ${t.value}`;
+              if (t.context && t.context.nodeName) content += ` on \`${t.context.nodeName}\``;
+              if (t.suggestion) content += ` → suggested: \`${t.suggestion}\``;
+              content += `\n`;
+            });
+            content += `\n`;
+          }
+        });
+      }
+
+      // --- Accessibility ---
+      const accInfo = metadata.accessibility || {};
+      const accChecks = audit.accessibility || [];
+      const hasAccessibility = Object.values(accInfo).some(v => v) || accChecks.length > 0;
+
+      if (hasAccessibility) {
+        content += `## Accessibility\n\n`;
+
+        if (accInfo.ariaLabels && accInfo.ariaLabels.length > 0) {
+          content += `**ARIA Labels:** ${Array.isArray(accInfo.ariaLabels) ? accInfo.ariaLabels.join(', ') : accInfo.ariaLabels}\n\n`;
+        }
+        if (accInfo.keyboardSupport) {
+          content += `**Keyboard Support:** ${accInfo.keyboardSupport}\n\n`;
+        }
+        if (accInfo.colorContrast) {
+          content += `**Color Contrast:** ${accInfo.colorContrast}\n\n`;
+        }
+        if (accInfo.focusManagement) {
+          content += `**Focus Management:** ${accInfo.focusManagement}\n\n`;
+        }
+
+        if (accChecks.length > 0) {
+          content += `### Accessibility Audit\n\n`;
+          content += `| Check | Status | Details |\n`;
+          content += `|-------|--------|---------|\n`;
+          accChecks.forEach(check => {
+            const statusIcon = check.status === 'pass' ? '✅ Pass' : check.status === 'fail' ? '❌ Fail' : '⚠️ Warning';
+            content += `| ${check.check} | ${statusIcon} | ${check.suggestion || '-'} |\n`;
+          });
+          content += `\n`;
+        }
+      }
+
+      // --- Component Readiness Audit ---
+      if (audit.componentReadiness && audit.componentReadiness.length > 0) {
+        content += `## Component Readiness\n\n`;
+        content += `| Check | Status | Details |\n`;
+        content += `|-------|--------|---------|\n`;
+        audit.componentReadiness.forEach(check => {
+          const statusIcon = check.status === 'pass' ? '✅ Pass' : check.status === 'fail' ? '❌ Fail' : '⚠️ Warning';
+          content += `| ${check.check} | ${statusIcon} | ${check.suggestion || '-'} |\n`;
+        });
+        content += `\n`;
+      }
+
+      // --- Layer Naming ---
+      if (namingIssues.length > 0) {
+        content += `## Layer Naming Issues\n\n`;
+        content += `| Layer | Current Name | Suggested | Severity | Reason |\n`;
+        content += `|-------|-------------|-----------|----------|--------|\n`;
+        namingIssues.forEach(issue => {
+          const sevIcon = issue.severity === 'error' ? '🔴' : issue.severity === 'warning' ? '🟡' : '🔵';
+          content += `| ${issue.layerType} | \`${issue.currentName}\` | \`${issue.suggestedName}\` | ${sevIcon} ${issue.severity} | ${issue.reason} |\n`;
+        });
+        content += `\n`;
+      }
+
+      // --- AI Interpretation ---
       if (metadata.mcpReadiness) {
         content += `## AI Interpretation (Score: ${currentAuditScore}%)\n\n`;
         if (metadata.mcpReadiness.strengths && metadata.mcpReadiness.strengths.length > 0) {
@@ -3305,7 +3503,190 @@
         }
       }
 
+      // --- Footer ---
+      content += `---\n\n`;
+      content += `*Generated by FigmaLint — ${new Date().toLocaleDateString()}*\n`;
+
       return content;
+    }
+
+    // Generate AI Code Generation Prompt
+    function generateAIPrompt(metadata) {
+      const data = currentAnalysisData || {};
+      const audit = currentAuditResults || {};
+      const tokenData = data.tokens || {};
+      const properties = data.properties || [];
+      const namingIssues = currentNamingIssues || [];
+
+      let prompt = `You are implementing a "${metadata.component}" component based on an existing Figma design. Use the following specification to generate production-ready code that matches the design exactly.\n\n`;
+
+      // --- Component Specification ---
+      prompt += `## Component Specification\n\n`;
+      prompt += `**Name:** ${metadata.component}\n`;
+      prompt += `**Description:** ${metadata.description}\n\n`;
+
+      // --- Variants ---
+      if (metadata.variants && Object.keys(metadata.variants).length > 0) {
+        prompt += `## Variants\n\n`;
+        prompt += `This component has the following variant groups. Each combination should be supported:\n\n`;
+        Object.entries(metadata.variants).forEach(([group, options]) => {
+          const optionList = Array.isArray(options) ? options.join(', ') : String(options);
+          prompt += `- **${group}:** ${optionList}\n`;
+        });
+        prompt += `\n`;
+      }
+
+      // --- Properties API ---
+      if (metadata.props && metadata.props.length > 0) {
+        prompt += `## Component Props / API\n\n`;
+        prompt += `Implement the following props interface:\n\n`;
+        prompt += `| Prop | Type | Default | Required | Description |\n`;
+        prompt += `|------|------|---------|----------|-------------|\n`;
+        metadata.props.forEach(prop => {
+          if (typeof prop === 'string') {
+            prompt += `| ${prop} | - | - | - | - |\n`;
+          } else {
+            prompt += `| ${prop.name || '-'} | \`${prop.type || '-'}\` | \`${prop.defaultValue || '-'}\` | ${prop.required ? 'Yes' : 'No'} | ${prop.description || '-'} |\n`;
+          }
+        });
+        prompt += `\n`;
+      }
+
+      // --- Property Values Reference ---
+      if (properties.length > 0) {
+        prompt += `## Property Values Reference\n\n`;
+        prompt += `Use these exact values when implementing variant props:\n\n`;
+        properties.forEach(prop => {
+          const values = Array.isArray(prop.values) ? prop.values.join(', ') : String(prop.values || '-');
+          prompt += `- **${prop.name}:** ${values} (default: \`${prop.default || '-'}\`)\n`;
+        });
+        prompt += `\n`;
+      }
+
+      // --- States ---
+      if (metadata.states && metadata.states.length > 0) {
+        prompt += `## Interactive States\n\n`;
+        prompt += `Implement the following interactive states:\n\n`;
+        if (audit.states && audit.states.length > 0) {
+          const found = audit.states.filter(s => s.found).map(s => s.name);
+          const missing = audit.states.filter(s => !s.found).map(s => s.name);
+          if (found.length > 0) prompt += `- **Defined in design:** ${found.join(', ')}\n`;
+          if (missing.length > 0) prompt += `- **Missing from design (implement with sensible defaults):** ${missing.join(', ')}\n`;
+        } else {
+          metadata.states.forEach(state => { prompt += `- ${state}\n`; });
+        }
+        prompt += `\n`;
+      }
+
+      // --- Slots ---
+      if (metadata.slots && metadata.slots.length > 0) {
+        prompt += `## Content Slots\n\n`;
+        prompt += `The component has the following content areas that accept children or projected content:\n\n`;
+        metadata.slots.forEach(slot => { prompt += `- ${slot}\n`; });
+        prompt += `\n`;
+      }
+
+      // --- Design Tokens ---
+      const categories = ['colors', 'spacing', 'typography', 'effects', 'borders'];
+      const hasTokenData = categories.some(cat => tokenData[cat] && tokenData[cat].length > 0);
+
+      if (hasTokenData) {
+        prompt += `## Design Tokens\n\n`;
+        prompt += `Use these design tokens instead of hard-coded values. Reference them as CSS custom properties or your design system's token format:\n\n`;
+
+        categories.forEach(cat => {
+          if (!tokenData[cat] || tokenData[cat].length === 0) return;
+
+          const categoryLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+          const tokens = tokenData[cat];
+          const actual = tokens.filter(t => t.isActualToken);
+          const hardCoded = tokens.filter(t => !t.isActualToken && t.source === 'hard-coded' && !t.isDefaultVariantStyle);
+
+          prompt += `### ${categoryLabel}\n`;
+
+          if (actual.length > 0) {
+            actual.forEach(t => {
+              prompt += `- \`${t.name}\`: ${t.value}\n`;
+            });
+          }
+
+          if (hardCoded.length > 0) {
+            prompt += `\n⚠️ The following values are hard-coded in the design. Map them to your design system tokens:\n`;
+            hardCoded.forEach(t => {
+              prompt += `- ${t.value}`;
+              if (t.context && t.context.property) prompt += ` (${t.context.property})`;
+              if (t.suggestion) prompt += ` → use \`${t.suggestion}\``;
+              prompt += `\n`;
+            });
+          }
+          prompt += `\n`;
+        });
+      }
+
+      // --- Accessibility Requirements ---
+      const accInfo = metadata.accessibility || {};
+      const accChecks = audit.accessibility || [];
+
+      prompt += `## Accessibility Requirements\n\n`;
+      prompt += `Ensure the component meets WCAG 2.1 AA standards:\n\n`;
+
+      if (accInfo.ariaLabels && accInfo.ariaLabels.length > 0) {
+        prompt += `- **ARIA:** ${Array.isArray(accInfo.ariaLabels) ? accInfo.ariaLabels.join(', ') : accInfo.ariaLabels}\n`;
+      }
+      if (accInfo.keyboardSupport) {
+        prompt += `- **Keyboard:** ${accInfo.keyboardSupport}\n`;
+      }
+      if (accInfo.colorContrast) {
+        prompt += `- **Contrast:** ${accInfo.colorContrast}\n`;
+      }
+      if (accInfo.focusManagement) {
+        prompt += `- **Focus:** ${accInfo.focusManagement}\n`;
+      }
+
+      if (accChecks.length > 0) {
+        const failing = accChecks.filter(c => c.status === 'fail');
+        const warnings = accChecks.filter(c => c.status === 'warning');
+        if (failing.length > 0) {
+          prompt += `\n**Must fix:**\n`;
+          failing.forEach(c => { prompt += `- ${c.check}: ${c.suggestion}\n`; });
+        }
+        if (warnings.length > 0) {
+          prompt += `\n**Should address:**\n`;
+          warnings.forEach(c => { prompt += `- ${c.check}: ${c.suggestion}\n`; });
+        }
+      }
+      prompt += `\n`;
+
+      // --- Layer Structure Naming ---
+      if (namingIssues.length > 0) {
+        prompt += `## Layer Naming Conventions\n\n`;
+        prompt += `The Figma layers use the following naming patterns. Mirror these in your component's internal structure:\n\n`;
+        namingIssues.forEach(issue => {
+          prompt += `- \`${issue.currentName}\` → \`${issue.suggestedName}\` (${issue.reason})\n`;
+        });
+        prompt += `\n`;
+      }
+
+      // --- Usage context ---
+      if (metadata.usage) {
+        prompt += `## Usage Context\n\n${metadata.usage}\n\n`;
+      }
+
+      // --- Implementation Notes ---
+      prompt += `## Implementation Notes\n\n`;
+      prompt += `- Check the existing codebase for sub-components this component may reference before creating new ones\n`;
+      prompt += `- Follow the project's existing component patterns and naming conventions\n`;
+      prompt += `- Use the design tokens listed above instead of hard-coded color, spacing, or typography values\n`;
+      prompt += `- Ensure all interactive states have appropriate visual feedback and transitions\n`;
+
+      if (metadata.mcpReadiness && metadata.mcpReadiness.implementationNotes && currentAuditScore < 100) {
+        prompt += `- ${metadata.mcpReadiness.implementationNotes}\n`;
+      }
+
+      prompt += `\n---\n\n`;
+      prompt += `*Generated by FigmaLint — ${new Date().toLocaleDateString()}*\n`;
+
+      return prompt;
     }
 
     // Tab Switching
@@ -3556,16 +3937,21 @@
       sendMessageToPlugin('generate-playground', { metadata: currentMetadata });
     }
 
-    // Handle Export Documentation
+    // Handle Export Documentation (clipboard-based, legacy path)
     function handleExportDocs() {
       if (!currentMetadata) {
         updateStatus('No analysis results available', 'error');
         return;
       }
 
-      const format = exportFormat.value;
+      const format = exportFormat ? exportFormat.value : 'markdown';
       if (format === 'markdown') {
         exportAsMarkdown();
+      } else if (format === 'ai-prompt') {
+        const content = generateAIPrompt(currentMetadata);
+        navigator.clipboard.writeText(content).then(() => {
+          updateStatus('AI Prompt copied to clipboard!', 'success');
+        });
       } else if (format === 'json') {
         exportAsJSON();
       }
@@ -5299,45 +5685,7 @@
     // Export as Markdown
     function exportAsMarkdown() {
       if (!currentMetadata) return;
-
-      let markdown = `# ${currentMetadata.component}\n\n`;
-      markdown += `${currentMetadata.description}\n\n`;
-
-      if (currentMetadata.props && currentMetadata.props.length > 0) {
-        markdown += `## Properties\n\n`;
-        currentMetadata.props.forEach(prop => {
-          // Handle both object format and string format
-          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
-          markdown += `- ${propName}\n`;
-        });
-        markdown += '\n';
-      }
-
-      if (currentMetadata.states && currentMetadata.states.length > 0) {
-        markdown += `## States\n\n`;
-        currentMetadata.states.forEach(state => {
-          markdown += `- ${state}\n`;
-        });
-        markdown += '\n';
-      }
-
-      if (currentMetadata.slots && currentMetadata.slots.length > 0) {
-        markdown += `## Slots\n\n`;
-        currentMetadata.slots.forEach(slot => {
-          markdown += `- ${slot}\n`;
-        });
-        markdown += '\n';
-      }
-
-      if (currentMetadata.usage) {
-        markdown += `## Usage Guidelines\n\n${currentMetadata.usage}\n\n`;
-      }
-
-      if (currentMetadata.accessibility) {
-        markdown += `## Accessibility\n\n${currentMetadata.accessibility}\n\n`;
-      }
-
-      // Copy to clipboard
+      const markdown = generateMarkdownDocumentation(currentMetadata);
       navigator.clipboard.writeText(markdown).then(() => {
         updateStatus('Markdown copied to clipboard!', 'success');
       });
@@ -5346,10 +5694,19 @@
     // Export as JSON
     function exportAsJSON() {
       if (!currentMetadata) return;
-
-      const jsonStr = JSON.stringify(currentMetadata, null, 2);
-
-      // Copy to clipboard
+      const exportData = {
+        component: currentMetadata.component,
+        description: currentMetadata.description,
+        score: currentAuditScore,
+        metadata: currentMetadata,
+        tokens: currentAnalysisData ? currentAnalysisData.tokens : null,
+        audit: currentAuditResults,
+        properties: currentAnalysisData ? currentAnalysisData.properties : null,
+        namingIssues: currentNamingIssues.length > 0 ? currentNamingIssues : null,
+        existingDescription: currentExistingDescription || null,
+        exportedAt: new Date().toISOString()
+      };
+      const jsonStr = JSON.stringify(exportData, null, 2);
       navigator.clipboard.writeText(jsonStr).then(() => {
         updateStatus('JSON copied to clipboard!', 'success');
       });
