@@ -288,6 +288,28 @@ function getLayerNames(hierarchy: LayerHierarchy[]): string[] {
 }
 
 /**
+ * Extract unique INSTANCE node names from a layer hierarchy.
+ * Used to inform AI prompts about nested/child component instances.
+ */
+export function extractInstanceNames(hierarchy: LayerHierarchy[]): string[] {
+  const names = new Set<string>();
+
+  function traverse(layers: LayerHierarchy[]) {
+    for (const layer of layers) {
+      if (layer.type === 'INSTANCE') {
+        names.add(layer.name);
+      }
+      if (layer.children) {
+        traverse(layer.children);
+      }
+    }
+  }
+
+  traverse(hierarchy);
+  return Array.from(names);
+}
+
+/**
  * Detect potential component variants from structure
  */
 function detectVariantPatterns(node: SceneNode): { isComponentSet: boolean; potentialVariants: string[] } {
@@ -1337,6 +1359,9 @@ export async function processEnhancedAnalysis(
     }
   }
 
+  // Thread existing description into context for downstream prompts
+  context.existingDescription = componentDescription;
+
   // Log extracted data for debugging
   console.log(`📊 [ANALYSIS] Extracted from Figma API:`);
   console.log(`  Properties: ${actualProperties.length}`);
@@ -1419,6 +1444,7 @@ function createFigmaDataExtractionPrompt(
   componentDescription: string
 ): string {
   const componentFamily = context.additionalContext?.componentFamily || 'generic';
+  const nestedInstances = extractInstanceNames(context.hierarchy);
 
   return `Analyze this Figma component and extract its structure and patterns.
 
@@ -1426,7 +1452,8 @@ function createFigmaDataExtractionPrompt(
 - Name: ${context.name}
 - Type: ${context.type}
 - Family: ${componentFamily}
-- Description: ${componentDescription || 'No description provided'}
+- Existing Figma Description: ${componentDescription || 'None set'}
+- Nested Component Instances: ${nestedInstances.length > 0 ? nestedInstances.join(', ') : 'None detected'}
 
 **Actual Figma Properties (${actualProperties.length} total):**
 ${actualProperties.slice(0, 10).map(p => `- ${p.name}: ${p.values.join(', ')} (default: ${p.default})`).join('\n')}
@@ -1454,7 +1481,7 @@ ${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
 Return JSON in this exact format:
 {
   "component": "Component name and type",
-  "description": "Clear description based on structure",
+  "description": "Start with a brief 1-2 sentence summary of what this component is and its key variants/capabilities. Then provide structured sections: PURPOSE: What this component is and its primary function. BEHAVIOR: Interactive behavior patterns (skip if not interactive). COMPOSITION: List all nested/child component instances used — note that AI code generators should check the development codebase for these sub-components before creating new ones. USAGE: When and how to use this component vs alternatives. CODE GENERATION NOTES: Implementation considerations including leveraging existing sub-components and interaction details not visible from design specs alone.",
   "props": [
     {
       "name": "property name from Figma",
@@ -1919,7 +1946,8 @@ export async function processAnalysisResult(
       audit,
       properties: actualProperties,
       recommendations,
-      namingIssues
+      namingIssues,
+      existingDescription: componentDescription
     };
   } catch (error) {
     console.error('Error processing analysis result:', error);

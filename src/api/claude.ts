@@ -1,6 +1,7 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { ClaudeAPIRequest, ClaudeAPIResponse, ComponentContext } from '../types';
+import { extractInstanceNames } from '../core/component-analyzer';
 
 // Claude API Configuration
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
@@ -160,6 +161,11 @@ ${componentContext.additionalContext ? `
 - Considerations: ${componentContext.additionalContext.suggestedConsiderations.join('; ') || 'None'}
 ` : '- No additional context available'}
 
+**Existing Figma Description:**
+${componentContext.existingDescription ? `"${componentContext.existingDescription}"\n(Build upon this if present, or create a comprehensive new description)` : 'None set — create a comprehensive description from scratch'}
+
+- Nested Component Instances: ${extractInstanceNames(componentContext.hierarchy).join(', ') || 'None detected'}
+
 **IMPORTANT: Focus on what makes this component ready for CODE GENERATION via MCP.**
 Evaluate based on these criteria that actually matter for development:
 
@@ -202,7 +208,7 @@ Evaluate based on these criteria that actually matter for development:
 **Response Format (JSON only):**
 {
   "component": "Component name and purpose",
-  "description": "Detailed component description and use cases",
+  "description": "Start with a brief 1-2 sentence summary of what this component is and its key variants/capabilities. Then provide structured sections: PURPOSE: What this component is and its primary function. BEHAVIOR: Interactive behavior patterns (e.g., 'expanding one accordion panel collapses all others', 'dropdown closes on outside click'). Skip this section if the component is not interactive. COMPOSITION: List all nested/child component instances used (e.g., 'Contains Button, Icon, and Badge sub-components'). Note: AI code generators should check the development codebase for these sub-components before creating new ones. USAGE: When and how to use this component vs alternatives. CODE GENERATION NOTES: Implementation considerations — mention leveraging existing sub-components from the codebase, design patterns to follow, and interaction details not visible from design specs alone.",
   "props": [
     {
       "name": "property name",

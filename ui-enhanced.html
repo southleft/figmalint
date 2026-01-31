@@ -1914,6 +1914,41 @@
       flex-shrink: 0;
     }
 
+    .description-scroll-area {
+      max-height: 150px;
+      overflow-y: auto;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      background: var(--surface);
+      color: var(--text-primary);
+    }
+
+    .description-up-to-date {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--success, #34a853);
+      padding: 6px 10px;
+      background: color-mix(in srgb, var(--success, #34a853) 8%, transparent);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+    }
+
+    .description-existing-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-tertiary);
+      margin-bottom: 4px;
+    }
+
     /* Naming Issue Arrow */
     .naming-issue-arrow {
       color: var(--primary);
@@ -2605,6 +2640,8 @@
     let currentNamingIssues = [];
     let currentFixableTokens = [];
     let lastAnalyzedNodeId = null;
+    let currentExistingDescription = '';
+    let currentAuditScore = 0;
     let quickActionsFixCount = 0;
     let namingItemsShown = 15; // Initial limit for naming pagination
 
@@ -3195,23 +3232,25 @@
       }
 
       if (metadata.mcpReadiness) {
-        content += `## AI Interpretation\n\n`;
+        content += `## AI Interpretation (Score: ${currentAuditScore}%)\n\n`;
         if (metadata.mcpReadiness.strengths && metadata.mcpReadiness.strengths.length > 0) {
           content += `**What AI Reads Well:**\n`;
           metadata.mcpReadiness.strengths.forEach(s => { content += `- ${s}\n`; });
           content += `\n`;
         }
-        if (metadata.mcpReadiness.gaps && metadata.mcpReadiness.gaps.length > 0) {
+        if (currentAuditScore < 100 && metadata.mcpReadiness.gaps && metadata.mcpReadiness.gaps.length > 0) {
           content += `**Where AI Gets Confused:**\n`;
           metadata.mcpReadiness.gaps.forEach(g => { content += `- ${g}\n`; });
           content += `\n`;
         }
-        if (metadata.mcpReadiness.recommendations && metadata.mcpReadiness.recommendations.length > 0) {
+        if (currentAuditScore < 100 && metadata.mcpReadiness.recommendations && metadata.mcpReadiness.recommendations.length > 0) {
           content += `**How to Improve AI Understanding:**\n`;
           metadata.mcpReadiness.recommendations.forEach(rec => { content += `- ${rec}\n`; });
           content += `\n`;
         }
-        if (metadata.mcpReadiness.implementationNotes) {
+        if (currentAuditScore === 100) {
+          content += `**What AI Would Generate:**\nComponent is fully optimized for AI code generation. All design tokens, properties, states, and structure provide clear guidance for accurate implementation.\n\n`;
+        } else if (metadata.mcpReadiness.implementationNotes) {
           content += `**What AI Would Generate:**\n${metadata.mcpReadiness.implementationNotes}\n\n`;
         }
       }
@@ -3415,6 +3454,7 @@
       // Reset scores immediately to avoid showing stale data
       auditScore.innerHTML = '<span>Score: --</span>';
       auditScore.className = 'status-banner status-info';
+      currentAuditScore = 0;
 
       // Show analysis results with loading state
       analysisResults.classList.remove('hidden');
@@ -3728,8 +3768,9 @@
         });
       }
 
-      // Store the analyzed node ID for description updates
+      // Store the analyzed node ID and existing description for description updates
       lastAnalyzedNodeId = data.analyzedNodeId || null;
+      currentExistingDescription = data.existingDescription || '';
       if (!lastAnalyzedNodeId) {
         // Fallback: extract from token context or naming issues
         if (currentFixableTokens.length > 0 && currentFixableTokens[0].context) {
@@ -4277,6 +4318,9 @@
         score >= 80 ? 'status-success' : score >= 60 ? 'status-warning' : 'status-error'
       }`;
       auditScore.style.cssText = 'padding: 2px 8px; font-size: 11px;';
+
+      // Store globally so AI Interpretation section can reference it
+      currentAuditScore = score;
     }
 
     // Update Property Cheat Sheet
@@ -4880,20 +4924,40 @@
     function updateMetadataDisplay(metadata) {
       let html = '';
 
-      // Description Action Bar (Phase 5)
+      // Description Action Bar (Phase 5) — with comparison awareness
       if (lastAnalyzedNodeId && metadata.description) {
-        html += `
-          <div class="metadata-action-bar">
-            <span class="action-label">AI-generated description available</span>
-            <button class="audit-action-button" onclick="handleUpdateDescription()">Update Description</button>
-          </div>
-        `;
+        const similarity = computeDescriptionSimilarity(currentExistingDescription, metadata.description);
+        if (currentExistingDescription && similarity >= 0.8) {
+          // Descriptions are similar enough — up to date
+          html += `
+            <div class="description-up-to-date">
+              <span>&#10003;</span>
+              <span>Description is up to date</span>
+            </div>
+          `;
+        } else if (currentExistingDescription) {
+          // Existing description differs from AI — offer compare & update
+          html += `
+            <div class="metadata-action-bar">
+              <span class="action-label">AI description differs from Figma</span>
+              <button class="audit-action-button" onclick="handleUpdateDescription()">Compare &amp; Update</button>
+            </div>
+          `;
+        } else {
+          // No existing description — offer to set it
+          html += `
+            <div class="metadata-action-bar">
+              <span class="action-label">No description set in Figma</span>
+              <button class="audit-action-button" onclick="handleUpdateDescription()">Set Description</button>
+            </div>
+          `;
+        }
       }
 
       // Component Info
       html += `<div class="mb-md">`;
       html += `<h3 style="font-size: 13px; font-weight: 600; margin-top: 0;">${metadata.component}</h3>`;
-      html += `<p style="color: var(--text-secondary);">${metadata.description}</p>`;
+      html += `<div class="description-scroll-area">${metadata.description}</div>`;
       html += `</div>`;
 
       // Properties
@@ -4944,7 +5008,7 @@
       metadataContent.innerHTML = html;
     }
 
-    // Update MCP Readiness Section
+    // Update MCP Readiness Section — score-aware narrative
     function updateMCPReadiness(mcpData) {
       console.log('[DEBUG] AI interpretation data received:', mcpData);
 
@@ -4953,14 +5017,23 @@
         return;
       }
 
+      const score = currentAuditScore;
       let html = '';
 
-      // Narrative intro about what AI sees
+      // Score-aware intro narrative
       html += '<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5;">';
-      html += 'If an AI tool were to consume this component as-is, here is how it would interpret the design structure. Fix the items flagged in the Component Audit above to improve this interpretation.';
+      if (score === 100) {
+        html += 'This component is fully ready for AI code generation. All design properties, tokens, and structure are well-defined — an AI tool can confidently translate this design into production code.';
+      } else if (score >= 80) {
+        html += 'This component is well-structured for AI code generation with only minor gaps. An AI tool can interpret most of the design accurately. Address the items below to reach full readiness.';
+      } else if (score >= 60) {
+        html += 'An AI tool can partially interpret this component, but several areas need attention for reliable code generation. Fix the items flagged in the Component Audit above to improve this interpretation.';
+      } else {
+        html += 'This component has significant gaps that would cause an AI tool to make assumptions or generate incorrect code. Review the Component Audit above and address the critical issues first.';
+      }
       html += '</div>';
 
-      // What AI reads well (Strengths)
+      // What AI reads well (Strengths) — always show
       if (mcpData.strengths && mcpData.strengths.length > 0) {
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--success); margin-top: 0;">What AI Reads Well</h4>';
@@ -4972,8 +5045,8 @@
         html += '</div>';
       }
 
-      // Where AI gets confused (Gaps)
-      if (mcpData.gaps && mcpData.gaps.length > 0) {
+      // Where AI gets confused (Gaps) — hide if score is 100
+      if (score < 100 && mcpData.gaps && mcpData.gaps.length > 0) {
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--error);">Where AI Gets Confused</h4>';
         html += '<ul style="margin: 0; padding-left: 16px; font-size: 12px; list-style: disc;">';
@@ -4984,8 +5057,8 @@
         html += '</div>';
       }
 
-      // How to improve AI understanding (Recommendations)
-      if (mcpData.recommendations && mcpData.recommendations.length > 0) {
+      // How to improve AI understanding (Recommendations) — hide if score is 100
+      if (score < 100 && mcpData.recommendations && mcpData.recommendations.length > 0) {
         html += '<div class="mb-md">';
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--primary);">How to Improve AI Understanding</h4>';
         html += '<ul style="margin: 0; padding-left: 16px; font-size: 12px; list-style: disc;">';
@@ -4996,13 +5069,21 @@
         html += '</div>';
       }
 
-      // Implementation Notes
-      if (mcpData.implementationNotes) {
-        html += '<div class="mb-md">';
-        html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 4px;">What AI Would Generate</h4>';
-        html += `<div style="font-size: 12px; background: var(--surface); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-secondary); line-height: 1.5;">${mcpData.implementationNotes}</div>`;
-        html += '</div>';
+      // What AI Would Generate — score-aware summary
+      html += '<div class="mb-md">';
+      html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 4px;">What AI Would Generate</h4>';
+      html += '<div style="font-size: 12px; background: var(--surface); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-secondary); line-height: 1.5;">';
+      if (score === 100) {
+        html += 'Component is fully optimized for AI code generation. All design tokens, properties, states, and structure provide clear guidance for accurate implementation.';
+      } else if (score >= 80) {
+        html += mcpData.implementationNotes || 'Component is well-structured for code generation. A few minor refinements in the audit above would provide complete clarity for AI tools.';
+      } else if (mcpData.implementationNotes) {
+        html += mcpData.implementationNotes;
+      } else {
+        html += 'Address the gaps identified above to improve the quality of AI-generated code for this component.';
       }
+      html += '</div>';
+      html += '</div>';
 
       // Show fallback if no content
       if (!html) {
@@ -5790,21 +5871,50 @@
       });
     }
 
-    // Handle update description
+    // Compute Jaccard word-overlap similarity between two strings (0–1)
+    function computeDescriptionSimilarity(a, b) {
+      if (!a || !b) return 0;
+      const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+      const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+      if (wordsA.size === 0 && wordsB.size === 0) return 1;
+      if (wordsA.size === 0 || wordsB.size === 0) return 0;
+      let intersection = 0;
+      for (const w of wordsA) { if (wordsB.has(w)) intersection++; }
+      return intersection / (wordsA.size + wordsB.size - intersection);
+    }
+
+    // Handle update description — with comparison when existing description differs
     function handleUpdateDescription() {
       if (!lastAnalyzedNodeId || !currentMetadata) {
         updateStatus('No component analyzed yet', 'info');
         return;
       }
 
-      const currentDesc = currentMetadata.description || '';
+      const aiDesc = currentMetadata.description || '';
+      const hasExisting = currentExistingDescription && currentExistingDescription.trim().length > 0;
+      const modalTitle = hasExisting ? 'Compare & Update Description' : 'Set Component Description';
 
-      const previewHtml = `
-        <div style="margin-bottom: 12px;">
-          <label style="font-size: 11px; font-weight: 500; display: block; margin-bottom: 4px;">Component Description:</label>
+      let previewHtml = '<div style="margin-bottom: 12px;">';
+
+      if (hasExisting) {
+        // Show existing Figma description (read-only) stacked above
+        previewHtml += `
+          <div style="margin-bottom: 10px;">
+            <div class="description-existing-label">Current Figma Description</div>
+            <div class="description-scroll-area" style="background: var(--surface-secondary); opacity: 0.85;">${escapeHtml(currentExistingDescription)}</div>
+          </div>
+        `;
+      } else {
+        previewHtml += `<p style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 8px;">No description currently set in Figma.</p>`;
+      }
+
+      // Editable AI-generated description
+      previewHtml += `
+        <div>
+          <div class="description-existing-label">AI-Generated Description</div>
           <textarea id="description-textarea" style="
             width: 100%;
-            min-height: 80px;
+            min-height: 100px;
             padding: 8px;
             font-size: 12px;
             border: 1px solid var(--border);
@@ -5812,15 +5922,18 @@
             resize: vertical;
             font-family: inherit;
             box-sizing: border-box;
-          ">${escapeHtml(currentDesc)}</textarea>
-          <p style="font-size: 10px; color: var(--text-tertiary); margin-top: 4px;">This will update the component description in Figma.</p>
+            line-height: 1.5;
+          ">${escapeHtml(aiDesc)}</textarea>
+          <p style="font-size: 10px; color: var(--text-tertiary); margin-top: 4px;">Edit if needed, then click Apply to update the component description in Figma.</p>
         </div>
       `;
 
-      showFixModal('Update Component Description', previewHtml, {
+      previewHtml += '</div>';
+
+      showFixModal(modalTitle, previewHtml, {
         type: 'description',
         nodeId: lastAnalyzedNodeId,
-        description: currentDesc
+        description: aiDesc
       });
     }
 

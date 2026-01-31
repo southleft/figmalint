@@ -131,6 +131,7 @@ export interface ComponentContext {
     hasEffects: boolean;
     cornerRadius: number;
   };
+  existingDescription?: string;
   detectedSlots: string[];
   isComponentSet: boolean;
   potentialVariants: string[];
@@ -251,6 +252,7 @@ export interface EnhancedAnalysisResult {
   properties: Array<{ name: string; values: string[]; default: string }>;
   recommendations?: Array<{ name: string; type: string; description: string; examples: string[] }>;
   namingIssues?: NamingIssue[];
+  existingDescription?: string;
 }
 
 // Re-export NamingIssue shape for use in UI messages
