@@ -230,9 +230,18 @@ export interface EnhancedAnalysisOptions {
   useMCP?: boolean;
 }
 
+export interface AuditCheck {
+  check: string;
+  status: 'pass' | 'fail' | 'warning';
+  suggestion: string;
+}
+
 export interface DetailedAuditResults {
   states: Array<{ name: string; found: boolean }>;
-  accessibility: Array<{ check: string; status: 'pass' | 'fail' | 'warning'; suggestion: string }>;
+  /** Property configuration and description checks (formerly "Accessibility") */
+  componentReadiness: AuditCheck[];
+  /** Real WCAG-informed accessibility checks (contrast, touch targets, focus state, font size) */
+  accessibility: AuditCheck[];
 }
 
 export interface EnhancedAnalysisResult {

@@ -395,9 +395,10 @@
         currentNode.fills.forEach((fill) => {
           if (fill.type === "SOLID" && fill.visible !== false && fill.color) {
             const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
-            if (!colorSet.has(hex)) {
+            const fillDedupKey = `${hex}:${currentNode.id}`;
+            if (!colorSet.has(fillDedupKey)) {
               console.log(`   \u26A0\uFE0F Found hard-coded fill: ${hex}`);
-              colorSet.add(hex);
+              colorSet.add(fillDedupKey);
               const debugContext = getDebugContext(currentNode);
               colors.push({
                 name: `hard-coded-fill-${colors.length + 1}`,
@@ -432,9 +433,10 @@
           currentNode.strokes.forEach((stroke) => {
             if (stroke.type === "SOLID" && stroke.visible !== false && stroke.color) {
               const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
-              if (!colorSet.has(hex)) {
+              const strokeDedupKey = `${hex}:${currentNode.id}`;
+              if (!colorSet.has(strokeDedupKey)) {
                 console.log(`   \u26A0\uFE0F Found hard-coded stroke: ${hex}`);
-                colorSet.add(hex);
+                colorSet.add(strokeDedupKey);
                 const debugContext = getDebugContext(currentNode);
                 colors.push({
                   name: `hard-coded-stroke-${colors.length + 1}`,
@@ -477,9 +479,10 @@
           if (firstVisibleStroke && firstVisibleStroke.type === "SOLID" && firstVisibleStroke.color) {
             strokeColor = rgbToHex(firstVisibleStroke.color.r, firstVisibleStroke.color.g, firstVisibleStroke.color.b);
           }
-          if (!borderSet.has(strokeWeightValue)) {
+          const swDedupKey = `${strokeWeightValue}:${currentNode.id}`;
+          if (!borderSet.has(swDedupKey)) {
             console.log(`   \u2705 Adding stroke weight: ${strokeWeightValue}`);
-            borderSet.add(strokeWeightValue);
+            borderSet.add(swDedupKey);
             const debugContext = getDebugContext(currentNode);
             borders.push({
               name: `hard-coded-stroke-weight-${currentNode.strokeWeight}`,
@@ -513,9 +516,10 @@
           const radius = currentNode.cornerRadius;
           if (radius > 0) {
             const radiusValue = `${radius}px`;
-            if (!borderSet.has(radiusValue)) {
+            const crDedupKey = `${radiusValue}:${currentNode.id}`;
+            if (!borderSet.has(crDedupKey)) {
               console.log(`   \u26A0\uFE0F Found hard-coded corner radius: ${radiusValue}`);
-              borderSet.add(radiusValue);
+              borderSet.add(crDedupKey);
               const debugContext = getDebugContext(currentNode);
               borders.push({
                 name: `hard-coded-corner-radius-${radius}`,
@@ -555,9 +559,10 @@
               const radius = currentNode[prop];
               if (radius > 0) {
                 const radiusValue = `${radius}px`;
-                if (!borderSet.has(radiusValue)) {
+                const irDedupKey = `${radiusValue}:${currentNode.id}:${prop}`;
+                if (!borderSet.has(irDedupKey)) {
                   console.log(`   \u26A0\uFE0F Found hard-coded ${name} radius: ${radiusValue}`);
-                  borderSet.add(radiusValue);
+                  borderSet.add(irDedupKey);
                   const debugContext = getDebugContext(currentNode);
                   borders.push({
                     name: `hard-coded-${name}-radius-${radius}`,
@@ -592,9 +597,10 @@
           { value: frame.paddingBottom, name: "bottom" }
         ];
         paddings.forEach((padding) => {
-          if (typeof padding.value === "number" && padding.value > 1 && !spacingSet.has(padding.value.toString())) {
+          const padDedupKey = `${padding.value}:${currentNode.id}:${padding.name}`;
+          if (typeof padding.value === "number" && padding.value > 1 && !spacingSet.has(padDedupKey)) {
             console.log(`   \u26A0\uFE0F Found hard-coded padding-${padding.name}: ${padding.value}px`);
-            spacingSet.add(padding.value.toString());
+            spacingSet.add(padDedupKey);
             const debugContext = getDebugContext(currentNode);
             const isDefaultVariantPadding = padding.value === 16 && isNodeInVariant(currentNode) && hasDefaultVariantFrameStyles(currentNode);
             spacing.push({
@@ -4079,26 +4085,229 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     }
   }
   async function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription) {
+    var _a;
+    let parentHasDescription = false;
+    let parentDescription = "";
+    if (node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") {
+      const parentSet = node.parent;
+      parentDescription = parentSet.description || "";
+      parentHasDescription = parentDescription.trim().length > 0;
+    } else if (node.type === "COMPONENT_SET") {
+      parentHasDescription = !!(componentDescription && componentDescription.trim().length > 0);
+    }
+    const hasDescription = !!(componentDescription && componentDescription.trim().length > 0);
+    let descriptionStatus = hasDescription ? "pass" : "warning";
+    let descriptionSuggestion = "";
+    if (hasDescription) {
+      descriptionSuggestion = "Component has description for MCP/AI context";
+    } else if (parentHasDescription) {
+      descriptionStatus = "pass";
+      descriptionSuggestion = "Component set has a description. Consider adding a variant-specific description for richer context.";
+    } else {
+      descriptionSuggestion = "Add a component description to help MCP and AI understand the component purpose and usage";
+    }
+    const componentReadiness = [
+      {
+        check: "Property configuration",
+        status: actualProperties.length > 0 ? "pass" : "warning",
+        suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
+      },
+      {
+        check: "Component description",
+        status: descriptionStatus,
+        suggestion: descriptionSuggestion
+      }
+    ];
+    const accessibility = runAccessibilityChecks(node, actualStates);
     return {
-      // Basic state checking
       states: actualStates.map((state) => ({
         name: state,
         found: true
       })),
-      // Basic accessibility audit
-      accessibility: [
-        {
-          check: "Property configuration",
-          status: actualProperties.length > 0 ? "pass" : "warning",
-          suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
-        },
-        {
-          check: "Component description",
-          status: componentDescription && componentDescription.trim().length > 0 ? "pass" : "warning",
-          suggestion: componentDescription && componentDescription.trim().length > 0 ? "Component has description for MCP/AI context" : "Add a component description to help MCP and AI understand the component purpose and usage"
-        }
-      ]
+      componentReadiness,
+      accessibility
     };
+  }
+  var INTERACTIVE_KEYWORDS = [
+    "button",
+    "btn",
+    "link",
+    "anchor",
+    "checkbox",
+    "check-box",
+    "radio",
+    "toggle",
+    "switch",
+    "tab",
+    "chip",
+    "tag",
+    "input",
+    "select",
+    "dropdown",
+    "menu-item",
+    "menuitem",
+    "slider",
+    "stepper",
+    "icon-button",
+    "fab",
+    "action"
+  ];
+  function isInteractiveComponent(node, states) {
+    const nameLower = node.name.toLowerCase();
+    if (INTERACTIVE_KEYWORDS.some((kw) => nameLower.includes(kw))) return true;
+    const interactiveStates = ["hover", "pressed", "focus", "focused", "active", "disabled"];
+    if (states.some((s) => interactiveStates.includes(s.toLowerCase()))) return true;
+    return false;
+  }
+  function getLuminance(r, g, b) {
+    const [rs, gs, bs] = [r, g, b].map((c) => {
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+  }
+  function getContrastRatio(l1, l2) {
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+  function findBackgroundColor(node) {
+    let current = node.parent;
+    while (current && "type" in current) {
+      const sceneNode = current;
+      if ("fills" in sceneNode) {
+        const fills = sceneNode.fills;
+        if (Array.isArray(fills)) {
+          for (const fill of fills) {
+            if (fill.type === "SOLID" && fill.visible !== false && fill.color) {
+              if (fill.boundVariables && fill.boundVariables.color) continue;
+              return fill.color;
+            }
+          }
+        }
+      }
+      current = current.parent;
+    }
+    return null;
+  }
+  function runAccessibilityChecks(node, states) {
+    const checks = [];
+    const interactive = isInteractiveComponent(node, states);
+    if (interactive) {
+      const width = "width" in node ? node.width : 0;
+      const height = "height" in node ? node.height : 0;
+      const minDim = Math.min(width, height);
+      if (minDim >= 44) {
+        checks.push({
+          check: "Touch target size",
+          status: "pass",
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets recommended 44px minimum`
+        });
+      } else if (minDim >= 24) {
+        checks.push({
+          check: "Touch target size",
+          status: "warning",
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px`
+        });
+      } else {
+        checks.push({
+          check: "Touch target size",
+          status: "fail",
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px is below WCAG 2.5.8 minimum of 24\xD724px`
+        });
+      }
+    }
+    if (interactive) {
+      const hasFocus = states.some((s) => {
+        const lower = s.toLowerCase();
+        return lower === "focus" || lower === "focused" || lower.includes("focus");
+      });
+      checks.push({
+        check: "Focus state",
+        status: hasFocus ? "pass" : "warning",
+        suggestion: hasFocus ? "Component has a focus state for keyboard navigation" : "Add a visible focus state to support keyboard navigation (WCAG 2.4.7)"
+      });
+    }
+    if ("findAll" in node) {
+      const containerNode = node;
+      const textNodes = containerNode.findAll((n) => n.type === "TEXT");
+      if (textNodes.length > 0) {
+        let smallestSize = Infinity;
+        let hasSmallText = false;
+        for (const text of textNodes) {
+          const size = typeof text.fontSize === "number" ? text.fontSize : 0;
+          if (size > 0 && size < smallestSize) smallestSize = size;
+          if (size > 0 && size < 12) hasSmallText = true;
+        }
+        if (hasSmallText) {
+          checks.push({
+            check: "Minimum font size",
+            status: "warning",
+            suggestion: `Text as small as ${smallestSize}px detected. Consider using 12px minimum for readability`
+          });
+        } else if (smallestSize !== Infinity) {
+          checks.push({
+            check: "Minimum font size",
+            status: "pass",
+            suggestion: `Smallest text is ${smallestSize}px, meets readability guidelines`
+          });
+        }
+      }
+    }
+    if ("findAll" in node) {
+      const containerNode = node;
+      const textNodes = containerNode.findAll((n) => n.type === "TEXT");
+      let worstRatio = Infinity;
+      let checkedCount = 0;
+      let worstTextName = "";
+      for (const text of textNodes) {
+        const fills = text.fills;
+        if (!Array.isArray(fills) || fills.length === 0) continue;
+        const textFill = fills.find(
+          (f) => f.type === "SOLID" && f.visible !== false && f.color && !(f.boundVariables && f.boundVariables.color)
+        );
+        if (!textFill) continue;
+        const bgColor = findBackgroundColor(text);
+        if (!bgColor) continue;
+        const textLum = getLuminance(textFill.color.r, textFill.color.g, textFill.color.b);
+        const bgLum = getLuminance(bgColor.r, bgColor.g, bgColor.b);
+        const ratio = getContrastRatio(textLum, bgLum);
+        checkedCount++;
+        if (ratio < worstRatio) {
+          worstRatio = ratio;
+          worstTextName = text.name || "text";
+        }
+      }
+      if (checkedCount > 0 && worstRatio !== Infinity) {
+        const ratioStr = worstRatio.toFixed(1);
+        if (worstRatio >= 4.5) {
+          checks.push({
+            check: "Color contrast",
+            status: "pass",
+            suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1)`
+          });
+        } else if (worstRatio >= 3) {
+          checks.push({
+            check: "Color contrast",
+            status: "warning",
+            suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1)`
+          });
+        } else {
+          checks.push({
+            check: "Color contrast",
+            status: "fail",
+            suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1`
+          });
+        }
+      }
+    }
+    if (checks.length === 0) {
+      checks.push({
+        check: "Accessibility review",
+        status: "pass",
+        suggestion: "No accessibility issues detected for this component type"
+      });
+    }
+    return checks;
   }
   function generateFallbackMCPReadiness(data) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
@@ -5151,6 +5360,34 @@ ${scoringCriteria}
       return [];
     }
   }
+  async function findBestMatchingVariable(pixelValue, propertyPath, tolerance = 2) {
+    const suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
+    if (suggestions.length === 0) return suggestions;
+    const affinityMap = {
+      strokeWeight: ["stroke", "border-width", "border/width", "borderwidth"],
+      cornerRadius: ["radius", "corner", "round", "border-radius"],
+      topLeftRadius: ["radius", "corner", "round"],
+      topRightRadius: ["radius", "corner", "round"],
+      bottomLeftRadius: ["radius", "corner", "round"],
+      bottomRightRadius: ["radius", "corner", "round"],
+      paddingTop: ["padding", "spacing", "space"],
+      paddingRight: ["padding", "spacing", "space"],
+      paddingBottom: ["padding", "spacing", "space"],
+      paddingLeft: ["padding", "spacing", "space"],
+      itemSpacing: ["gap", "spacing", "space"],
+      counterAxisSpacing: ["gap", "spacing", "space"]
+    };
+    const keywords = affinityMap[propertyPath] || [];
+    if (keywords.length === 0) return suggestions;
+    const boosted = suggestions.map((s) => {
+      const nameLower = s.variableName.toLowerCase();
+      const hasAffinity = keywords.some((kw) => nameLower.includes(kw));
+      return __spreadProps(__spreadValues({}, s), {
+        matchScore: hasAffinity ? Math.min(s.matchScore + 0.3, 1) : s.matchScore
+      });
+    });
+    return boosted.sort((a, b) => b.matchScore - a.matchScore);
+  }
   async function applyColorFix(node, propertyPath, tokenId) {
     const match = propertyPath.match(/^(fills|strokes)\[(\d+)\]$/);
     if (!match) {
@@ -5177,6 +5414,7 @@ ${scoringCriteria}
       "paddingLeft",
       "itemSpacing",
       "counterAxisSpacing",
+      "cornerRadius",
       "topLeftRadius",
       "topRightRadius",
       "bottomLeftRadius",
@@ -5188,6 +5426,31 @@ ${scoringCriteria}
         success: false,
         message: "Invalid property path",
         error: `Property ${propertyPath} is not a valid spacing property`
+      };
+    }
+    if (propertyPath === "cornerRadius") {
+      const corners = [
+        "topLeftRadius",
+        "topRightRadius",
+        "bottomLeftRadius",
+        "bottomRightRadius"
+      ];
+      const results = [];
+      for (const corner of corners) {
+        const result = await bindSpacingToken(node, corner, tokenId);
+        results.push(result);
+        if (!result.success) {
+          return {
+            success: false,
+            message: `Failed to bind ${corner}`,
+            error: result.error
+          };
+        }
+      }
+      return {
+        success: true,
+        message: `Successfully bound variable to all 4 corner radii`,
+        appliedFix: results[0].appliedFix ? __spreadProps(__spreadValues({}, results[0].appliedFix), { propertyPath: "cornerRadius" }) : void 0
       };
     }
     return bindSpacingToken(
@@ -5441,7 +5704,7 @@ ${scoringCriteria}
     }
   }
   async function handleEnhancedAnalyze(options) {
-    var _a;
+    var _a, _b;
     try {
       if (!storedApiKey) {
         const providerName = getProvider(selectedProvider).name;
@@ -5475,6 +5738,44 @@ ${scoringCriteria}
       if (selectedNode.type === "COMPONENT" && ((_a = selectedNode.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") {
         const component = selectedNode;
         const parentComponentSet = component.parent;
+        figma.notify("Analyzing parent component set to include all variants...", { timeout: 2e3 });
+        selectedNode = parentComponentSet;
+      }
+      if (!isValidNodeForAnalysis(selectedNode)) {
+        const componentTypes = /* @__PURE__ */ new Set(["COMPONENT_SET", "COMPONENT", "INSTANCE"]);
+        let componentAncestor = null;
+        let frameAncestor = null;
+        let ancestor = selectedNode.parent;
+        while (ancestor && "type" in ancestor) {
+          const sceneAncestor = ancestor;
+          if (componentTypes.has(sceneAncestor.type) && !componentAncestor) {
+            componentAncestor = sceneAncestor;
+            break;
+          }
+          if (!frameAncestor && isValidNodeForAnalysis(sceneAncestor)) {
+            frameAncestor = sceneAncestor;
+          }
+          ancestor = ancestor.parent;
+        }
+        const bestAncestor = componentAncestor || frameAncestor;
+        if (bestAncestor) {
+          figma.notify(`Analyzing parent ${bestAncestor.type.toLowerCase()} "${bestAncestor.name}"...`, { timeout: 2e3 });
+          selectedNode = bestAncestor;
+        }
+      }
+      if (selectedNode.type === "INSTANCE") {
+        const instance = selectedNode;
+        try {
+          const mainComponent = await instance.getMainComponentAsync();
+          if (mainComponent) {
+            figma.notify("Analyzing main component instead of instance...", { timeout: 2e3 });
+            selectedNode = mainComponent;
+          }
+        } catch (e) {
+        }
+      }
+      if (selectedNode.type === "COMPONENT" && ((_b = selectedNode.parent) == null ? void 0 : _b.type) === "COMPONENT_SET") {
+        const parentComponentSet = selectedNode.parent;
         figma.notify("Analyzing parent component set to include all variants...", { timeout: 2e3 });
         selectedNode = parentComponentSet;
       }
@@ -5931,13 +6232,24 @@ Respond naturally and helpfully to the user's question.`;
           }
         } else {
           const pixelValue = parseFloat(data.suggestedValue || "0");
-          const spacingMatches = await findMatchingSpacingVariable(pixelValue, 2);
+          const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || "", 2);
           if (spacingMatches.length > 0) {
             preview = await previewFix(sceneNode, data.propertyPath, spacingMatches[0].variableId);
           }
         }
         if (preview) {
-          sendMessageToUI("fix-preview", { success: true, preview });
+          const fixPreview = preview;
+          sendMessageToUI("fix-preview", {
+            success: true,
+            type: "token",
+            nodeId: fixPreview.nodeId,
+            nodeName: fixPreview.nodeName,
+            propertyPath: fixPreview.propertyPath,
+            beforeValue: fixPreview.beforeValue,
+            afterValue: fixPreview.afterValue,
+            tokenId: fixPreview.tokenId,
+            tokenName: fixPreview.tokenName
+          });
         } else {
           sendMessageToUI("fix-preview", {
             success: false,
@@ -6102,7 +6414,7 @@ Respond naturally and helpfully to the user's question.`;
                 } else {
                   const pixelValue = parseFloat(fix.newValue);
                   if (!isNaN(pixelValue)) {
-                    const spacingMatches = await findMatchingSpacingVariable(pixelValue, 2);
+                    const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || "", 2);
                     if (spacingMatches.length > 0) {
                       tokenId = spacingMatches[0].variableId;
                     }

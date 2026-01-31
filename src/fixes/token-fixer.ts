@@ -73,6 +73,7 @@ export type SpacingPropertyType =
   | 'paddingLeft'
   | 'itemSpacing'
   | 'counterAxisSpacing'
+  | 'cornerRadius'
   | 'topLeftRadius'
   | 'topRightRadius'
   | 'bottomLeftRadius'
@@ -596,6 +597,55 @@ export async function findMatchingSpacingVariable(
 }
 
 /**
+ * Find the best matching variable for a given pixel value with property-name affinity.
+ * Wraps findMatchingSpacingVariable with scoring boosts for semantically appropriate names.
+ *
+ * @param pixelValue - Pixel value to match
+ * @param propertyPath - The property being fixed (e.g., 'strokeWeight', 'cornerRadius', 'paddingTop')
+ * @param tolerance - Value tolerance in pixels (default 2)
+ * @returns Array of matching token suggestions re-sorted by boosted scores
+ */
+export async function findBestMatchingVariable(
+  pixelValue: number,
+  propertyPath: string,
+  tolerance: number = 2
+): Promise<TokenSuggestion[]> {
+  const suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
+  if (suggestions.length === 0) return suggestions;
+
+  // Define affinity keywords per property type
+  const affinityMap: Record<string, string[]> = {
+    strokeWeight: ['stroke', 'border-width', 'border/width', 'borderwidth'],
+    cornerRadius: ['radius', 'corner', 'round', 'border-radius'],
+    topLeftRadius: ['radius', 'corner', 'round'],
+    topRightRadius: ['radius', 'corner', 'round'],
+    bottomLeftRadius: ['radius', 'corner', 'round'],
+    bottomRightRadius: ['radius', 'corner', 'round'],
+    paddingTop: ['padding', 'spacing', 'space'],
+    paddingRight: ['padding', 'spacing', 'space'],
+    paddingBottom: ['padding', 'spacing', 'space'],
+    paddingLeft: ['padding', 'spacing', 'space'],
+    itemSpacing: ['gap', 'spacing', 'space'],
+    counterAxisSpacing: ['gap', 'spacing', 'space'],
+  };
+
+  const keywords = affinityMap[propertyPath] || [];
+  if (keywords.length === 0) return suggestions;
+
+  // Boost scores for variables whose names match affinity keywords
+  const boosted = suggestions.map(s => {
+    const nameLower = s.variableName.toLowerCase();
+    const hasAffinity = keywords.some(kw => nameLower.includes(kw));
+    return {
+      ...s,
+      matchScore: hasAffinity ? Math.min(s.matchScore + 0.3, 1) : s.matchScore,
+    };
+  });
+
+  return boosted.sort((a, b) => b.matchScore - a.matchScore);
+}
+
+/**
  * Suggest a semantic token name based on value and context
  *
  * @param value - The value (hex color or pixel number)
@@ -729,6 +779,7 @@ export async function applySpacingFix(
   const validProperties: SpacingPropertyType[] = [
     'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
     'itemSpacing', 'counterAxisSpacing',
+    'cornerRadius',
     'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius',
     'strokeWeight'
   ];
@@ -738,6 +789,32 @@ export async function applySpacingFix(
       success: false,
       message: 'Invalid property path',
       error: `Property ${propertyPath} is not a valid spacing property`
+    };
+  }
+
+  // For uniform cornerRadius, bind the variable to all 4 individual corners
+  if (propertyPath === 'cornerRadius') {
+    const corners: SpacingPropertyType[] = [
+      'topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius'
+    ];
+    const results: FixResult[] = [];
+    for (const corner of corners) {
+      const result = await bindSpacingToken(node, corner, tokenId);
+      results.push(result);
+      if (!result.success) {
+        return {
+          success: false,
+          message: `Failed to bind ${corner}`,
+          error: result.error
+        };
+      }
+    }
+    return {
+      success: true,
+      message: `Successfully bound variable to all 4 corner radii`,
+      appliedFix: results[0].appliedFix
+        ? { ...results[0].appliedFix, propertyPath: 'cornerRadius' }
+        : undefined
     };
   }
 

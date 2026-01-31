@@ -23,6 +23,7 @@ import {
   applySpacingFix,
   findMatchingColorVariable,
   findMatchingSpacingVariable,
+  findBestMatchingVariable,
   suggestSemanticTokenName,
   FixPreview,
   FixResult,
@@ -282,6 +283,55 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
       const component = selectedNode as ComponentNode;
       const parentComponentSet = component.parent as ComponentSetNode;
 
+      figma.notify('Analyzing parent component set to include all variants...', { timeout: 2000 });
+      selectedNode = parentComponentSet;
+    }
+
+    // If the selected node isn't directly analyzable, walk up to find an analyzable ancestor.
+    // Prefer component-level ancestors (COMPONENT_SET, COMPONENT, INSTANCE) over plain FRAMEs
+    // so that selecting a child layer inside a component bubbles up to the component set.
+    if (!isValidNodeForAnalysis(selectedNode)) {
+      const componentTypes = new Set(['COMPONENT_SET', 'COMPONENT', 'INSTANCE']);
+      let componentAncestor: SceneNode | null = null;
+      let frameAncestor: SceneNode | null = null;
+
+      let ancestor: BaseNode | null = selectedNode.parent;
+      while (ancestor && 'type' in ancestor) {
+        const sceneAncestor = ancestor as SceneNode;
+        if (componentTypes.has(sceneAncestor.type) && !componentAncestor) {
+          componentAncestor = sceneAncestor;
+          break; // Component-level ancestor found, no need to continue
+        }
+        if (!frameAncestor && isValidNodeForAnalysis(sceneAncestor)) {
+          frameAncestor = sceneAncestor; // Track as fallback, keep looking for component
+        }
+        ancestor = ancestor.parent;
+      }
+
+      const bestAncestor = componentAncestor || frameAncestor;
+      if (bestAncestor) {
+        figma.notify(`Analyzing parent ${bestAncestor.type.toLowerCase()} "${bestAncestor.name}"...`, { timeout: 2000 });
+        selectedNode = bestAncestor;
+      }
+    }
+
+    // Handle instances found via parent traversal
+    if (selectedNode.type === 'INSTANCE') {
+      const instance = selectedNode as InstanceNode;
+      try {
+        const mainComponent = await instance.getMainComponentAsync();
+        if (mainComponent) {
+          figma.notify('Analyzing main component instead of instance...', { timeout: 2000 });
+          selectedNode = mainComponent;
+        }
+      } catch {
+        // Fall through to validation below
+      }
+    }
+
+    // Handle component variants found via parent traversal
+    if (selectedNode.type === 'COMPONENT' && selectedNode.parent?.type === 'COMPONENT_SET') {
+      const parentComponentSet = selectedNode.parent as ComponentSetNode;
       figma.notify('Analyzing parent component set to include all variants...', { timeout: 2000 });
       selectedNode = parentComponentSet;
     }
@@ -935,16 +985,27 @@ async function handlePreviewFix(data: FixPreviewRequest): Promise<void> {
           preview = await previewTokenFix(sceneNode, data.propertyPath, colorMatches[0].variableId);
         }
       } else {
-        // Spacing property - find matching spacing variable
+        // Spacing property - find matching variable with property-aware ranking
         const pixelValue = parseFloat(data.suggestedValue || '0');
-        const spacingMatches = await findMatchingSpacingVariable(pixelValue, 2);
+        const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || '', 2);
         if (spacingMatches.length > 0) {
           preview = await previewTokenFix(sceneNode, data.propertyPath, spacingMatches[0].variableId);
         }
       }
 
       if (preview) {
-        sendMessageToUI('fix-preview', { success: true, preview });
+        const fixPreview = preview as FixPreview;
+        sendMessageToUI('fix-preview', {
+          success: true,
+          type: 'token',
+          nodeId: fixPreview.nodeId,
+          nodeName: fixPreview.nodeName,
+          propertyPath: fixPreview.propertyPath,
+          beforeValue: fixPreview.beforeValue,
+          afterValue: fixPreview.afterValue,
+          tokenId: fixPreview.tokenId,
+          tokenName: fixPreview.tokenName,
+        });
       } else {
         sendMessageToUI('fix-preview', {
           success: false,
@@ -1162,7 +1223,7 @@ async function handleApplyBatchFix(data: BatchFixRequest): Promise<void> {
               } else {
                 const pixelValue = parseFloat(fix.newValue);
                 if (!isNaN(pixelValue)) {
-                  const spacingMatches = await findMatchingSpacingVariable(pixelValue, 2);
+                  const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || '', 2);
                   if (spacingMatches.length > 0) {
                     tokenId = spacingMatches[0].variableId;
                   }

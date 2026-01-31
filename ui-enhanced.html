@@ -2786,6 +2786,60 @@
       });
     }
 
+    // Batch fix all hard-coded tokens in a section
+    function batchFixAllTokens(sectionId) {
+      const container = document.getElementById(sectionId);
+      if (!container) return;
+
+      const items = container.querySelectorAll('.token-item-compact.warning');
+      const fixes = [];
+
+      items.forEach(item => {
+        const fixBtn = item.querySelector('.fix-btn');
+        if (!fixBtn) return;
+
+        // Extract data from the onclick attribute
+        const onclickStr = fixBtn.getAttribute('onclick') || '';
+        const match = onclickStr.match(/previewTokenFix\('([^']+)',\s*'([^']+)',\s*'([^']+)'\)/);
+        if (match) {
+          fixes.push({
+            type: 'token',
+            nodeId: match[1],
+            propertyPath: match[2],
+            newValue: match[3]
+          });
+        }
+      });
+
+      if (fixes.length === 0) {
+        updateStatus('No fixable items found in this section', 'warning');
+        return;
+      }
+
+      // Group by value to show a clear preview
+      const groups = {};
+      fixes.forEach(fix => {
+        const key = fix.newValue;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(fix);
+      });
+
+      let previewHtml = '<div style="margin-bottom: 8px; font-size: 12px;">Apply token fixes to <strong>' + fixes.length + ' item' + (fixes.length !== 1 ? 's' : '') + '</strong>:</div>';
+      Object.keys(groups).forEach(value => {
+        const count = groups[value].length;
+        const prop = groups[value][0].propertyPath;
+        previewHtml += '<div class="preview-box" style="margin-bottom: 6px;">';
+        previewHtml += '<div class="preview-value">' + escapeHtml(value) + ' (' + prop + ') — ' + count + ' node' + (count !== 1 ? 's' : '') + '</div>';
+        previewHtml += '</div>';
+      });
+      previewHtml += '<p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">Each value will be matched to the best available design token.</p>';
+
+      showFixModal('Fix All Tokens', previewHtml, {
+        type: 'batch',
+        fixes: fixes
+      });
+    }
+
     // Toggle a naming tree group open/collapsed
     function toggleNamingGroup(groupId) {
       const items = document.getElementById(groupId);
@@ -3798,6 +3852,13 @@
       let weightedPassScore = 0;
       let weightedTotalScore = 0;
 
+      // Backward compatibility: if no componentReadiness, migrate old accessibility checks
+      if (!audit.componentReadiness && audit.accessibility) {
+        const readinessChecks = ['Property configuration', 'Component description'];
+        audit.componentReadiness = audit.accessibility.filter(item => readinessChecks.includes(item.check));
+        audit.accessibility = audit.accessibility.filter(item => !readinessChecks.includes(item.check));
+      }
+
       // START WITH BASELINE POSITIVE SCORING - Award points for good practices
       console.log('[DEBUG][SCORING] Starting with baseline positive scoring...');
 
@@ -3988,6 +4049,50 @@
       }
 
       // Accessibility Audit
+      // Component Readiness section (property config + description)
+      if (audit.componentReadiness && audit.componentReadiness.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Component Readiness</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Component Readiness</strong><br>
+                Checks if your component is properly configured for AI tools, MCP integration, and developer handoff. This includes having configurable properties for customization and descriptions that help AI understand the component's purpose and usage patterns.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.componentReadiness.forEach(item => {
+          totalCount++;
+          const status = item.status;
+          if (status === 'pass') passCount++;
+
+          weightedTotalScore += 2;
+          if (status === 'pass') {
+            weightedPassScore += 2;
+            console.log(`[DEBUG][READINESS] "${item.check}" = PASS → +2 points`);
+          } else if (status === 'warning') {
+            console.log(`[DEBUG][READINESS] "${item.check}" = WARNING → 0 points`);
+          } else {
+            console.log(`[DEBUG][READINESS] "${item.check}" = FAIL → 0 points`);
+          }
+
+          html += `
+            <div class="audit-item">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Accessibility section (real WCAG-informed checks)
       if (audit.accessibility && audit.accessibility.length > 0) {
         html += '<div class="audit-section">';
         html += `
@@ -3997,7 +4102,7 @@
               <div class="info-icon">i</div>
               <span class="tooltiptext">
                 <strong>Accessibility</strong><br>
-                Checks if your component works for users with disabilities. This includes proper color contrast for readability, keyboard navigation support, screen reader compatibility, and touch target sizes. Following accessibility guidelines (WCAG) ensures your design is inclusive and often legally required.
+                WCAG-informed checks for inclusive design. Evaluates color contrast ratios, touch target sizing, focus state availability for keyboard navigation, and minimum font sizes. These checks help ensure your component works for users with disabilities.
               </span>
             </div>
           </div>
@@ -4008,17 +4113,15 @@
           const status = item.status;
           if (status === 'pass') passCount++;
 
-          // Medium-high weight for accessibility (2x) - important for compliance
           weightedTotalScore += 2;
           if (status === 'pass') {
-            weightedPassScore += 2; // Full credit for pass
+            weightedPassScore += 2;
             console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = PASS → +2 points`);
           } else if (status === 'warning') {
-            console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = WARNING → 0 points (penalty)`);
+            console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = WARNING → 0 points`);
           } else {
             console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = FAIL → 0 points`);
           }
-          // Warnings and fails get 0 points - must fix to improve score
 
           html += `
             <div class="audit-item">
@@ -4026,7 +4129,7 @@
                 status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
               }</span>
               <span class="audit-label">${item.check}</span>
-              ${item.suggestion && status === 'fail' ? `<button class="audit-action-button" onclick="handleFixAccessibility('${item.check.replace(/'/g, "\\'")}')" title="Click to fix ${item.check}">Fix</button>` : ''}
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
             </div>
           `;
         });
@@ -4211,11 +4314,51 @@
       let allRecommendations = recommendations ? [...recommendations] : [];
 
       // UI-side safety net: filter out recommendations that match existing properties
+      // Uses semantic equivalence to catch synonyms (e.g., "Leading icon" ≈ "Icon Before")
       if (properties && properties.length > 0 && allRecommendations.length > 0) {
-        const existingNames = properties.map(p => p.name.toLowerCase());
+        // Semantic equivalence groups — names that refer to the same concept
+        const equivalenceGroups = [
+          ['icon before', 'leading icon', 'iconbefore', 'leadingicon', 'icon left', 'left icon', 'start icon', 'prefix icon'],
+          ['icon after', 'trailing icon', 'iconafter', 'trailingicon', 'icon right', 'right icon', 'end icon', 'suffix icon'],
+          ['slot before', 'leading slot', 'slotbefore', 'show icon before', 'has leading icon', 'icon before visible'],
+          ['slot after', 'trailing slot', 'slotafter', 'show icon after', 'has trailing icon', 'icon after visible'],
+          ['label', 'text', 'title', 'content'],
+          ['size', 'sizing', 'component size'],
+          ['disabled', 'is disabled', 'isdisabled'],
+          ['loading', 'is loading', 'isloading'],
+          ['width', 'full width', 'fullwidth', 'block'],
+          ['variant', 'style', 'appearance', 'kind'],
+          ['state', 'status', 'interaction state'],
+        ];
+
+        function getEquivalenceKeys(name) {
+          const lower = name.toLowerCase().trim();
+          const keys = new Set([lower]);
+          for (const group of equivalenceGroups) {
+            if (group.some(term => lower.includes(term) || term.includes(lower))) {
+              group.forEach(term => keys.add(term));
+            }
+          }
+          return keys;
+        }
+
+        // Build a set of all semantic keys from existing properties
+        const existingKeys = new Set();
+        properties.forEach(p => {
+          const keys = getEquivalenceKeys(p.name);
+          keys.forEach(k => existingKeys.add(k));
+        });
+
         const beforeCount = allRecommendations.length;
         allRecommendations = allRecommendations.filter(rec => {
+          const recKeys = getEquivalenceKeys(rec.name);
+          // Filter if ANY of the recommendation's semantic keys overlap with existing
+          for (const key of recKeys) {
+            if (existingKeys.has(key)) return false;
+          }
+          // Also check direct substring match as fallback
           const recName = rec.name.toLowerCase();
+          const existingNames = properties.map(p => p.name.toLowerCase());
           return !existingNames.some(existing =>
             existing === recName ||
             existing.includes(recName) ||
@@ -4223,7 +4366,7 @@
           );
         });
         if (allRecommendations.length < beforeCount) {
-          console.log(`[CONFIG] Filtered ${beforeCount - allRecommendations.length} recommendations that matched existing properties`);
+          console.log(`[CONFIG] Filtered ${beforeCount - allRecommendations.length} recommendations that matched existing properties (semantic matching)`);
         }
       }
 
@@ -4356,8 +4499,10 @@
 
         // Show hard-coded colors with enhanced context
         if (hardCodedTokens.length > 0) {
-          html += '<div style="margin-bottom: 12px;">';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 4px;">Hard-coded Colors</h5>';
+          html += '<div style="margin-bottom: 12px;" id="section-colors">';
+          const clrFixAll = hardCodedTokens.filter(t => t.context?.nodeId && t.context?.property).length > 1
+            ? `<button class="fix-btn" onclick="event.stopPropagation();batchFixAllTokens('section-colors')" title="Fix all hard-coded colors" style="margin-left: 6px; font-size: 10px;">Fix All</button>` : '';
+          html += `<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 4px; display: flex; align-items: center;">Hard-coded Colors${clrFixAll}</h5>`;
           hardCodedTokens.forEach(token => {
             const contextInfo = token.context ?
               `${token.context.nodeType} in "${token.context.nodeName}"${token.context.isInteractive ? ' (Interactive)' : ''}` :
@@ -4489,8 +4634,10 @@
 
           // Stroke Weight Section
           if (strokeWeights.length > 0) {
-            html += '<div style="margin-bottom: 12px;">';
-            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 4px;">Hard-coded Stroke Weight</h5>';
+            html += '<div style="margin-bottom: 12px;" id="section-stroke-weight">';
+            const swFixAll = strokeWeights.filter(t => t.context?.nodeId && t.context?.property).length > 1
+              ? `<button class="fix-btn" onclick="event.stopPropagation();batchFixAllTokens('section-stroke-weight')" title="Fix all hard-coded stroke weights" style="margin-left: 6px; font-size: 10px;">Fix All</button>` : '';
+            html += `<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 4px; display: flex; align-items: center;">Hard-coded Stroke Weight${swFixAll}</h5>`;
             strokeWeights.forEach(token => {
               // Use the enhanced debug context for better information
               let contextInfo = 'Unknown location';
@@ -4509,12 +4656,18 @@
                 }
               }
 
+              const fixButton = token.context?.nodeId && token.context?.property ?
+                `<button class="fix-btn" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
+
               html += `
                 <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
                   <div class="token-details">
                     <div class="token-name">${token.value}</div>
                     <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
                     <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">Use appropriate stroke weight token (e.g., stroke.thin, stroke.medium)</div>
+                  </div>
+                  <div class="token-actions">
+                    ${fixButton}
                   </div>
                 </div>
               `;
@@ -4524,8 +4677,10 @@
 
           // Border Radius Section
           if (borderRadius.length > 0) {
-            html += '<div>';
-            html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 4px;">Hard-coded Border Radius</h5>';
+            html += '<div id="section-border-radius">';
+            const brFixAll = borderRadius.filter(t => t.context?.nodeId && t.context?.property).length > 1
+              ? `<button class="fix-btn" onclick="event.stopPropagation();batchFixAllTokens('section-border-radius')" title="Fix all hard-coded border radii" style="margin-left: 6px; font-size: 10px;">Fix All</button>` : '';
+            html += `<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 4px; display: flex; align-items: center;">Hard-coded Border Radius${brFixAll}</h5>`;
             borderRadius.forEach(token => {
               // Use the enhanced debug context for better information
               let contextInfo = 'Unknown location';
@@ -4544,12 +4699,18 @@
                 }
               }
 
+              const fixButton = token.context?.nodeId && token.context?.property ?
+                `<button class="fix-btn" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
+
               html += `
                 <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
                   <div class="token-details">
                     <div class="token-name">${token.value}</div>
                     <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
                     <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion}</div>
+                  </div>
+                  <div class="token-actions">
+                    ${fixButton}
                   </div>
                 </div>
               `;
@@ -4589,8 +4750,10 @@
         }
 
         if (hardCodedSpacing.length > 0) {
-          html += '<div>';
-          html += '<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 4px;">Hard-coded Spacing</h5>';
+          html += '<div id="section-spacing">';
+          const spFixAll = hardCodedSpacing.filter(t => t.context?.nodeId && t.context?.property).length > 1
+            ? `<button class="fix-btn" onclick="event.stopPropagation();batchFixAllTokens('section-spacing')" title="Fix all hard-coded spacing" style="margin-left: 6px; font-size: 10px;">Fix All</button>` : '';
+          html += `<h5 style="font-size: 11px; font-weight: 500; color: var(--warning); margin-bottom: 4px; display: flex; align-items: center;">Hard-coded Spacing${spFixAll}</h5>`;
           hardCodedSpacing.forEach(token => {
             // Use the enhanced debug context for better information
             let contextInfo = 'Unknown location';
@@ -4609,12 +4772,18 @@
               }
             }
 
+            const fixButton = token.context?.nodeId && token.context?.property ?
+              `<button class="fix-btn" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
+
             html += `
               <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
                 <div class="token-details">
                   <div class="token-name">${token.value}</div>
                   <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
                   <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion || 'Create or use existing spacing token'}</div>
+                </div>
+                <div class="token-actions">
+                  ${fixButton}
                 </div>
               </div>
             `;

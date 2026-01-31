@@ -1,6 +1,6 @@
 /// <reference types="@figma/plugin-typings" />
 
-import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
+import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, AuditCheck, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
 import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
@@ -1939,30 +1939,273 @@ async function createAuditResults(
   tokens: TokenAnalysis,
   componentDescription?: string
 ): Promise<DetailedAuditResults> {
+  // Check parent component set description for context-aware description check
+  let parentHasDescription = false;
+  let parentDescription = '';
+  if (node.type === 'COMPONENT' && node.parent?.type === 'COMPONENT_SET') {
+    const parentSet = node.parent as ComponentSetNode;
+    parentDescription = parentSet.description || '';
+    parentHasDescription = parentDescription.trim().length > 0;
+  } else if (node.type === 'COMPONENT_SET') {
+    parentHasDescription = !!(componentDescription && componentDescription.trim().length > 0);
+  }
+
+  const hasDescription = !!(componentDescription && componentDescription.trim().length > 0);
+
+  // Build description check with component set awareness
+  let descriptionStatus: 'pass' | 'warning' = hasDescription ? 'pass' : 'warning';
+  let descriptionSuggestion = '';
+  if (hasDescription) {
+    descriptionSuggestion = 'Component has description for MCP/AI context';
+  } else if (parentHasDescription) {
+    descriptionStatus = 'pass';
+    descriptionSuggestion = 'Component set has a description. Consider adding a variant-specific description for richer context.';
+  } else {
+    descriptionSuggestion = 'Add a component description to help MCP and AI understand the component purpose and usage';
+  }
+
+  // Component Readiness checks (property config + description)
+  const componentReadiness: AuditCheck[] = [
+    {
+      check: 'Property configuration',
+      status: actualProperties.length > 0 ? 'pass' : 'warning',
+      suggestion: actualProperties.length > 0
+        ? 'Component has configurable properties'
+        : 'Consider adding properties for component customization'
+    },
+    {
+      check: 'Component description',
+      status: descriptionStatus,
+      suggestion: descriptionSuggestion
+    }
+  ];
+
+  // Real accessibility checks
+  const accessibility = runAccessibilityChecks(node, actualStates);
+
   return {
-    // Basic state checking
     states: actualStates.map(state => ({
       name: state,
       found: true
     })),
-    // Basic accessibility audit
-    accessibility: [
-      {
-        check: 'Property configuration',
-        status: actualProperties.length > 0 ? 'pass' : 'warning',
-        suggestion: actualProperties.length > 0
-          ? 'Component has configurable properties'
-          : 'Consider adding properties for component customization'
-      },
-      {
-        check: 'Component description',
-        status: componentDescription && componentDescription.trim().length > 0 ? 'pass' : 'warning',
-        suggestion: componentDescription && componentDescription.trim().length > 0
-          ? 'Component has description for MCP/AI context'
-          : 'Add a component description to help MCP and AI understand the component purpose and usage'
-      }
-    ]
+    componentReadiness,
+    accessibility
   };
+}
+
+// ============================================================================
+// Accessibility Check Helpers
+// ============================================================================
+
+const INTERACTIVE_KEYWORDS = [
+  'button', 'btn', 'link', 'anchor', 'checkbox', 'check-box',
+  'radio', 'toggle', 'switch', 'tab', 'chip', 'tag',
+  'input', 'select', 'dropdown', 'menu-item', 'menuitem',
+  'slider', 'stepper', 'icon-button', 'fab', 'action'
+];
+
+/**
+ * Determine if a component is interactive based on name, states, and structure
+ */
+function isInteractiveComponent(node: SceneNode, states: string[]): boolean {
+  const nameLower = node.name.toLowerCase();
+  // Check name keywords
+  if (INTERACTIVE_KEYWORDS.some(kw => nameLower.includes(kw))) return true;
+  // Check if it has interactive states (hover, pressed, focus, active, disabled)
+  const interactiveStates = ['hover', 'pressed', 'focus', 'focused', 'active', 'disabled'];
+  if (states.some(s => interactiveStates.includes(s.toLowerCase()))) return true;
+  return false;
+}
+
+/**
+ * Get the luminance of an RGB color (0-1 range) for contrast calculation
+ */
+function getLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map(c => {
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/**
+ * Calculate WCAG contrast ratio between two luminance values
+ */
+function getContrastRatio(l1: number, l2: number): number {
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Find the nearest background color by walking up the parent chain
+ */
+function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number } | null {
+  let current: BaseNode | null = node.parent;
+  while (current && 'type' in current) {
+    const sceneNode = current as SceneNode;
+    if ('fills' in sceneNode) {
+      const fills = (sceneNode as any).fills;
+      if (Array.isArray(fills)) {
+        for (const fill of fills) {
+          if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
+            // Skip if bound to a variable — we can't resolve the actual value reliably
+            if (fill.boundVariables && fill.boundVariables.color) continue;
+            return fill.color;
+          }
+        }
+      }
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
+ * Run real accessibility checks on a component node
+ */
+function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[] {
+  const checks: AuditCheck[] = [];
+  const interactive = isInteractiveComponent(node, states);
+
+  // 1. Touch target size (for interactive components)
+  if (interactive) {
+    const width = 'width' in node ? (node as any).width : 0;
+    const height = 'height' in node ? (node as any).height : 0;
+    const minDim = Math.min(width, height);
+
+    if (minDim >= 44) {
+      checks.push({
+        check: 'Touch target size',
+        status: 'pass',
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets recommended 44px minimum`
+      });
+    } else if (minDim >= 24) {
+      checks.push({
+        check: 'Touch target size',
+        status: 'warning',
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px`
+      });
+    } else {
+      checks.push({
+        check: 'Touch target size',
+        status: 'fail',
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px is below WCAG 2.5.8 minimum of 24×24px`
+      });
+    }
+  }
+
+  // 2. Focus state (for interactive components)
+  if (interactive) {
+    const hasFocus = states.some(s => {
+      const lower = s.toLowerCase();
+      return lower === 'focus' || lower === 'focused' || lower.includes('focus');
+    });
+    checks.push({
+      check: 'Focus state',
+      status: hasFocus ? 'pass' : 'warning',
+      suggestion: hasFocus
+        ? 'Component has a focus state for keyboard navigation'
+        : 'Add a visible focus state to support keyboard navigation (WCAG 2.4.7)'
+    });
+  }
+
+  // 3. Minimum font size
+  if ('findAll' in node) {
+    const containerNode = node as FrameNode | ComponentNode | ComponentSetNode;
+    const textNodes = containerNode.findAll(n => n.type === 'TEXT') as TextNode[];
+    if (textNodes.length > 0) {
+      let smallestSize = Infinity;
+      let hasSmallText = false;
+      for (const text of textNodes) {
+        const size = typeof text.fontSize === 'number' ? text.fontSize : 0;
+        if (size > 0 && size < smallestSize) smallestSize = size;
+        if (size > 0 && size < 12) hasSmallText = true;
+      }
+
+      if (hasSmallText) {
+        checks.push({
+          check: 'Minimum font size',
+          status: 'warning',
+          suggestion: `Text as small as ${smallestSize}px detected. Consider using 12px minimum for readability`
+        });
+      } else if (smallestSize !== Infinity) {
+        checks.push({
+          check: 'Minimum font size',
+          status: 'pass',
+          suggestion: `Smallest text is ${smallestSize}px, meets readability guidelines`
+        });
+      }
+    }
+  }
+
+  // 4. Color contrast (text vs background)
+  if ('findAll' in node) {
+    const containerNode = node as FrameNode | ComponentNode | ComponentSetNode;
+    const textNodes = containerNode.findAll(n => n.type === 'TEXT') as TextNode[];
+    let worstRatio = Infinity;
+    let checkedCount = 0;
+    let worstTextName = '';
+
+    for (const text of textNodes) {
+      // Get text fill color (skip variable-bound fills)
+      const fills = (text as any).fills;
+      if (!Array.isArray(fills) || fills.length === 0) continue;
+      const textFill = fills.find((f: any) =>
+        f.type === 'SOLID' && f.visible !== false && f.color &&
+        !(f.boundVariables && f.boundVariables.color)
+      );
+      if (!textFill) continue;
+
+      // Find background color
+      const bgColor = findBackgroundColor(text);
+      if (!bgColor) continue;
+
+      const textLum = getLuminance(textFill.color.r, textFill.color.g, textFill.color.b);
+      const bgLum = getLuminance(bgColor.r, bgColor.g, bgColor.b);
+      const ratio = getContrastRatio(textLum, bgLum);
+      checkedCount++;
+
+      if (ratio < worstRatio) {
+        worstRatio = ratio;
+        worstTextName = text.name || 'text';
+      }
+    }
+
+    if (checkedCount > 0 && worstRatio !== Infinity) {
+      const ratioStr = worstRatio.toFixed(1);
+      // WCAG AA: 4.5:1 for normal text, 3:1 for large text
+      if (worstRatio >= 4.5) {
+        checks.push({
+          check: 'Color contrast',
+          status: 'pass',
+          suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1)`
+        });
+      } else if (worstRatio >= 3) {
+        checks.push({
+          check: 'Color contrast',
+          status: 'warning',
+          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1)`
+        });
+      } else {
+        checks.push({
+          check: 'Color contrast',
+          status: 'fail',
+          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1`
+        });
+      }
+    }
+  }
+
+  // If no checks were applicable (e.g., non-interactive, no text), add a generic pass
+  if (checks.length === 0) {
+    checks.push({
+      check: 'Accessibility review',
+      status: 'pass',
+      suggestion: 'No accessibility issues detected for this component type'
+    });
+  }
+
+  return checks;
 }
 
 /**
