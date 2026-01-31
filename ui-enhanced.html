@@ -121,10 +121,10 @@
       padding: var(--spacing-05) var(--spacing-05) var(--spacing-03);
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      min-height: 60px;
+      min-height: auto;
       position: relative;
       z-index: 10;
-      margin-bottom: var(--spacing-03);
+      margin-bottom: 0;
     }
 
     /* Ensure header bottom padding is maintained */
@@ -1210,8 +1210,8 @@
     .chat-wrapper {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 200px);
-      max-height: 600px;
+      height: calc(100vh - 160px);
+      max-height: 650px;
     }
 
     .chat-header {
@@ -1219,31 +1219,35 @@
       justify-content: space-between;
       align-items: center;
       padding: 0 0 var(--space-sm);
-      border-bottom: 1px solid var(--border);
       background: var(--background);
-      min-height: 40px;
+      min-height: 32px;
     }
 
     .chat-title h2 {
-      font-size: 14px;
-      font-weight: 600;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
       margin: 0;
-      color: var(--text-primary);
     }
 
     .component-context {
       background: var(--primary-light);
-      border: 1px solid var(--primary);
+      border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
       border-radius: var(--radius-md);
-      padding: var(--space-sm);
-      margin: var(--space-sm) 0;
+      padding: 8px 10px;
+      margin: 0 0 var(--space-sm) 0;
     }
 
     .context-badge {
       font-size: 11px;
       font-weight: 600;
       color: var(--primary);
-      margin-bottom: var(--space-xs);
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
 
     .context-info {
@@ -1319,31 +1323,33 @@
     .chat-messages {
       flex: 1;
       overflow-y: auto;
-      padding: var(--space-md) 0;
+      padding: var(--space-sm) 0;
       display: flex;
       flex-direction: column;
-      gap: var(--space-md);
+      gap: var(--space-sm);
     }
 
     .chat-message {
       display: flex;
       flex-direction: column;
-      max-width: 85%;
-      animation: fadeInUp 0.3s ease;
+      max-width: 90%;
+      animation: fadeInUp 0.2s ease;
     }
 
     .chat-message.user {
       align-self: flex-end;
+      max-width: 80%;
     }
 
     .chat-message.assistant {
       align-self: flex-start;
+      max-width: 100%;
     }
 
     .chat-message-content {
-      padding: var(--space-sm) var(--space-md);
+      padding: 10px 12px;
       border-radius: var(--radius-md);
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.5;
       word-wrap: break-word;
     }
@@ -1398,9 +1404,9 @@
     .chat-source {
       padding: var(--space-xs);
       margin-bottom: var(--space-xs);
-      background: white;
+      background: var(--surface);
       border-radius: var(--radius-sm);
-      border-left: 3px solid var(--primary);
+      border-left: 2px solid var(--primary);
     }
 
     .chat-source:last-child {
@@ -1421,8 +1427,8 @@
     }
 
     .chat-input-container {
-      border-top: 2px solid var(--border);
-      padding: var(--space-md) 0 0;
+      border-top: 1px solid var(--border);
+      padding: var(--space-sm) 0 0;
     }
 
     .chat-input-wrapper {
@@ -1436,14 +1442,15 @@
       min-height: 36px;
       max-height: 120px;
       resize: none;
-      font-size: 13px;
-      line-height: 1.4;
+      font-size: 12px;
+      line-height: 1.5;
       padding: 8px 12px;
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       background: var(--background);
       transition: all var(--transition-fast);
       font-family: inherit;
+      color: var(--text-primary);
     }
 
     .chat-input-wrapper textarea:focus {
@@ -1505,20 +1512,23 @@
 
     /* Standard Article/Prose Styling for Chat Content */
     .chat-article {
-      line-height: 1.5;
+      line-height: 1.6;
+      font-size: 12px;
     }
 
     .chat-article h2 {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
-      margin: 0.9em 0 0.65em 0;
+      margin: 1em 0 0.5em 0;
       color: var(--text-primary);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.3em;
     }
 
     .chat-article h3 {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
-      margin: 0.85em 0 0.6em 0;
+      margin: 0.8em 0 0.4em 0;
       color: var(--text-primary);
     }
 
@@ -1526,36 +1536,77 @@
       font-size: 12px;
       font-weight: 600;
       margin: 0.6em 0 0.3em 0;
-      color: var(--text-primary);
+      color: var(--text-secondary);
     }
 
     .chat-article ul,
     .chat-article ol {
-      margin: 0.2em 0;
-      padding-left: 1.8em;
+      margin: 0.4em 0;
+      padding-left: 1.6em;
+    }
+
+    .chat-article ul {
+      list-style-type: disc;
+    }
+
+    .chat-article ol {
+      list-style-type: decimal;
     }
 
     .chat-article li {
-      margin-bottom: 0.1em;
+      margin-bottom: 0.25em;
+    }
+
+    .chat-article li > ul,
+    .chat-article li > ol {
+      margin-top: 0.2em;
+      margin-bottom: 0.2em;
     }
 
     .chat-article code {
-      background: rgba(0, 0, 0, 0.08);
-      padding: 0.1em 0.3em;
-      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.06);
+      padding: 0.15em 0.4em;
+      border-radius: 3px;
       font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-      font-size: 0.9em;
+      font-size: 0.88em;
+    }
+
+    .chat-article pre {
+      background: var(--surface-secondary, #f4f4f4);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin: 0.5em 0;
+      overflow-x: auto;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .chat-article pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
     }
 
     .chat-article strong {
       font-weight: 600;
     }
 
-    .chat-article p {
-      margin: 0.4em 0 0.6em;
+    .chat-article em {
+      font-style: italic;
     }
 
-    /* Remove top margin from first element and bottom margin from last element */
+    .chat-article p {
+      margin: 0.4em 0 0.5em;
+    }
+
+    .chat-article hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0.8em 0;
+    }
+
     .chat-article > *:first-child {
       margin-top: 0;
     }
@@ -2167,7 +2218,6 @@
         <div class="plugin-icon">FL</div>
         <h1 class="plugin-name">FigmaLint</h1>
       </div>
-      <p class="plugin-description">AI-powered component analysis and design systems chat.</p>
     </div>
 
     <!-- Tab Navigation -->
@@ -2278,7 +2328,7 @@
 
         <!-- Batch Mode Toggle (shown when multiple components selected) -->
         <div class="batch-toggle hidden" id="batch-mode-toggle">
-          <span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z"/><path d="M8 4.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM6 8a2 2 0 114 0 2 2 0 01-4 0z"/><circle cx="8" cy="8" r="1"/></svg></span>
+          <span class="ico"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></span>
           <span>Multiple components selected</span>
           <label class="toggle-switch">
             <input type="checkbox" id="batch-mode-switch">
@@ -2437,14 +2487,14 @@
               <h2>Design Systems Chat</h2>
             </div>
             <button class="button button-ghost" id="clear-chat" title="Clear chat history">
-              <span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zM4.496 6.675l.66 6.6a.25.25 0 00.249.225h5.19a.25.25 0 00.249-.225l.66-6.6a.75.75 0 011.492.15l-.66 6.6A1.748 1.748 0 0110.595 15h-5.19a1.75 1.75 0 01-1.741-1.575l-.66-6.6a.75.75 0 111.492-.15z"/></svg></span> Clear
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></span> Clear
             </button>
           </div>
 
           <!-- Component Context (if available) -->
           <div id="component-context-indicator" class="hidden component-context">
             <div class="context-badge">
-              <span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z"/><path d="M8 4.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM6 8a2 2 0 114 0 2 2 0 01-4 0z"/><circle cx="8" cy="8" r="1"/></svg></span> Component Context Available
+              <span class="ico"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></span> Component Context Available
             </div>
             <div id="current-component-info" class="context-info">
               <!-- Component info will be injected here -->
@@ -2454,7 +2504,7 @@
           <!-- Chat Empty State -->
           <div id="chat-empty" class="chat-empty">
             <div class="chat-empty-content">
-              <span class="chat-empty-icon"><svg viewBox="0 0 16 16" fill="currentColor" width="24" height="24"><path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 13H8.06l-2.573 2.573A1.458 1.458 0 013 14.543V13H1.75A1.75 1.75 0 010 11.25v-8.5C0 1.784.784 1 1.75 1zm.25 1.75v8.5c0 .138.112.25.25.25h2a.75.75 0 01.75.75v2.19l2.72-2.72a.749.749 0 01.53-.22h6a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H2a.25.25 0 00-.25.25z"/></svg></span>
+              <span class="chat-empty-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg></span>
               <div class="chat-empty-text">
                 <h3>Ask me about design systems!</h3>
                 <p>I have access to comprehensive design systems knowledge and can help with components, tokens, patterns, and best practices.</p>
@@ -6103,14 +6153,13 @@
     }
 
     function formatChatContent(content) {
-      // Simple markdown-to-HTML converter that handles common patterns correctly
-      
-      // Convert markdown to HTML using a simple state machine
+      // Robust markdown-to-HTML converter for chat messages
       const lines = content.split('\n');
       const htmlLines = [];
-      let currentBlock = null;
+      let currentBlock = null;      // 'paragraph' | 'ol' | 'ul' | 'code'
       let currentBlockContent = [];
-      
+      let codeLanguage = '';
+
       const closeCurrentBlock = () => {
         if (currentBlock === 'paragraph' && currentBlockContent.length > 0) {
           htmlLines.push(`<p>${currentBlockContent.join(' ')}</p>`);
@@ -6118,99 +6167,103 @@
           htmlLines.push('</ol>');
         } else if (currentBlock === 'ul') {
           htmlLines.push('</ul>');
+        } else if (currentBlock === 'code') {
+          htmlLines.push(`<pre><code>${currentBlockContent.join('\n')}</code></pre>`);
         }
         currentBlock = null;
         currentBlockContent = [];
+        codeLanguage = '';
       };
-      
-      // Process inline markdown (bold, italic, code)
+
       function processInlineMarkdown(text) {
         return text
-          // Code spans (do this first to avoid conflicts)
           .replace(/`([^`]+)`/g, '<code>$1</code>')
-          // Bold
           .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-          // Italic (avoid matching list markers)
           .replace(/(\s|^)\*([^*\s][^*]*)\*(\s|$)/g, '$1<em>$2</em>$3');
       }
-      
+
+      function escapeCodeHtml(text) {
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmedLine = line.trim();
-        
-        // Empty line - close current block
+
+        // Fenced code blocks
+        if (trimmedLine.startsWith('```')) {
+          if (currentBlock === 'code') {
+            closeCurrentBlock();
+          } else {
+            closeCurrentBlock();
+            currentBlock = 'code';
+            codeLanguage = trimmedLine.slice(3).trim();
+            currentBlockContent = [];
+          }
+          continue;
+        }
+        if (currentBlock === 'code') {
+          currentBlockContent.push(escapeCodeHtml(line));
+          continue;
+        }
+
+        // Empty line — close current block
         if (trimmedLine === '') {
           closeCurrentBlock();
           continue;
         }
-        
+
+        // Horizontal rule
+        if (/^[-*_]{3,}$/.test(trimmedLine)) {
+          closeCurrentBlock();
+          htmlLines.push('<hr>');
+          continue;
+        }
+
         // Headers
         const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
         if (headerMatch) {
           closeCurrentBlock();
-          const level = Math.min(headerMatch[1].length + 1, 6); // Offset by 1 for better hierarchy
+          const level = Math.min(headerMatch[1].length + 1, 6);
           htmlLines.push(`<h${level}>${processInlineMarkdown(headerMatch[2])}</h${level}>`);
           continue;
         }
-        
-        // Ordered list
-        const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.+)$/);
+
+        // Ordered list item (any indent level)
+        const orderedMatch = line.match(/^(\s*)(\d+)[.)]\s+(.+)$/);
         if (orderedMatch) {
-          const [, indent, num, content] = orderedMatch;
-          const indentLevel = indent.length;
-          
-          // Check if we need to start a new list
-          if (currentBlock !== 'ol') {
+          const itemContent = orderedMatch[3];
+          const indent = orderedMatch[1].length;
+
+          if (currentBlock === 'ol') {
+            // Continue existing ordered list
+            htmlLines.push(`<li>${processInlineMarkdown(itemContent)}</li>`);
+          } else {
             closeCurrentBlock();
             htmlLines.push('<ol>');
             currentBlock = 'ol';
+            htmlLines.push(`<li>${processInlineMarkdown(itemContent)}</li>`);
           }
-          
-          // Add list item - check for nested content
-          let itemHtml = `<li>${processInlineMarkdown(content)}`;
-          
-          // Look ahead for nested lists
-          let j = i + 1;
-          const nestedItems = [];
-          while (j < lines.length && lines[j].match(/^\s+[-*]\s+/)) {
-            const nestedMatch = lines[j].match(/^\s*[-*]\s+(.+)$/);
-            if (nestedMatch) {
-              nestedItems.push(nestedMatch[1]);
-            }
-            j++;
-          }
-          
-          if (nestedItems.length > 0) {
-            itemHtml += '\n<ul>';
-            nestedItems.forEach(item => {
-              itemHtml += `\n<li>${processInlineMarkdown(item)}</li>`;
-            });
-            itemHtml += '\n</ul>';
-            i = j - 1; // Skip the nested items we just processed
-          }
-          
-          itemHtml += '</li>';
-          htmlLines.push(itemHtml);
           continue;
         }
-        
-        // Unordered list
-        const unorderedMatch = line.match(/^(\s*)[-*]\s+(.+)$/);
+
+        // Unordered list item: -, *, or + at any indent level
+        const unorderedMatch = line.match(/^(\s*)[-*+]\s+(.+)$/);
         if (unorderedMatch) {
-          const [, indent, content] = unorderedMatch;
-          
-          // Check if we're at root level (not nested)
-          if (indent.length === 0) {
-            if (currentBlock !== 'ul') {
-              closeCurrentBlock();
-              htmlLines.push('<ul>');
-              currentBlock = 'ul';
-            }
-            htmlLines.push(`<li>${processInlineMarkdown(content)}</li>`);
-            continue;
+          const itemContent = unorderedMatch[2];
+
+          if (currentBlock === 'ul') {
+            // Continue existing unordered list
+            htmlLines.push(`<li>${processInlineMarkdown(itemContent)}</li>`);
+          } else {
+            closeCurrentBlock();
+            htmlLines.push('<ul>');
+            currentBlock = 'ul';
+            htmlLines.push(`<li>${processInlineMarkdown(itemContent)}</li>`);
           }
+          continue;
         }
-        
+
         // Regular paragraph text
         if (currentBlock !== 'paragraph') {
           closeCurrentBlock();
@@ -6218,10 +6271,9 @@
         }
         currentBlockContent.push(processInlineMarkdown(trimmedLine));
       }
-      
-      // Close any remaining block
+
       closeCurrentBlock();
-      
+
       return '<div class="chat-article">' + htmlLines.join('\n') + '</div>';
     }
 
