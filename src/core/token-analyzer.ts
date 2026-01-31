@@ -293,10 +293,14 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       }
 
       // Border-related variables
-      if (boundVars.strokeWeight) {
-        console.log('   📏 Processing strokeWeight variable...');
-        variableProcessingPromises.push(processSingleVariable(boundVars.strokeWeight, 'strokeWeight', borderSet, borders, 'border'));
-      }
+      // Stroke weight variables (uniform and individual sides)
+      const strokeWeightProps = ['strokeWeight', 'strokeTopWeight', 'strokeRightWeight', 'strokeBottomWeight', 'strokeLeftWeight'] as const;
+      strokeWeightProps.forEach(prop => {
+        if ((boundVars as any)[prop]) {
+          console.log(`   📏 Processing ${prop} variable...`);
+          variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, borderSet, borders, 'border'));
+        }
+      });
 
       // Border radius variables
       const radiusProps = ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius'] as const;
@@ -359,9 +363,10 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       currentNode.fills.forEach((fill) => {
         if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
           const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
-          if (!colorSet.has(hex)) {
+          const fillDedupKey = `${hex}:${currentNode.id}`;
+          if (!colorSet.has(fillDedupKey)) {
             console.log(`   ⚠️ Found hard-coded fill: ${hex}`);
-            colorSet.add(hex);
+            colorSet.add(fillDedupKey);
 
             const debugContext = getDebugContext(currentNode);
             colors.push({
@@ -404,11 +409,12 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         currentNode.strokes.forEach((stroke) => {
           if (stroke.type === 'SOLID' && stroke.visible !== false && stroke.color) {
             const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
-            if (!colorSet.has(hex)) {
+            const strokeDedupKey = `${hex}:${currentNode.id}`;
+            if (!colorSet.has(strokeDedupKey)) {
               console.log(`   ⚠️ Found hard-coded stroke: ${hex}`);
-              colorSet.add(hex);
+              colorSet.add(strokeDedupKey);
 
-                          const debugContext = getDebugContext(currentNode);
+              const debugContext = getDebugContext(currentNode);
               colors.push({
                 name: `hard-coded-stroke-${colors.length + 1}`,
                 value: hex,
@@ -435,16 +441,23 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       console.log(`🔍 [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
     }
 
-    // Extract stroke weight only if there are visible strokes
+    // Extract stroke weight only if there are visible strokes and no bound variable
     if ('strokeWeight' in currentNode && typeof currentNode.strokeWeight === 'number') {
       console.log(`🔍 Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
 
       const hasStrokes = 'strokes' in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
       const hasVisibleStrokes = hasStrokes && currentNode.strokes.some(stroke => stroke.visible !== false);
+      const hasStrokeWeightVariable = 'boundVariables' in currentNode &&
+                                      currentNode.boundVariables &&
+                                      (['strokeWeight', 'strokeTopWeight', 'strokeRightWeight', 'strokeBottomWeight', 'strokeLeftWeight'].some(prop =>
+                                        (currentNode.boundVariables as any)[prop]));
 
-      console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}`);
+      const boundVarKeys = ('boundVariables' in currentNode && currentNode.boundVariables) ? Object.keys(currentNode.boundVariables) : [];
+      console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}, boundVariable keys: [${boundVarKeys.join(', ')}]`);
 
-      if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
+      if (hasStrokeWeightVariable) {
+        console.log(`   🔗 ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
+      } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
         
         const strokeWeightValue = `${currentNode.strokeWeight}px`;
         // Get the color of the first visible stroke
@@ -454,9 +467,10 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
           strokeColor = rgbToHex(firstVisibleStroke.color.r, firstVisibleStroke.color.g, firstVisibleStroke.color.b);
         }
 
-        if (!borderSet.has(strokeWeightValue)) {
+        const swDedupKey = `${strokeWeightValue}:${currentNode.id}`;
+        if (!borderSet.has(swDedupKey)) {
           console.log(`   ✅ Adding stroke weight: ${strokeWeightValue}`);
-          borderSet.add(strokeWeightValue);
+          borderSet.add(swDedupKey);
 
           const debugContext = getDebugContext(currentNode);
           borders.push({
@@ -499,27 +513,28 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         const radius = currentNode.cornerRadius;
         if (radius > 0) {
           const radiusValue = `${radius}px`;
-          if (!borderSet.has(radiusValue)) {
+          const crDedupKey = `${radiusValue}:${currentNode.id}`;
+          if (!borderSet.has(crDedupKey)) {
             console.log(`   ⚠️ Found hard-coded corner radius: ${radiusValue}`);
-            borderSet.add(radiusValue);
+            borderSet.add(crDedupKey);
 
             const debugContext = getDebugContext(currentNode);
             borders.push({
-            name: `hard-coded-corner-radius-${radius}`,
-            value: radiusValue,
-            type: 'corner-radius',
-            isToken: false,
-            source: 'hard-coded',
-            isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
-            context: {
-              nodeType: currentNode.type,
-              nodeName: currentNode.name,
-              nodeId: currentNode.id,
-              path: debugContext.path,
-              description: debugContext.description,
-              property: 'cornerRadius'
-            }
-          });
+              name: `hard-coded-corner-radius-${radius}`,
+              value: radiusValue,
+              type: 'corner-radius',
+              isToken: false,
+              source: 'hard-coded',
+              isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
+              context: {
+                nodeType: currentNode.type,
+                nodeName: currentNode.name,
+                nodeId: currentNode.id,
+                path: debugContext.path,
+                description: debugContext.description,
+                property: 'cornerRadius'
+              }
+            });
           }
         }
       }
@@ -547,9 +562,10 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
           const radius = (currentNode as any)[prop];
           if (radius > 0) {
             const radiusValue = `${radius}px`;
-            if (!borderSet.has(radiusValue)) {
+            const irDedupKey = `${radiusValue}:${currentNode.id}:${prop}`;
+            if (!borderSet.has(irDedupKey)) {
               console.log(`   ⚠️ Found hard-coded ${name} radius: ${radiusValue}`);
-              borderSet.add(radiusValue);
+              borderSet.add(irDedupKey);
 
               const debugContext = getDebugContext(currentNode);
               borders.push({
@@ -592,9 +608,10 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       ];
 
       paddings.forEach((padding) => {
-        if (typeof padding.value === 'number' && padding.value > 1 && !spacingSet.has(padding.value.toString())) {
+        const padDedupKey = `${padding.value}:${currentNode.id}:${padding.name}`;
+        if (typeof padding.value === 'number' && padding.value > 1 && !spacingSet.has(padDedupKey)) {
           console.log(`   ⚠️ Found hard-coded padding-${padding.name}: ${padding.value}px`);
-          spacingSet.add(padding.value.toString());
+          spacingSet.add(padDedupKey);
 
           const debugContext = getDebugContext(currentNode);
           // Check if this is a default variant style (16px padding in a variant)

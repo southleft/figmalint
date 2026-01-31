@@ -21,10 +21,6 @@
   var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 
   // src/utils/figma-helpers.ts
-  function isValidApiKeyFormat(apiKey) {
-    const trimmedKey = apiKey.trim();
-    return trimmedKey.length > 40 && trimmedKey.startsWith("sk-ant-");
-  }
   function isValidNodeForAnalysis(node) {
     const validTypes = ["FRAME", "COMPONENT", "COMPONENT_SET", "INSTANCE", "GROUP"];
     if (!validTypes.includes(node.type)) {
@@ -348,10 +344,13 @@
           console.log("   \u2728 Processing effects variables...");
           variableProcessingPromises.push(processVariableArray(boundVars.effects, "effects", effectSet, effects, "effect"));
         }
-        if (boundVars.strokeWeight) {
-          console.log("   \u{1F4CF} Processing strokeWeight variable...");
-          variableProcessingPromises.push(processSingleVariable(boundVars.strokeWeight, "strokeWeight", borderSet, borders, "border"));
-        }
+        const strokeWeightProps = ["strokeWeight", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight"];
+        strokeWeightProps.forEach((prop) => {
+          if (boundVars[prop]) {
+            console.log(`   \u{1F4CF} Processing ${prop} variable...`);
+            variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, borderSet, borders, "border"));
+          }
+        });
         const radiusProps = ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"];
         radiusProps.forEach((prop) => {
           if (boundVars[prop]) {
@@ -396,9 +395,10 @@
         currentNode.fills.forEach((fill) => {
           if (fill.type === "SOLID" && fill.visible !== false && fill.color) {
             const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
-            if (!colorSet.has(hex)) {
+            const fillDedupKey = `${hex}:${currentNode.id}`;
+            if (!colorSet.has(fillDedupKey)) {
               console.log(`   \u26A0\uFE0F Found hard-coded fill: ${hex}`);
-              colorSet.add(hex);
+              colorSet.add(fillDedupKey);
               const debugContext = getDebugContext(currentNode);
               colors.push({
                 name: `hard-coded-fill-${colors.length + 1}`,
@@ -433,9 +433,10 @@
           currentNode.strokes.forEach((stroke) => {
             if (stroke.type === "SOLID" && stroke.visible !== false && stroke.color) {
               const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
-              if (!colorSet.has(hex)) {
+              const strokeDedupKey = `${hex}:${currentNode.id}`;
+              if (!colorSet.has(strokeDedupKey)) {
                 console.log(`   \u26A0\uFE0F Found hard-coded stroke: ${hex}`);
-                colorSet.add(hex);
+                colorSet.add(strokeDedupKey);
                 const debugContext = getDebugContext(currentNode);
                 colors.push({
                   name: `hard-coded-stroke-${colors.length + 1}`,
@@ -466,17 +467,22 @@
         console.log(`\u{1F50D} Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
         const hasStrokes = "strokes" in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
         const hasVisibleStrokes = hasStrokes && currentNode.strokes.some((stroke) => stroke.visible !== false);
-        console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}`);
-        if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
+        const hasStrokeWeightVariable = "boundVariables" in currentNode && currentNode.boundVariables && ["strokeWeight", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight"].some((prop) => currentNode.boundVariables[prop]);
+        const boundVarKeys = "boundVariables" in currentNode && currentNode.boundVariables ? Object.keys(currentNode.boundVariables) : [];
+        console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}, boundVariable keys: [${boundVarKeys.join(", ")}]`);
+        if (hasStrokeWeightVariable) {
+          console.log(`   \u{1F517} ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
+        } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
           const strokeWeightValue = `${currentNode.strokeWeight}px`;
           let strokeColor = void 0;
           const firstVisibleStroke = currentNode.strokes.find((stroke) => stroke.visible !== false && stroke.type === "SOLID");
           if (firstVisibleStroke && firstVisibleStroke.type === "SOLID" && firstVisibleStroke.color) {
             strokeColor = rgbToHex(firstVisibleStroke.color.r, firstVisibleStroke.color.g, firstVisibleStroke.color.b);
           }
-          if (!borderSet.has(strokeWeightValue)) {
+          const swDedupKey = `${strokeWeightValue}:${currentNode.id}`;
+          if (!borderSet.has(swDedupKey)) {
             console.log(`   \u2705 Adding stroke weight: ${strokeWeightValue}`);
-            borderSet.add(strokeWeightValue);
+            borderSet.add(swDedupKey);
             const debugContext = getDebugContext(currentNode);
             borders.push({
               name: `hard-coded-stroke-weight-${currentNode.strokeWeight}`,
@@ -510,9 +516,10 @@
           const radius = currentNode.cornerRadius;
           if (radius > 0) {
             const radiusValue = `${radius}px`;
-            if (!borderSet.has(radiusValue)) {
+            const crDedupKey = `${radiusValue}:${currentNode.id}`;
+            if (!borderSet.has(crDedupKey)) {
               console.log(`   \u26A0\uFE0F Found hard-coded corner radius: ${radiusValue}`);
-              borderSet.add(radiusValue);
+              borderSet.add(crDedupKey);
               const debugContext = getDebugContext(currentNode);
               borders.push({
                 name: `hard-coded-corner-radius-${radius}`,
@@ -552,9 +559,10 @@
               const radius = currentNode[prop];
               if (radius > 0) {
                 const radiusValue = `${radius}px`;
-                if (!borderSet.has(radiusValue)) {
+                const irDedupKey = `${radiusValue}:${currentNode.id}:${prop}`;
+                if (!borderSet.has(irDedupKey)) {
                   console.log(`   \u26A0\uFE0F Found hard-coded ${name} radius: ${radiusValue}`);
-                  borderSet.add(radiusValue);
+                  borderSet.add(irDedupKey);
                   const debugContext = getDebugContext(currentNode);
                   borders.push({
                     name: `hard-coded-${name}-radius-${radius}`,
@@ -589,9 +597,10 @@
           { value: frame.paddingBottom, name: "bottom" }
         ];
         paddings.forEach((padding) => {
-          if (typeof padding.value === "number" && padding.value > 1 && !spacingSet.has(padding.value.toString())) {
+          const padDedupKey = `${padding.value}:${currentNode.id}:${padding.name}`;
+          if (typeof padding.value === "number" && padding.value > 1 && !spacingSet.has(padDedupKey)) {
             console.log(`   \u26A0\uFE0F Found hard-coded padding-${padding.name}: ${padding.value}px`);
-            spacingSet.add(padding.value.toString());
+            spacingSet.add(padDedupKey);
             const debugContext = getDebugContext(currentNode);
             const isDefaultVariantPadding = padding.value === 16 && isNodeInVariant(currentNode) && hasDefaultVariantFrameStyles(currentNode);
             spacing.push({
@@ -698,109 +707,6 @@
   }
 
   // src/api/claude.ts
-  var ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-  var DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
-  var MAX_TOKENS = 2048;
-  var DETERMINISTIC_CONFIG = {
-    temperature: 0.1
-    // Low temperature for consistency
-  };
-  async function fetchClaude(prompt, apiKey, model = DEFAULT_MODEL, isDeterministic = true) {
-    var _a, _b;
-    if (!apiKey || typeof apiKey !== "string") {
-      throw new Error("API Key Required: Please provide a valid Claude API key in the plugin settings.");
-    }
-    const trimmedKey = apiKey.trim();
-    if (trimmedKey.length === 0) {
-      throw new Error("API Key Required: The Claude API key cannot be empty.");
-    }
-    if (!trimmedKey.startsWith("sk-ant-")) {
-      throw new Error('Invalid API Key Format: Claude API keys should start with "sk-ant-". Please check your API key.');
-    }
-    if (trimmedKey.length < 40) {
-      throw new Error("Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key.");
-    }
-    console.log("Making Claude API call with deterministic settings...");
-    const requestBody = __spreadValues({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: prompt.trim()
-        }
-      ],
-      max_tokens: MAX_TOKENS
-    }, isDeterministic ? DETERMINISTIC_CONFIG : {});
-    const headers = {
-      "content-type": "application/json",
-      "x-api-key": apiKey.trim(),
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    };
-    try {
-      console.log("Sending request to Claude API...");
-      const response = await fetch(ANTHROPIC_API_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody)
-      });
-      if (!response.ok) {
-        let errorText = "";
-        let errorDetails = {};
-        try {
-          errorText = await response.text();
-          errorDetails = JSON.parse(errorText);
-        } catch (e) {
-          errorDetails = { message: errorText };
-        }
-        console.error("Claude API error response:", {
-          status: response.status,
-          statusText: response.statusText,
-          errorText,
-          errorDetails
-        });
-        if (response.status === 400) {
-          const errorMsg = ((_a = errorDetails.error) == null ? void 0 : _a.message) || errorDetails.message || "Bad request";
-          throw new Error(`Claude API Error (400): ${errorMsg}. Please check your request format.`);
-        } else if (response.status === 401) {
-          throw new Error("Claude API Error (401): Invalid API key. Please check your Claude API key in settings.");
-        } else if (response.status === 403) {
-          throw new Error("Claude API Error (403): Access forbidden. Please check your API key permissions.");
-        } else if (response.status === 429) {
-          const retryAfter = response.headers.get("retry-after");
-          throw new Error(`Claude API Error (429): Rate limit exceeded. ${retryAfter ? `Please try again in ${retryAfter} seconds.` : "Please try again later."}`);
-        } else if (response.status === 500) {
-          throw new Error("Claude API Error (500): Server error. The Claude API is experiencing issues. Please try again later.");
-        } else if (response.status === 503) {
-          throw new Error("Claude API Error (503): Service unavailable. The Claude API is temporarily down. Please try again later.");
-        } else {
-          throw new Error(`Claude API Error (${response.status}): ${((_b = errorDetails.error) == null ? void 0 : _b.message) || errorDetails.message || response.statusText}`);
-        }
-      }
-      const data = await response.json();
-      console.log("Claude API response:", data);
-      if (data.content && data.content[0] && data.content[0].text) {
-        return data.content[0].text.trim();
-      } else {
-        throw new Error("Invalid response format from Claude API");
-      }
-    } catch (error) {
-      console.error("Error calling Claude API:", error);
-      if (error instanceof Error) {
-        if (error.message.includes("Claude API Error")) {
-          throw error;
-        }
-        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-          throw new Error("Network Error: Failed to connect to Claude API. Please check your internet connection and try again.");
-        } else if (error.message.includes("TypeError")) {
-          throw new Error("Request Error: Invalid request format. Please contact support if this persists.");
-        } else if (error.message.includes("timeout")) {
-          throw new Error("Timeout Error: Request to Claude API timed out. Please try again.");
-        }
-      }
-      throw new Error(`Unexpected error calling Claude API: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }
   function createEnhancedMetadataPrompt(componentContext) {
     return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
 
@@ -820,6 +726,12 @@ ${componentContext.additionalContext ? `
 - Design Patterns: ${componentContext.additionalContext.designPatterns.join(", ") || "None identified"}
 - Considerations: ${componentContext.additionalContext.suggestedConsiderations.join("; ") || "None"}
 ` : "- No additional context available"}
+
+**Existing Figma Description:**
+${componentContext.existingDescription ? `"${componentContext.existingDescription}"
+(Build upon this if present, or create a comprehensive new description)` : "None set \u2014 create a comprehensive description from scratch"}
+
+- Nested Component Instances: ${extractInstanceNames(componentContext.hierarchy).join(", ") || "None detected"}
 
 **IMPORTANT: Focus on what makes this component ready for CODE GENERATION via MCP.**
 Evaluate based on these criteria that actually matter for development:
@@ -863,7 +775,7 @@ Evaluate based on these criteria that actually matter for development:
 **Response Format (JSON only):**
 {
   "component": "Component name and purpose",
-  "description": "Detailed component description and use cases",
+  "description": "Start with a brief 1-2 sentence summary of what this component is and its key variants/capabilities. Then provide structured sections: PURPOSE: What this component is and its primary function. BEHAVIOR: Interactive behavior patterns (e.g., 'expanding one accordion panel collapses all others', 'dropdown closes on outside click'). Skip this section if the component is not interactive. COMPOSITION: List all nested/child component instances used (e.g., 'Contains Button, Icon, and Badge sub-components'). Note: AI code generators should check the development codebase for these sub-components before creating new ones. USAGE: When and how to use this component vs alternatives. CODE GENERATION NOTES: Implementation considerations \u2014 mention leveraging existing sub-components from the codebase, design patterns to follow, and interaction details not visible from design specs alone.",
   "props": [
     {
       "name": "property name",
@@ -933,6 +845,14 @@ Evaluate based on these criteria that actually matter for development:
       "description": "What this property controls"
     }
   ],
+  "recommendedProperties": [
+    {
+      "name": "Figma property name to add (e.g. 'Size', 'Icon Before')",
+      "type": "VARIANT|BOOLEAN|TEXT|INSTANCE_SWAP",
+      "description": "Why this property improves the component for design system usage and developer handoff",
+      "examples": ["specific example values relevant to this component"]
+    }
+  ],
   "audit": {
     "tokenOpportunities": ["Specific recommendations for design token implementation in Figma"],
     "structureIssues": ["Component structure improvements for better design system integration"]
@@ -963,6 +883,14 @@ Evaluate based on these criteria that actually matter for development:
 4. **Component Architecture**: Evaluate how the component is structured in Figma
 5. **Practical Recommendations**: Suggest improvements that designers can actually implement
 
+**Recommended Properties Guidelines:**
+For the "recommendedProperties" field, compare the component's EXISTING properties against best practices from established design systems (Material Design, Carbon, Ant Design, Polaris, Lightning, Spectrum, etc.):
+- Only recommend Figma component properties that do NOT already exist on this component
+- Use Figma property types: VARIANT (for enumerated options like size/style), BOOLEAN (for toggles like show/hide icon), TEXT (for editable text like labels), INSTANCE_SWAP (for swappable sub-components like icons)
+- Each recommendation must be specific to THIS component type and its actual structure \u2014 do not suggest generic properties that don't apply
+- If the component already has comprehensive properties, return an empty array \u2014 never force recommendations
+- Consider what developers will need when consuming this component in code
+
 **CRITICAL: AVOID ALL Development-Only Concerns:**
 - Do NOT suggest implementing ARIA attributes, accessibility APIs, or semantic HTML (this is code-level)
 - Do NOT suggest adding keyboard navigation, event handlers, or interactive behaviors (this is code-level)
@@ -983,7 +911,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   }
   function extractJSONFromResponse(response) {
     try {
-      console.log("\u{1F50D} Starting JSON extraction from Claude response...");
+      console.log("\u{1F50D} Starting JSON extraction from LLM response...");
       console.log("\u{1F4DD} Response length:", response.length);
       console.log("\u{1F4DD} Response preview (first 200 chars):", response.substring(0, 200));
       try {
@@ -1019,9 +947,9 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       }
       throw new Error("No valid JSON found in response after trying all strategies");
     } catch (error) {
-      console.error("\u274C Failed to parse JSON from Claude response:", error);
+      console.error("\u274C Failed to parse JSON from LLM response:", error);
       console.log("\u{1F4DD} Full response for debugging:", response);
-      throw new Error("Invalid JSON response from Claude API");
+      throw new Error("Invalid JSON response from LLM API");
     }
   }
   function extractBalancedJson(response) {
@@ -1280,6 +1208,1440 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     return filteredData;
   }
 
+  // src/api/providers/types.ts
+  var LLMError = class extends Error {
+    constructor(message, code, statusCode, retryAfter) {
+      super(message);
+      this.code = code;
+      this.statusCode = statusCode;
+      this.retryAfter = retryAfter;
+      this.name = "LLMError";
+    }
+  };
+  var DEFAULT_MODELS = {
+    anthropic: "claude-sonnet-4-5-20250929",
+    openai: "gpt-5.2",
+    google: "gemini-2.5-pro"
+  };
+
+  // src/api/providers/anthropic.ts
+  var ANTHROPIC_MODELS = [
+    {
+      id: "claude-opus-4-5-20251218",
+      name: "Claude Opus 4.5",
+      description: "Flagship model - Most capable, best for complex analysis and reasoning",
+      contextWindow: 2e5,
+      isDefault: false
+    },
+    {
+      id: "claude-sonnet-4-5-20250929",
+      name: "Claude Sonnet 4.5",
+      description: "Standard model - Balanced performance and cost, recommended for most tasks",
+      contextWindow: 2e5,
+      isDefault: true
+    },
+    {
+      id: "claude-haiku-4-5-20251001",
+      name: "Claude Haiku 4.5",
+      description: "Economy model - Fastest responses, ideal for quick analysis",
+      contextWindow: 2e5,
+      isDefault: false
+    }
+  ];
+  var AnthropicProvider = class {
+    constructor() {
+      this.name = "Anthropic";
+      this.id = "anthropic";
+      this.endpoint = "https://api.anthropic.com/v1/messages";
+      this.keyPrefix = "sk-ant-";
+      this.keyPlaceholder = "sk-ant-...";
+      this.models = ANTHROPIC_MODELS;
+    }
+    /**
+     * Format a request for the Anthropic API
+     */
+    formatRequest(config) {
+      const request = {
+        model: config.model,
+        messages: [
+          {
+            role: "user",
+            content: config.prompt.trim()
+          }
+        ],
+        max_tokens: config.maxTokens
+      };
+      if (config.temperature !== void 0) {
+        request.temperature = config.temperature;
+      }
+      if (config.additionalParams) {
+        Object.assign(request, config.additionalParams);
+      }
+      return request;
+    }
+    /**
+     * Parse Anthropic API response into standardized format
+     */
+    parseResponse(response) {
+      const anthropicResponse = response;
+      if (!anthropicResponse.content || !Array.isArray(anthropicResponse.content)) {
+        throw new LLMError(
+          "Invalid response format from Anthropic API: missing content array",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const textContent = anthropicResponse.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+      if (!textContent) {
+        throw new LLMError(
+          "Invalid response format from Anthropic API: no text content found",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      return {
+        content: textContent.trim(),
+        model: anthropicResponse.model,
+        usage: anthropicResponse.usage ? {
+          promptTokens: anthropicResponse.usage.input_tokens,
+          completionTokens: anthropicResponse.usage.output_tokens,
+          totalTokens: anthropicResponse.usage.input_tokens + anthropicResponse.usage.output_tokens
+        } : void 0,
+        metadata: {
+          id: anthropicResponse.id,
+          stopReason: anthropicResponse.stop_reason
+        }
+      };
+    }
+    /**
+     * Validate API key format for Anthropic
+     */
+    validateApiKey(apiKey) {
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          isValid: false,
+          error: "API Key Required: Please provide a valid Claude API key."
+        };
+      }
+      const trimmedKey = apiKey.trim();
+      if (trimmedKey.length === 0) {
+        return {
+          isValid: false,
+          error: "API Key Required: The Claude API key cannot be empty."
+        };
+      }
+      if (!trimmedKey.startsWith(this.keyPrefix)) {
+        return {
+          isValid: false,
+          error: `Invalid API Key Format: Claude API keys should start with "${this.keyPrefix}". Please check your API key.`
+        };
+      }
+      if (trimmedKey.length < 40) {
+        return {
+          isValid: false,
+          error: "Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key."
+        };
+      }
+      return { isValid: true };
+    }
+    /**
+     * Get HTTP headers for Anthropic API requests
+     */
+    getHeaders(apiKey) {
+      return {
+        "content-type": "application/json",
+        "x-api-key": apiKey.trim(),
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      };
+    }
+    /**
+     * Get the default model for Anthropic
+     */
+    getDefaultModel() {
+      const defaultModel = this.models.find((model) => model.isDefault);
+      return defaultModel || this.models[1];
+    }
+    /**
+     * Handle Anthropic-specific error responses
+     */
+    handleError(statusCode, response) {
+      var _a;
+      const errorResponse = response;
+      const errorMessage = ((_a = errorResponse == null ? void 0 : errorResponse.error) == null ? void 0 : _a.message) || (typeof response === "string" ? response : "Unknown error");
+      switch (statusCode) {
+        case 400:
+          return new LLMError(
+            `Claude API Error (400): ${errorMessage}. Please check your request format.`,
+            "INVALID_REQUEST" /* INVALID_REQUEST */,
+            400
+          );
+        case 401:
+          return new LLMError(
+            "Claude API Error (401): Invalid API key. Please check your Claude API key in settings.",
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            401
+          );
+        case 403:
+          return new LLMError(
+            "Claude API Error (403): Access forbidden. Please check your API key permissions.",
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            403
+          );
+        case 404:
+          return new LLMError(
+            `Claude API Error (404): ${errorMessage}. The requested model may not be available.`,
+            "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */,
+            404
+          );
+        case 429:
+          return new LLMError(
+            "Claude API Error (429): Rate limit exceeded. Please try again later.",
+            "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */,
+            429
+          );
+        case 500:
+          return new LLMError(
+            "Claude API Error (500): Server error. The Claude API is experiencing issues. Please try again later.",
+            "SERVER_ERROR" /* SERVER_ERROR */,
+            500
+          );
+        case 503:
+          return new LLMError(
+            "Claude API Error (503): Service unavailable. The Claude API is temporarily down. Please try again later.",
+            "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */,
+            503
+          );
+        default:
+          return new LLMError(
+            `Claude API Error (${statusCode}): ${errorMessage}`,
+            "UNKNOWN_ERROR" /* UNKNOWN_ERROR */,
+            statusCode
+          );
+      }
+    }
+  };
+  var anthropicProvider = new AnthropicProvider();
+
+  // src/api/providers/openai.ts
+  var OPENAI_MODELS = [
+    {
+      id: "gpt-5.2",
+      name: "GPT-5.2",
+      description: "Flagship model with advanced reasoning capabilities",
+      contextWindow: 128e3,
+      isDefault: true
+    },
+    {
+      id: "gpt-5.2-pro",
+      name: "GPT-5.2 Pro",
+      description: "Premium model with extended reasoning for complex tasks",
+      contextWindow: 128e3,
+      isDefault: false
+    },
+    {
+      id: "gpt-5-mini",
+      name: "GPT-5 Mini",
+      description: "Economy model - fast and cost-effective",
+      contextWindow: 128e3,
+      isDefault: false
+    }
+  ];
+  var OpenAIProviderClass = class {
+    constructor() {
+      this.name = "OpenAI";
+      this.id = "openai";
+      this.endpoint = "https://api.openai.com/v1/chat/completions";
+      this.keyPrefix = "sk-";
+      this.keyPlaceholder = "sk-...";
+      this.models = OPENAI_MODELS;
+    }
+    /**
+     * Format a request for OpenAI's chat completions API
+     */
+    formatRequest(config) {
+      const request = {
+        model: config.model,
+        messages: [
+          {
+            role: "user",
+            content: config.prompt
+          }
+        ],
+        max_completion_tokens: config.maxTokens,
+        temperature: config.temperature
+      };
+      if (config.additionalParams) {
+        Object.assign(request, config.additionalParams);
+      }
+      return request;
+    }
+    /**
+     * Parse OpenAI's response into standardized format
+     */
+    parseResponse(response) {
+      const openaiResponse = response;
+      if (!openaiResponse.choices || openaiResponse.choices.length === 0) {
+        throw new LLMError(
+          "Invalid response format: no choices returned",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const choice = openaiResponse.choices[0];
+      if (!choice.message || typeof choice.message.content !== "string") {
+        throw new LLMError(
+          "Invalid response format: missing message content",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const result = {
+        content: choice.message.content.trim(),
+        model: openaiResponse.model
+      };
+      if (openaiResponse.usage) {
+        result.usage = {
+          promptTokens: openaiResponse.usage.prompt_tokens,
+          completionTokens: openaiResponse.usage.completion_tokens,
+          totalTokens: openaiResponse.usage.total_tokens
+        };
+      }
+      result.metadata = {
+        id: openaiResponse.id,
+        finishReason: choice.finish_reason,
+        created: openaiResponse.created
+      };
+      return result;
+    }
+    /**
+     * Validate OpenAI API key format
+     */
+    validateApiKey(apiKey) {
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          isValid: false,
+          error: "API Key Required: Please provide a valid OpenAI API key."
+        };
+      }
+      const trimmedKey = apiKey.trim();
+      if (trimmedKey.length === 0) {
+        return {
+          isValid: false,
+          error: "API Key Required: The OpenAI API key cannot be empty."
+        };
+      }
+      if (!trimmedKey.startsWith(this.keyPrefix)) {
+        return {
+          isValid: false,
+          error: `Invalid API Key Format: OpenAI API keys should start with "${this.keyPrefix}". Please check your API key.`
+        };
+      }
+      if (trimmedKey.length < 20) {
+        return {
+          isValid: false,
+          error: "Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key."
+        };
+      }
+      return { isValid: true };
+    }
+    /**
+     * Get headers required for OpenAI API requests
+     */
+    getHeaders(apiKey) {
+      return {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey.trim()}`
+      };
+    }
+    /**
+     * Get the default model for OpenAI
+     */
+    getDefaultModel() {
+      const defaultModel = this.models.find((model) => model.isDefault);
+      return defaultModel || this.models[0];
+    }
+    /**
+     * Handle OpenAI-specific error responses
+     */
+    handleError(statusCode, response) {
+      var _a;
+      const errorResponse = response;
+      const errorMessage = ((_a = errorResponse == null ? void 0 : errorResponse.error) == null ? void 0 : _a.message) || (errorResponse == null ? void 0 : errorResponse.message) || "Unknown error occurred";
+      switch (statusCode) {
+        case 400:
+          if (errorMessage.toLowerCase().includes("context_length_exceeded") || errorMessage.toLowerCase().includes("maximum context length")) {
+            return new LLMError(
+              `OpenAI API Error (400): Context length exceeded. ${errorMessage}`,
+              "CONTEXT_LENGTH_EXCEEDED" /* CONTEXT_LENGTH_EXCEEDED */,
+              statusCode
+            );
+          }
+          return new LLMError(
+            `OpenAI API Error (400): ${errorMessage}. Please check your request format.`,
+            "INVALID_REQUEST" /* INVALID_REQUEST */,
+            statusCode
+          );
+        case 401:
+          return new LLMError(
+            "OpenAI API Error (401): Invalid API key. Please check your OpenAI API key in settings.",
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            statusCode
+          );
+        case 403:
+          return new LLMError(
+            "OpenAI API Error (403): Access forbidden. Please check your API key permissions or account status.",
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            statusCode
+          );
+        case 404:
+          return new LLMError(
+            `OpenAI API Error (404): Model not found. ${errorMessage}`,
+            "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */,
+            statusCode
+          );
+        case 429:
+          const retryMatch = errorMessage.match(/try again in (\d+)/i);
+          const retryAfter = retryMatch ? parseInt(retryMatch[1], 10) : void 0;
+          return new LLMError(
+            `OpenAI API Error (429): Rate limit exceeded. ${retryAfter ? `Please try again in ${retryAfter} seconds.` : "Please try again later."}`,
+            "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */,
+            statusCode,
+            retryAfter
+          );
+        case 500:
+          return new LLMError(
+            "OpenAI API Error (500): Server error. The OpenAI API is experiencing issues. Please try again later.",
+            "SERVER_ERROR" /* SERVER_ERROR */,
+            statusCode
+          );
+        case 502:
+          return new LLMError(
+            "OpenAI API Error (502): Bad gateway. The OpenAI API is temporarily unavailable. Please try again later.",
+            "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */,
+            statusCode
+          );
+        case 503:
+          return new LLMError(
+            "OpenAI API Error (503): Service unavailable. The OpenAI API is temporarily down. Please try again later.",
+            "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */,
+            statusCode
+          );
+        case 504:
+          return new LLMError(
+            "OpenAI API Error (504): Gateway timeout. The request took too long. Please try again.",
+            "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */,
+            statusCode
+          );
+        default:
+          return new LLMError(
+            `OpenAI API Error (${statusCode}): ${errorMessage}`,
+            "UNKNOWN_ERROR" /* UNKNOWN_ERROR */,
+            statusCode
+          );
+      }
+    }
+  };
+  var OpenAIProvider = new OpenAIProviderClass();
+
+  // src/api/providers/google.ts
+  var GOOGLE_MODELS = [
+    {
+      id: "gemini-3-pro-preview",
+      name: "Gemini 3 Pro",
+      description: "Flagship model with advanced reasoning and multimodal capabilities",
+      contextWindow: 1e6,
+      isDefault: true
+    },
+    {
+      id: "gemini-2.5-pro",
+      name: "Gemini 2.5 Pro",
+      description: "Standard reasoning model with excellent performance",
+      contextWindow: 1e6,
+      isDefault: false
+    },
+    {
+      id: "gemini-2.5-flash",
+      name: "Gemini 2.5 Flash",
+      description: "Economy model optimized for speed and efficiency",
+      contextWindow: 1e6,
+      isDefault: false
+    }
+  ];
+  var GoogleProvider = class {
+    constructor() {
+      this.name = "Google";
+      this.id = "google";
+      this.endpoint = "https://generativelanguage.googleapis.com/v1beta/models";
+      this.keyPrefix = "AIza";
+      this.keyPlaceholder = "AIza...";
+      this.models = GOOGLE_MODELS;
+    }
+    /**
+     * Format a request for the Gemini API
+     *
+     * Gemini uses a different request structure than OpenAI/Anthropic:
+     * - contents: Array of content objects with parts
+     * - generationConfig: Configuration for the generation
+     *
+     * @param config - Request configuration
+     * @returns Formatted request body for Gemini API
+     */
+    formatRequest(config) {
+      const request = {
+        contents: [
+          {
+            parts: [
+              {
+                text: config.prompt
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          maxOutputTokens: config.maxTokens,
+          temperature: config.temperature
+        }
+      };
+      if (config.additionalParams) {
+        const { topP, topK, stopSequences } = config.additionalParams;
+        if (topP !== void 0) {
+          request.generationConfig.topP = topP;
+        }
+        if (topK !== void 0) {
+          request.generationConfig.topK = topK;
+        }
+        if (stopSequences !== void 0) {
+          request.generationConfig.stopSequences = stopSequences;
+        }
+      }
+      return request;
+    }
+    /**
+     * Parse Gemini API response into standardized format
+     *
+     * Gemini response structure:
+     * {
+     *   candidates: [{
+     *     content: {
+     *       parts: [{ text: "..." }]
+     *     }
+     *   }],
+     *   usageMetadata: { ... }
+     * }
+     *
+     * @param response - Raw API response
+     * @returns Standardized LLM response
+     * @throws Error if response format is invalid
+     */
+    parseResponse(response) {
+      var _a;
+      const geminiResponse = response;
+      if (geminiResponse.error) {
+        throw new LLMError(
+          geminiResponse.error.message || "Unknown Gemini API error",
+          this.mapErrorCodeToLLMErrorCode(geminiResponse.error.code, geminiResponse.error.status),
+          geminiResponse.error.code
+        );
+      }
+      if (!geminiResponse.candidates || geminiResponse.candidates.length === 0) {
+        const keys = Object.keys(geminiResponse);
+        throw new LLMError(
+          `No candidates in Gemini response. Response keys: [${keys.join(", ")}]${geminiResponse.error ? `. Error: ${geminiResponse.error.message}` : ""}`,
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const candidate = geminiResponse.candidates[0];
+      if (candidate.finishReason === "SAFETY") {
+        throw new LLMError(
+          "Gemini response blocked by safety filters. Try rephrasing the prompt.",
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const parts = (_a = candidate.content) == null ? void 0 : _a.parts;
+      if (!parts || parts.length === 0) {
+        throw new LLMError(
+          `No content parts in Gemini response. Finish reason: ${candidate.finishReason || "unknown"}. Has content: ${!!candidate.content}`,
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const textPart = parts.find((p) => typeof p.text === "string");
+      if (!textPart || !textPart.text) {
+        const partTypes = parts.map((p) => Object.keys(p).join(",")).join("; ");
+        throw new LLMError(
+          `No text content in Gemini response parts. Part types: [${partTypes}]. Finish reason: ${candidate.finishReason || "unknown"}`,
+          "INVALID_REQUEST" /* INVALID_REQUEST */
+        );
+      }
+      const text = textPart.text;
+      const llmResponse = {
+        content: text,
+        model: "gemini"
+        // Model info not always returned in response
+      };
+      if (geminiResponse.usageMetadata) {
+        llmResponse.usage = {
+          promptTokens: geminiResponse.usageMetadata.promptTokenCount || 0,
+          completionTokens: geminiResponse.usageMetadata.candidatesTokenCount || 0,
+          totalTokens: geminiResponse.usageMetadata.totalTokenCount || 0
+        };
+      }
+      return llmResponse;
+    }
+    /**
+     * Validate Google API key format
+     *
+     * Google API keys:
+     * - Start with 'AIza'
+     * - Are typically 39 characters long
+     * - Contain alphanumeric characters and underscores
+     *
+     * @param apiKey - The API key to validate
+     * @returns Validation result
+     */
+    validateApiKey(apiKey) {
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          isValid: false,
+          error: "API key is required"
+        };
+      }
+      const trimmedKey = apiKey.trim();
+      if (trimmedKey.length === 0) {
+        return {
+          isValid: false,
+          error: "API key cannot be empty"
+        };
+      }
+      if (!trimmedKey.startsWith(this.keyPrefix)) {
+        return {
+          isValid: false,
+          error: `Google API keys should start with "${this.keyPrefix}". Please check your API key.`
+        };
+      }
+      if (trimmedKey.length < 30 || trimmedKey.length > 50) {
+        return {
+          isValid: false,
+          error: "API key appears to have an invalid length. Please verify you copied the complete key."
+        };
+      }
+      if (!/^[A-Za-z0-9_-]+$/.test(trimmedKey)) {
+        return {
+          isValid: false,
+          error: "API key contains invalid characters"
+        };
+      }
+      return { isValid: true };
+    }
+    /**
+     * Get headers for API requests
+     *
+     * Note: Google uses URL-based authentication, so the API key is not
+     * included in headers. It is appended to the URL instead.
+     *
+     * @param _apiKey - The API key (not used in headers for Google)
+     * @returns Request headers
+     */
+    getHeaders(_apiKey) {
+      return {
+        "Content-Type": "application/json"
+      };
+    }
+    /**
+     * Get the full endpoint URL for a specific model and API key
+     *
+     * Google's API uses URL-based authentication:
+     * https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}
+     *
+     * @param model - The model ID to use
+     * @param apiKey - The API key for authentication
+     * @returns Full endpoint URL with API key
+     */
+    getEndpoint(model, apiKey) {
+      const trimmedKey = apiKey.trim();
+      return `${this.endpoint}/${model}:generateContent?key=${trimmedKey}`;
+    }
+    /**
+     * Get the default model for this provider
+     *
+     * @returns The default Gemini model
+     */
+    getDefaultModel() {
+      const defaultModel = this.models.find((m) => m.isDefault);
+      return defaultModel || this.models[0];
+    }
+    /**
+     * Handle provider-specific error responses
+     *
+     * @param statusCode - HTTP status code
+     * @param response - Error response body
+     * @returns Formatted LLMError
+     */
+    handleError(statusCode, response) {
+      var _a, _b;
+      const errorResponse = response;
+      const errorInfo = errorResponse == null ? void 0 : errorResponse.error;
+      const message = (errorInfo == null ? void 0 : errorInfo.message) || "Unknown Google API error";
+      const status = errorInfo == null ? void 0 : errorInfo.status;
+      const code = (errorInfo == null ? void 0 : errorInfo.code) || statusCode;
+      const llmErrorCode = this.mapErrorCodeToLLMErrorCode(code, status);
+      let retryAfter;
+      if (statusCode === 429) {
+        retryAfter = 6e4;
+        const retryDetail = (_a = errorInfo == null ? void 0 : errorInfo.details) == null ? void 0 : _a.find(
+          (d) => {
+            var _a2;
+            return (_a2 = d["@type"]) == null ? void 0 : _a2.includes("RetryInfo");
+          }
+        );
+        if ((_b = retryDetail == null ? void 0 : retryDetail.metadata) == null ? void 0 : _b.retryDelay) {
+          const delayMatch = retryDetail.metadata.retryDelay.match(/(\d+)s/);
+          if (delayMatch) {
+            retryAfter = parseInt(delayMatch[1], 10) * 1e3;
+          }
+        }
+      }
+      let userMessage = message;
+      switch (llmErrorCode) {
+        case "INVALID_API_KEY" /* INVALID_API_KEY */:
+          userMessage = "Google API Error: Invalid API key. Please check your API key in settings.";
+          break;
+        case "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */:
+          userMessage = `Google API Error: Rate limit exceeded. ${retryAfter ? `Please try again in ${Math.ceil(retryAfter / 1e3)} seconds.` : "Please try again later."}`;
+          break;
+        case "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */:
+          userMessage = "Google API Error: Model not found. Please select a valid model.";
+          break;
+        case "CONTEXT_LENGTH_EXCEEDED" /* CONTEXT_LENGTH_EXCEEDED */:
+          userMessage = "Google API Error: Input too long. Please reduce the size of your request.";
+          break;
+        case "SERVER_ERROR" /* SERVER_ERROR */:
+          userMessage = "Google API Error: Server error. Please try again later.";
+          break;
+        case "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */:
+          userMessage = "Google API Error: Service temporarily unavailable. Please try again later.";
+          break;
+      }
+      return new LLMError(userMessage, llmErrorCode, statusCode, retryAfter);
+    }
+    /**
+     * Map Google error codes/status to LLMErrorCode
+     *
+     * @param code - HTTP status code or Google error code
+     * @param status - Google error status string
+     * @returns Appropriate LLMErrorCode
+     */
+    mapErrorCodeToLLMErrorCode(code, status) {
+      if (status) {
+        const statusUpper = status.toUpperCase();
+        if (statusUpper === "INVALID_ARGUMENT") {
+          return "INVALID_REQUEST" /* INVALID_REQUEST */;
+        }
+        if (statusUpper === "PERMISSION_DENIED" || statusUpper === "UNAUTHENTICATED") {
+          return "INVALID_API_KEY" /* INVALID_API_KEY */;
+        }
+        if (statusUpper === "NOT_FOUND") {
+          return "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */;
+        }
+        if (statusUpper === "RESOURCE_EXHAUSTED") {
+          return "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */;
+        }
+        if (statusUpper === "UNAVAILABLE") {
+          return "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */;
+        }
+      }
+      switch (code) {
+        case 400:
+          return "INVALID_REQUEST" /* INVALID_REQUEST */;
+        case 401:
+        case 403:
+          return "INVALID_API_KEY" /* INVALID_API_KEY */;
+        case 404:
+          return "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */;
+        case 429:
+          return "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */;
+        case 500:
+          return "SERVER_ERROR" /* SERVER_ERROR */;
+        case 503:
+          return "SERVICE_UNAVAILABLE" /* SERVICE_UNAVAILABLE */;
+        default:
+          return "UNKNOWN_ERROR" /* UNKNOWN_ERROR */;
+      }
+    }
+  };
+  var googleProvider = new GoogleProvider();
+
+  // src/api/providers/index.ts
+  var providers = {
+    anthropic: anthropicProvider,
+    openai: OpenAIProvider,
+    google: googleProvider
+  };
+  function getProvider(providerId) {
+    const provider = providers[providerId];
+    if (!provider) {
+      throw new LLMError(
+        `Unknown provider: ${providerId}`,
+        "INVALID_REQUEST" /* INVALID_REQUEST */,
+        400
+      );
+    }
+    return provider;
+  }
+  async function callProvider(providerId, apiKey, config) {
+    var _a, _b;
+    const provider = getProvider(providerId);
+    const validation = provider.validateApiKey(apiKey);
+    if (!validation.isValid) {
+      throw new LLMError(
+        validation.error || "Invalid API key format",
+        "INVALID_API_KEY" /* INVALID_API_KEY */,
+        401
+      );
+    }
+    const requestBody = provider.formatRequest(config);
+    const headers = provider.getHeaders(apiKey);
+    let endpoint = provider.endpoint;
+    if (providerId === "google") {
+      endpoint = `${provider.endpoint}/${config.model}:generateContent?key=${apiKey.trim()}`;
+    }
+    try {
+      console.log(`Making ${provider.name} API call to ${endpoint}...`);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody)
+      });
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = await response.text();
+        }
+        throw provider.handleError(response.status, errorData);
+      }
+      const data = await response.json();
+      console.log(`${provider.name} API response status: ${response.status}`);
+      console.log(`${provider.name} API response keys:`, Object.keys(data));
+      if (providerId === "google") {
+        console.log(`Gemini response candidates:`, data.candidates ? data.candidates.length : "none");
+        if ((_a = data.candidates) == null ? void 0 : _a[0]) {
+          console.log(`Gemini candidate[0] keys:`, Object.keys(data.candidates[0]));
+          if (data.candidates[0].content) {
+            console.log(`Gemini content parts:`, ((_b = data.candidates[0].content.parts) == null ? void 0 : _b.length) || "none");
+          }
+        }
+        if (data.error) {
+          console.log(`Gemini error:`, JSON.stringify(data.error));
+        }
+      }
+      return provider.parseResponse(data);
+    } catch (error) {
+      if (error instanceof LLMError) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          throw new LLMError(
+            `Network error connecting to ${provider.name}. Please check your internet connection.`,
+            "NETWORK_ERROR" /* NETWORK_ERROR */
+          );
+        }
+      }
+      throw new LLMError(
+        `Unexpected error calling ${provider.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "UNKNOWN_ERROR" /* UNKNOWN_ERROR */
+      );
+    }
+  }
+  var STORAGE_KEYS = {
+    /** Selected provider ID */
+    SELECTED_PROVIDER: "selected-provider",
+    /** Selected model ID */
+    SELECTED_MODEL: "selected-model",
+    /** API key storage (per provider) */
+    apiKey: (providerId) => `${providerId}-api-key`,
+    /** Legacy Claude key (for migration) */
+    LEGACY_CLAUDE_KEY: "claude-api-key",
+    LEGACY_CLAUDE_MODEL: "claude-model"
+  };
+  var DEFAULTS = {
+    provider: "anthropic",
+    model: DEFAULT_MODELS.anthropic
+  };
+  async function checkLegacyMigration() {
+    try {
+      const legacyKey = await figma.clientStorage.getAsync(STORAGE_KEYS.LEGACY_CLAUDE_KEY);
+      const legacyModel = await figma.clientStorage.getAsync(STORAGE_KEYS.LEGACY_CLAUDE_MODEL);
+      if (legacyKey) {
+        return {
+          needsMigration: true,
+          legacyKey,
+          legacyModel
+        };
+      }
+      return { needsMigration: false };
+    } catch (e) {
+      return { needsMigration: false };
+    }
+  }
+  async function migrateLegacyStorage() {
+    const migration = await checkLegacyMigration();
+    if (!migration.needsMigration) {
+      return;
+    }
+    console.log("Migrating legacy Claude storage to multi-provider format...");
+    if (migration.legacyKey) {
+      await figma.clientStorage.setAsync(STORAGE_KEYS.apiKey("anthropic"), migration.legacyKey);
+    }
+    await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_PROVIDER, "anthropic");
+    if (migration.legacyModel) {
+      await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_MODEL, migration.legacyModel);
+    }
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.LEGACY_CLAUDE_KEY);
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.LEGACY_CLAUDE_MODEL);
+    console.log("Migration complete");
+  }
+  async function loadProviderConfig() {
+    await migrateLegacyStorage();
+    const providerId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_PROVIDER) || DEFAULTS.provider;
+    const modelId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_MODEL) || DEFAULT_MODELS[providerId];
+    const apiKey = await figma.clientStorage.getAsync(STORAGE_KEYS.apiKey(providerId));
+    return { providerId, modelId, apiKey };
+  }
+  async function saveProviderConfig(providerId, modelId, apiKey) {
+    await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_PROVIDER, providerId);
+    await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_MODEL, modelId);
+    if (apiKey !== void 0) {
+      await figma.clientStorage.setAsync(STORAGE_KEYS.apiKey(providerId), apiKey);
+    }
+  }
+  async function clearProviderKey(providerId) {
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.apiKey(providerId));
+  }
+
+  // src/fixes/naming-fixer.ts
+  var GENERIC_NAMES = /^(Frame|Rectangle|Ellipse|Group|Vector|Line|Polygon|Star|Text|Component|Instance|Slice|Boolean|Union|Subtract|Intersect|Exclude)\s*\d*$/i;
+  var NUMBERED_SUFFIX = /\s+\d+$/;
+  var COMPONENT_PREFIXES = {
+    button: "btn",
+    icon: "ico",
+    input: "input",
+    text: "txt",
+    image: "img",
+    container: "container",
+    card: "card",
+    list: "list",
+    "list-item": "list-item",
+    nav: "nav",
+    header: "header",
+    footer: "footer",
+    modal: "modal",
+    dropdown: "dropdown",
+    checkbox: "checkbox",
+    radio: "radio",
+    toggle: "toggle",
+    avatar: "avatar",
+    badge: "badge",
+    divider: "divider",
+    spacer: "spacer",
+    link: "link",
+    tab: "tab",
+    tooltip: "tooltip",
+    alert: "alert",
+    progress: "progress",
+    skeleton: "skeleton",
+    unknown: "layer"
+  };
+  var TYPE_KEYWORD_ENTRIES = [
+    ["btn", "button"],
+    ["button", "button"],
+    ["cta", "button"],
+    ["submit", "button"],
+    ["icon", "icon"],
+    ["ico", "icon"],
+    ["glyph", "icon"],
+    ["symbol", "icon"],
+    ["arrow", "icon"],
+    ["chevron", "icon"],
+    ["close", "icon"],
+    ["plus", "icon"],
+    ["minus", "icon"],
+    ["txt", "text"],
+    ["label", "text"],
+    ["title", "text"],
+    ["heading", "text"],
+    ["paragraph", "text"],
+    ["description", "text"],
+    ["caption", "text"],
+    ["subtitle", "text"],
+    ["input", "input"],
+    ["field", "input"],
+    ["textfield", "input"],
+    ["textarea", "input"],
+    ["searchfield", "input"],
+    ["searchbox", "input"],
+    ["image", "image"],
+    ["img", "image"],
+    ["photo", "image"],
+    ["picture", "image"],
+    ["thumbnail", "image"],
+    ["cover", "image"],
+    ["container", "container"],
+    ["wrapper", "container"],
+    ["content", "container"],
+    ["section", "container"],
+    ["block", "container"],
+    ["box", "container"],
+    ["card", "card"],
+    ["tile", "card"],
+    ["panel", "card"],
+    ["list", "list"],
+    ["items", "list"],
+    ["item", "list-item"],
+    ["row", "list-item"],
+    ["listitem", "list-item"],
+    ["nav", "nav"],
+    ["navbar", "nav"],
+    ["navigation", "nav"],
+    ["sidebar", "nav"],
+    ["breadcrumb", "nav"],
+    ["menu", "nav"],
+    ["header", "header"],
+    ["topbar", "header"],
+    ["footer", "footer"],
+    ["bottombar", "footer"],
+    ["modal", "modal"],
+    ["dialog", "modal"],
+    ["popup", "modal"],
+    ["overlay", "modal"],
+    ["dropdown", "dropdown"],
+    ["select", "dropdown"],
+    ["picker", "dropdown"],
+    ["combobox", "dropdown"],
+    ["checkbox", "checkbox"],
+    ["checkmark", "checkbox"],
+    ["radio", "radio"],
+    ["toggle", "toggle"],
+    ["switch", "toggle"],
+    ["avatar", "avatar"],
+    ["profile", "avatar"],
+    ["userpic", "avatar"],
+    ["badge", "badge"],
+    ["tag", "badge"],
+    ["chip", "badge"],
+    ["pill", "badge"],
+    ["status", "badge"],
+    ["divider", "divider"],
+    ["separator", "divider"],
+    ["hr", "divider"],
+    ["spacer", "spacer"],
+    ["gap", "spacer"],
+    ["link", "link"],
+    ["anchor", "link"],
+    ["href", "link"],
+    ["tab", "tab"],
+    ["tabs", "tab"],
+    ["tabbar", "tab"],
+    ["tooltip", "tooltip"],
+    ["hint", "tooltip"],
+    ["popover", "tooltip"],
+    ["alert", "alert"],
+    ["notification", "alert"],
+    ["toast", "alert"],
+    ["message", "alert"],
+    ["snackbar", "alert"],
+    ["banner", "alert"],
+    ["progress", "progress"],
+    ["loader", "progress"],
+    ["loading", "progress"],
+    ["spinner", "progress"],
+    ["progressbar", "progress"],
+    ["skeleton", "skeleton"],
+    ["placeholder", "skeleton"],
+    ["shimmer", "skeleton"]
+  ];
+  function isGenericName(name) {
+    if (!name || typeof name !== "string") {
+      return true;
+    }
+    const trimmedName = name.trim();
+    if (GENERIC_NAMES.test(trimmedName)) {
+      return true;
+    }
+    if (trimmedName.length === 1) {
+      return true;
+    }
+    if (/^\d+$/.test(trimmedName)) {
+      return true;
+    }
+    return false;
+  }
+  function hasNumberedSuffix(name) {
+    return NUMBERED_SUFFIX.test(name.trim());
+  }
+  function detectLayerType(node) {
+    const name = node.name.toLowerCase();
+    for (let i = 0; i < TYPE_KEYWORD_ENTRIES.length; i++) {
+      const entry = TYPE_KEYWORD_ENTRIES[i];
+      if (name.indexOf(entry[0]) !== -1) {
+        return entry[1];
+      }
+    }
+    switch (node.type) {
+      case "TEXT":
+        return "text";
+      case "VECTOR":
+      case "STAR":
+      case "POLYGON":
+      case "BOOLEAN_OPERATION":
+        return "icon";
+      case "RECTANGLE":
+      case "ELLIPSE":
+      case "LINE":
+        if ("fills" in node && Array.isArray(node.fills)) {
+          const fills = node.fills;
+          let hasImageFill = false;
+          for (let i = 0; i < fills.length; i++) {
+            const fill = fills[i];
+            if (fill.type === "IMAGE" && fill.visible !== false) {
+              hasImageFill = true;
+              break;
+            }
+          }
+          if (hasImageFill) {
+            return "image";
+          }
+        }
+        if ("width" in node && "height" in node) {
+          const width = node.width;
+          const height = node.height;
+          const aspectRatio = width / height;
+          if (height <= 2 && width > 20) {
+            return "divider";
+          }
+          if (width <= 2 && height > 20) {
+            return "divider";
+          }
+          if (width <= 32 && height <= 32 && aspectRatio > 0.5 && aspectRatio < 2) {
+            return "spacer";
+          }
+        }
+        return "unknown";
+      case "FRAME":
+      case "GROUP":
+        return detectFrameType(node);
+      case "COMPONENT":
+      case "INSTANCE":
+        return detectComponentType(node);
+      case "COMPONENT_SET":
+        return detectComponentSetType(node);
+      default:
+        return "unknown";
+    }
+  }
+  function detectFrameType(node) {
+    if (!("children" in node) || node.children.length === 0) {
+      return "container";
+    }
+    const children = node.children;
+    const childTypes = [];
+    const childNames = [];
+    for (let i = 0; i < children.length; i++) {
+      childTypes.push(children[i].type);
+      childNames.push(children[i].name.toLowerCase());
+    }
+    let hasText = false;
+    let hasIcon = false;
+    for (let i = 0; i < childTypes.length; i++) {
+      if (childTypes[i] === "TEXT") {
+        hasText = true;
+      }
+      if (childTypes[i] === "VECTOR" || childNames[i].indexOf("icon") !== -1) {
+        hasIcon = true;
+      }
+    }
+    const isSmall = "width" in node && "height" in node && node.width < 300 && node.height < 100;
+    if (hasText && isSmall && (hasIcon || children.length <= 3)) {
+      if ("layoutMode" in node && node.layoutMode !== "NONE") {
+        return "button";
+      }
+    }
+    let hasImage = false;
+    for (let i = 0; i < childTypes.length; i++) {
+      if (childTypes[i] === "RECTANGLE" || childNames[i].indexOf("image") !== -1) {
+        hasImage = true;
+        break;
+      }
+    }
+    if (hasText && hasImage && children.length >= 2) {
+      return "card";
+    }
+    if (children.length >= 3) {
+      const firstChildType = children[0].type;
+      let allSameType = true;
+      for (let i = 1; i < children.length; i++) {
+        if (children[i].type !== firstChildType) {
+          allSameType = false;
+          break;
+        }
+      }
+      if (allSameType && (firstChildType === "FRAME" || firstChildType === "INSTANCE")) {
+        return "list";
+      }
+    }
+    if ("cornerRadius" in node && node.cornerRadius && children.length <= 2) {
+      if (hasText && isSmall) {
+        return "input";
+      }
+    }
+    if ("layoutMode" in node && node.layoutMode === "HORIZONTAL") {
+      let clickableCount = 0;
+      for (let i = 0; i < children.length; i++) {
+        const childType = children[i].type;
+        if (childType === "FRAME" || childType === "INSTANCE" || childType === "TEXT") {
+          clickableCount++;
+        }
+      }
+      if (clickableCount >= 3 && isSmall) {
+        return "nav";
+      }
+    }
+    return "container";
+  }
+  function detectComponentType(node) {
+    const name = node.name.toLowerCase();
+    for (let i = 0; i < TYPE_KEYWORD_ENTRIES.length; i++) {
+      const entry = TYPE_KEYWORD_ENTRIES[i];
+      if (name.indexOf(entry[0]) !== -1) {
+        return entry[1];
+      }
+    }
+    if ("children" in node) {
+      return detectFrameType(node);
+    }
+    return "unknown";
+  }
+  function detectComponentSetType(node) {
+    const name = node.name.toLowerCase();
+    for (let i = 0; i < TYPE_KEYWORD_ENTRIES.length; i++) {
+      const entry = TYPE_KEYWORD_ENTRIES[i];
+      if (name.indexOf(entry[0]) !== -1) {
+        return entry[1];
+      }
+    }
+    if ("children" in node && node.children.length > 0) {
+      return detectComponentType(node.children[0]);
+    }
+    return "unknown";
+  }
+  function analyzeNamingIssues(node, maxDepth = 10) {
+    const issues = [];
+    function traverse(currentNode, depth, path) {
+      if (depth > maxDepth) {
+        return;
+      }
+      const currentPath = path ? `${path} > ${currentNode.name}` : currentNode.name;
+      const layerType = detectLayerType(currentNode);
+      if (isGenericName(currentNode.name)) {
+        const suggestedName = suggestLayerName(currentNode);
+        issues.push({
+          nodeId: currentNode.id,
+          nodeName: currentNode.name,
+          currentName: currentNode.name,
+          suggestedName,
+          severity: "error",
+          reason: "Generic layer name detected",
+          layerType,
+          depth,
+          path: currentPath
+        });
+      } else if (hasNumberedSuffix(currentNode.name)) {
+        const baseName = currentNode.name.replace(NUMBERED_SUFFIX, "").trim();
+        const suggestedName = suggestLayerName(currentNode);
+        issues.push({
+          nodeId: currentNode.id,
+          nodeName: currentNode.name,
+          currentName: currentNode.name,
+          suggestedName: suggestedName !== currentNode.name ? suggestedName : baseName,
+          severity: "warning",
+          reason: "Layer name has numbered suffix (possible duplicate)",
+          layerType,
+          depth,
+          path: currentPath
+        });
+      }
+      if ("children" in currentNode) {
+        for (let i = 0; i < currentNode.children.length; i++) {
+          traverse(currentNode.children[i], depth + 1, currentPath);
+        }
+      }
+    }
+    traverse(node, 0, "");
+    return issues;
+  }
+  function suggestLayerName(node) {
+    const layerType = detectLayerType(node);
+    if (node.type === "TEXT") {
+      return generateTextName(node);
+    }
+    if (node.type === "VECTOR" || node.type === "STAR" || node.type === "POLYGON" || node.type === "BOOLEAN_OPERATION") {
+      return generateIconName(node);
+    }
+    if ("children" in node && node.children.length > 0) {
+      return generateContainerName(node);
+    }
+    return COMPONENT_PREFIXES[layerType] || "layer";
+  }
+  function generateIconName(node) {
+    const name = node.name.toLowerCase();
+    const meaningfulPart = name.replace(GENERIC_NAMES, "").replace(/[_\-\s]+/g, "-").replace(/^-|-$/g, "").trim();
+    if (meaningfulPart && meaningfulPart.length > 1) {
+      return `icon-${toKebabCase(meaningfulPart)}`;
+    }
+    if ("children" in node && node.children.length > 0) {
+      const childTypes = [];
+      for (let i = 0; i < node.children.length; i++) {
+        childTypes.push(node.children[i].type);
+      }
+      for (let i = 0; i < childTypes.length; i++) {
+        if (childTypes[i] === "ELLIPSE") {
+          return "icon-circle";
+        }
+        if (childTypes[i] === "STAR") {
+          return "icon-star";
+        }
+        if (childTypes[i] === "POLYGON") {
+          return "icon-shape";
+        }
+      }
+    }
+    if ("width" in node && "height" in node) {
+      const aspectRatio = node.width / node.height;
+      if (aspectRatio > 1.5 || aspectRatio < 0.67) {
+        return "icon-arrow";
+      }
+    }
+    return "icon";
+  }
+  function generateTextName(node) {
+    const text = node.characters || "";
+    const trimmedText = text.trim();
+    if (!trimmedText) {
+      return "text-empty";
+    }
+    const words = trimmedText.split(/\s+/);
+    if (words.length <= 2 && trimmedText.length <= 30) {
+      const kebab = toKebabCase(trimmedText);
+      if (kebab) {
+        return `text-${kebab}`;
+      }
+      return "text-content";
+    }
+    const firstWord = words[0].toLowerCase();
+    const headingKeywords = ["welcome", "about", "contact", "services", "features", "pricing"];
+    const labelKeywords = ["name", "email", "password", "username", "address", "phone"];
+    const buttonKeywords = ["submit", "cancel", "save", "delete", "edit", "add", "remove", "ok", "yes", "no"];
+    const linkKeywords = ["learn", "read", "view", "see", "click", "here", "more"];
+    const errorKeywords = ["error", "invalid", "required", "failed", "wrong"];
+    const successKeywords = ["success", "done", "complete", "saved", "updated"];
+    const lowerText = trimmedText.toLowerCase();
+    for (let i = 0; i < headingKeywords.length; i++) {
+      if (firstWord.indexOf(headingKeywords[i]) !== -1 || lowerText.indexOf(headingKeywords[i]) !== -1) {
+        return `text-heading-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < labelKeywords.length; i++) {
+      if (firstWord.indexOf(labelKeywords[i]) !== -1 || lowerText.indexOf(labelKeywords[i]) !== -1) {
+        return `text-label-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < buttonKeywords.length; i++) {
+      if (firstWord.indexOf(buttonKeywords[i]) !== -1 || lowerText.indexOf(buttonKeywords[i]) !== -1) {
+        return `text-button-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < linkKeywords.length; i++) {
+      if (firstWord.indexOf(linkKeywords[i]) !== -1 || lowerText.indexOf(linkKeywords[i]) !== -1) {
+        return `text-link-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < errorKeywords.length; i++) {
+      if (firstWord.indexOf(errorKeywords[i]) !== -1 || lowerText.indexOf(errorKeywords[i]) !== -1) {
+        return `text-error-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    for (let i = 0; i < successKeywords.length; i++) {
+      if (firstWord.indexOf(successKeywords[i]) !== -1 || lowerText.indexOf(successKeywords[i]) !== -1) {
+        return `text-success-${toKebabCase(words.slice(0, 2).join(" "))}`;
+      }
+    }
+    const defaultKebab = toKebabCase(words.slice(0, 2).join(" "));
+    return defaultKebab ? `text-${defaultKebab}` : "text-content";
+  }
+  function generateContainerName(node) {
+    const layerType = detectLayerType(node);
+    const prefix = COMPONENT_PREFIXES[layerType];
+    if ("children" in node && node.children.length > 0) {
+      let textChild;
+      for (let i = 0; i < node.children.length; i++) {
+        if (node.children[i].type === "TEXT") {
+          textChild = node.children[i];
+          break;
+        }
+      }
+      if (textChild && textChild.characters) {
+        const text = textChild.characters.trim();
+        const words = text.split(/\s+/).slice(0, 2);
+        if (words.length > 0 && words[0].length > 0) {
+          return `${prefix}-${toKebabCase(words.join(" "))}`;
+        }
+      }
+      if (layerType === "button" || layerType === "input") {
+        let iconChild;
+        for (let i = 0; i < node.children.length; i++) {
+          const child = node.children[i];
+          if (child.type === "VECTOR" || child.name.toLowerCase().indexOf("icon") !== -1) {
+            iconChild = child;
+            break;
+          }
+        }
+        if (iconChild) {
+          const iconName = iconChild.name.toLowerCase().replace(/icon[-_\s]*/gi, "");
+          if (iconName && !isGenericName(iconName)) {
+            return `${prefix}-${toKebabCase(iconName)}`;
+          }
+        }
+      }
+    }
+    return prefix;
+  }
+  function renameLayer(node, newName) {
+    if (!node || !newName || typeof newName !== "string") {
+      return false;
+    }
+    const trimmedName = newName.trim();
+    if (trimmedName.length === 0) {
+      return false;
+    }
+    try {
+      node.name = trimmedName;
+      return true;
+    } catch (error) {
+      console.error("Failed to rename layer:", error);
+      return false;
+    }
+  }
+  function previewRename(node, newName) {
+    return {
+      nodeId: node.id,
+      currentName: node.name,
+      newName: newName.trim(),
+      layerType: detectLayerType(node),
+      willChange: node.name !== newName.trim()
+    };
+  }
+  function toKebabCase(str) {
+    return str.replace(/([a-z])([A-Z])/g, "$1-$2").replace(/[\s_]+/g, "-").replace(/[^a-zA-Z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  }
+
   // src/core/component-analyzer.ts
   async function extractComponentContext(node) {
     const hierarchy = extractLayerHierarchy(node);
@@ -1493,6 +2855,21 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     }
     traverse(hierarchy);
     return names;
+  }
+  function extractInstanceNames(hierarchy) {
+    const names = /* @__PURE__ */ new Set();
+    function traverse(layers) {
+      for (const layer of layers) {
+        if (layer.type === "INSTANCE") {
+          names.add(layer.name);
+        }
+        if (layer.children) {
+          traverse(layer.children);
+        }
+      }
+    }
+    traverse(hierarchy);
+    return Array.from(names);
   }
   function detectVariantPatterns(node) {
     const potentialVariants = [];
@@ -1982,7 +3359,128 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         }
       }
     } else if (node.type === "INSTANCE") {
-      console.log("\u{1F50D} [DEBUG] Instance case already handled in priority 1");
+      const instance = node;
+      console.log("\u{1F50D} [DEBUG] Processing INSTANCE node (fallback \u2014 Priority 1 may have been skipped)");
+      if (actualProperties.length === 0) {
+        try {
+          const mainComponent = await instance.getMainComponentAsync();
+          if (mainComponent) {
+            if (mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
+              const componentSet = mainComponent.parent;
+              console.log("\u{1F50D} [DEBUG] Instance fallback: extracting from parent component set:", componentSet.name);
+              try {
+                if ("componentPropertyDefinitions" in componentSet) {
+                  const propertyDefinitions = componentSet.componentPropertyDefinitions;
+                  if (propertyDefinitions && typeof propertyDefinitions === "object") {
+                    for (const propName in propertyDefinitions) {
+                      const prop = propertyDefinitions[propName];
+                      let displayName = propName;
+                      let values = [];
+                      let defaultValue = "";
+                      if (propName.includes("#")) {
+                        displayName = propName.split("#")[0];
+                      }
+                      switch (prop.type) {
+                        case "VARIANT":
+                          values = prop.variantOptions || [];
+                          defaultValue = String(prop.defaultValue) || values[0] || "default";
+                          break;
+                        case "BOOLEAN":
+                          values = ["true", "false"];
+                          defaultValue = prop.defaultValue ? "true" : "false";
+                          break;
+                        case "TEXT":
+                          values = [String(prop.defaultValue || "Text content")];
+                          defaultValue = String(prop.defaultValue || "Text content");
+                          break;
+                        case "INSTANCE_SWAP":
+                          if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
+                            values = prop.preferredValues.map((v) => v.key || v.name || "Component instance");
+                          } else {
+                            values = ["Component instance"];
+                          }
+                          defaultValue = values[0] || "Component instance";
+                          break;
+                        default:
+                          values = ["Property value"];
+                          defaultValue = "Default";
+                      }
+                      actualProperties.push({ name: displayName, values, default: defaultValue });
+                    }
+                    console.log(`\u{1F50D} [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from component set`);
+                  }
+                }
+              } catch (error) {
+                console.warn("\u{1F50D} [WARN] Instance fallback: could not access componentPropertyDefinitions:", error);
+              }
+              if (actualProperties.length === 0) {
+                try {
+                  const variantProps = componentSet.variantGroupProperties;
+                  if (variantProps) {
+                    for (const propName in variantProps) {
+                      const prop = variantProps[propName];
+                      if (!actualProperties.find((p) => p.name === propName)) {
+                        actualProperties.push({
+                          name: propName,
+                          values: prop.values,
+                          default: prop.values[0] || "default"
+                        });
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.warn("\u{1F50D} [WARN] Instance fallback: could not access variantGroupProperties:", error);
+                }
+              }
+            } else {
+              console.log("\u{1F50D} [DEBUG] Instance fallback: extracting from standalone main component");
+              try {
+                if ("componentPropertyDefinitions" in mainComponent) {
+                  const propertyDefinitions = mainComponent.componentPropertyDefinitions;
+                  if (propertyDefinitions && typeof propertyDefinitions === "object") {
+                    for (const propName in propertyDefinitions) {
+                      const prop = propertyDefinitions[propName];
+                      let displayName = propName;
+                      let values = [];
+                      let defaultValue = "";
+                      if (propName.includes("#")) {
+                        displayName = propName.split("#")[0];
+                      }
+                      switch (prop.type) {
+                        case "BOOLEAN":
+                          values = ["true", "false"];
+                          defaultValue = prop.defaultValue ? "true" : "false";
+                          break;
+                        case "TEXT":
+                          values = [String(prop.defaultValue || "Text content")];
+                          defaultValue = String(prop.defaultValue || "Text content");
+                          break;
+                        case "INSTANCE_SWAP":
+                          if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
+                            values = prop.preferredValues.map((v) => v.key || v.name || "Component instance");
+                          } else {
+                            values = ["Component instance"];
+                          }
+                          defaultValue = values[0] || "Component instance";
+                          break;
+                        default:
+                          values = ["Property value"];
+                          defaultValue = "Default";
+                      }
+                      actualProperties.push({ name: displayName, values, default: defaultValue });
+                    }
+                    console.log(`\u{1F50D} [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from main component`);
+                  }
+                }
+              } catch (error) {
+                console.warn("\u{1F50D} [WARN] Instance fallback: could not access componentPropertyDefinitions on main component:", error);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn("\u{1F50D} [WARN] Instance fallback: could not get main component:", error);
+        }
+      }
     }
     const uniqueProperties = [];
     actualProperties.forEach((prop) => {
@@ -2170,7 +3668,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     });
     return uniqueStates;
   }
-  async function processEnhancedAnalysis(context, apiKey, model, options = {}) {
+  async function processEnhancedAnalysis(context, apiKey, model, options = {}, providerId = "anthropic") {
     console.log("\u{1F3AF} Starting enhanced component analysis...");
     const selectedNode = figma.currentPage.selection[0];
     const node = options.node || selectedNode;
@@ -2190,6 +3688,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         componentDescription = mainComponent.description || "";
       }
     }
+    context.existingDescription = componentDescription;
     console.log(`\u{1F4CA} [ANALYSIS] Extracted from Figma API:`);
     console.log(`  Properties: ${actualProperties.length}`);
     console.log(`  States: ${actualStates.length}`);
@@ -2199,21 +3698,26 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const useMCP = options.useMCP !== false && mcpServerUrl;
     let analysisResult;
     if (useMCP) {
-      console.log("\u{1F504} Using hybrid Claude + MCP approach...");
-      const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
-      const claudeResponse = await fetchClaude(claudePrompt, apiKey, model);
-      const claudeData = extractJSONFromResponse(claudeResponse);
-      if (!claudeData) {
-        throw new Error("Failed to extract JSON from Claude response");
+      console.log(`\u{1F504} Using hybrid LLM + MCP approach (${providerId})...`);
+      const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
+      const llmResponse = await callProvider(providerId, apiKey, {
+        prompt: llmPrompt,
+        model,
+        maxTokens: 2048,
+        temperature: 0.1
+      });
+      const llmData = extractJSONFromResponse(llmResponse.content);
+      if (!llmData) {
+        throw new Error("Failed to extract JSON from LLM response");
       }
       let mcpEnhancements = null;
       try {
-        mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, claudeData);
+        mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, llmData);
         console.log("\u2705 MCP enhancements received");
       } catch (mcpError) {
-        console.warn("\u26A0\uFE0F MCP enhancement failed, continuing with Claude data only:", mcpError);
+        console.warn("\u26A0\uFE0F MCP enhancement failed, continuing with LLM data only:", mcpError);
       }
-      analysisResult = mergClaudeAndMCPResults(claudeData, mcpEnhancements, {
+      analysisResult = mergClaudeAndMCPResults(llmData, mcpEnhancements, {
         node,
         context,
         actualProperties,
@@ -2222,10 +3726,15 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         componentDescription
       });
     } else {
-      console.log("\u{1F4DD} Using Claude-only analysis...");
+      console.log(`\u{1F4DD} Using ${providerId}-only analysis...`);
       const prompt = createEnhancedMetadataPrompt(context);
-      const response = await fetchClaude(prompt, apiKey, model);
-      analysisResult = extractJSONFromResponse(response);
+      const llmFallbackResponse = await callProvider(providerId, apiKey, {
+        prompt,
+        model,
+        maxTokens: 2048,
+        temperature: 0.1
+      });
+      analysisResult = extractJSONFromResponse(llmFallbackResponse.content);
       if (!analysisResult) {
         throw new Error("Failed to extract JSON from response");
       }
@@ -2236,13 +3745,15 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   function createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription) {
     var _a;
     const componentFamily = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+    const nestedInstances = extractInstanceNames(context.hierarchy);
     return `Analyze this Figma component and extract its structure and patterns.
 
 **Component Details:**
 - Name: ${context.name}
 - Type: ${context.type}
 - Family: ${componentFamily}
-- Description: ${componentDescription || "No description provided"}
+- Existing Figma Description: ${componentDescription || "None set"}
+- Nested Component Instances: ${nestedInstances.length > 0 ? nestedInstances.join(", ") : "None detected"}
 
 **Actual Figma Properties (${actualProperties.length} total):**
 ${actualProperties.slice(0, 10).map((p) => `- ${p.name}: ${p.values.join(", ")} (default: ${p.default})`).join("\n")}
@@ -2265,11 +3776,12 @@ ${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
 3. All states detected in the component
 4. Token usage analysis
 5. Structural patterns and variants
+6. Recommended properties this component SHOULD have but currently LACKS
 
 Return JSON in this exact format:
 {
   "component": "Component name and type",
-  "description": "Clear description based on structure",
+  "description": "Start with a brief 1-2 sentence summary of what this component is and its key variants/capabilities. Then provide structured sections: PURPOSE: What this component is and its primary function. BEHAVIOR: Interactive behavior patterns (skip if not interactive). COMPOSITION: List all nested/child component instances used \u2014 note that AI code generators should check the development codebase for these sub-components before creating new ones. USAGE: When and how to use this component vs alternatives. CODE GENERATION NOTES: Implementation considerations including leveraging existing sub-components and interaction details not visible from design specs alone.",
   "props": [
     {
       "name": "property name from Figma",
@@ -2292,10 +3804,20 @@ Return JSON in this exact format:
     "layers": ${context.hierarchy.length},
     "hasSlots": ${context.detectedSlots.length > 0},
     "complexity": "low|medium|high"
-  }
+  },
+  "recommendedProperties": [
+    {
+      "name": "Figma property name to add",
+      "type": "VARIANT|BOOLEAN|TEXT|INSTANCE_SWAP",
+      "description": "Why this property improves the component",
+      "examples": ["specific example values"]
+    }
+  ]
 }
 
-Focus ONLY on what's actually in the Figma component. Do not add theoretical properties or states.`;
+For "recommendedProperties": Compare the EXISTING properties listed above against design system best practices (Material Design, Carbon, Ant Design, Polaris, etc.). Only recommend Figma component properties that do NOT already exist. Use Figma property types (VARIANT, BOOLEAN, TEXT, INSTANCE_SWAP). If the component already has comprehensive properties, return an empty array.
+
+Focus ONLY on what's actually in the Figma component for existing data. Recommendations should draw from your knowledge of design system best practices.`;
   }
   async function getMCPBestPractices(context, mcpServerUrl, claudeData) {
     var _a, _b;
@@ -2405,6 +3927,7 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       default: p.default
     }));
     merged.states = merged.states || fallbackData.actualStates;
+    merged.recommendedProperties = claudeData.recommendedProperties || [];
     return merged;
   }
   function generateMCPReadinessFromBestPractices(mcpEnhancements, claudeData, fallbackData) {
@@ -2479,7 +4002,7 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       } else {
         throw new Error("No component selected");
       }
-      const actualProperties = await extractActualComponentProperties(node);
+      const actualProperties = await extractActualComponentProperties(node, node);
       const actualStates = await extractActualComponentStates(node);
       let componentDescription = "";
       if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
@@ -2561,42 +4084,255 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       console.log("\u{1F4E4} Sending to UI - metadata.props:", (_a = metadata.props) == null ? void 0 : _a.length);
       console.log("\u{1F4E4} Sending to UI - metadata.states:", metadata.states);
       console.log("\u{1F4E4} Sending to UI - metadata.mcpReadiness:", metadata.mcpReadiness);
-      const audit = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
-      const recommendations = generatePropertyRecommendations(context.name, actualProperties);
+      const audit = await createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
+      const recommendations = (filteredData.recommendedProperties || []).map((rec) => ({
+        name: rec.name || "",
+        type: rec.type || "VARIANT",
+        description: rec.description || "",
+        examples: rec.examples || []
+      })).filter((rec) => rec.name);
+      console.log(`\u{1F4A1} AI-generated property recommendations: ${recommendations.length}`);
+      const namingIssues = analyzeNamingIssues(node, 5);
+      console.log(`\u{1F4DB} Found ${namingIssues.length} naming issues`);
       console.log("\u2705 Analysis result processed successfully");
       return {
         metadata,
         tokens,
         audit,
         properties: actualProperties,
-        recommendations
+        recommendations,
+        namingIssues,
+        existingDescription: componentDescription
       };
     } catch (error) {
       console.error("Error processing analysis result:", error);
       throw error;
     }
   }
-  function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription) {
+  async function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription) {
+    var _a;
+    let parentHasDescription = false;
+    let parentDescription = "";
+    if (node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") {
+      const parentSet = node.parent;
+      parentDescription = parentSet.description || "";
+      parentHasDescription = parentDescription.trim().length > 0;
+    } else if (node.type === "COMPONENT_SET") {
+      parentHasDescription = !!(componentDescription && componentDescription.trim().length > 0);
+    }
+    const hasDescription = !!(componentDescription && componentDescription.trim().length > 0);
+    let descriptionStatus = hasDescription ? "pass" : "warning";
+    let descriptionSuggestion = "";
+    if (hasDescription) {
+      descriptionSuggestion = "Component has description for MCP/AI context";
+    } else if (parentHasDescription) {
+      descriptionStatus = "pass";
+      descriptionSuggestion = "Component set has a description. Consider adding a variant-specific description for richer context.";
+    } else {
+      descriptionSuggestion = "Add a component description to help MCP and AI understand the component purpose and usage";
+    }
+    const componentReadiness = [
+      {
+        check: "Property configuration",
+        status: actualProperties.length > 0 ? "pass" : "warning",
+        suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
+      },
+      {
+        check: "Component description",
+        status: descriptionStatus,
+        suggestion: descriptionSuggestion
+      }
+    ];
+    const accessibility = runAccessibilityChecks(node, actualStates);
     return {
-      // Basic state checking
       states: actualStates.map((state) => ({
         name: state,
         found: true
       })),
-      // Basic accessibility audit
-      accessibility: [
-        {
-          check: "Property configuration",
-          status: actualProperties.length > 0 ? "pass" : "warning",
-          suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
-        },
-        {
-          check: "Component description",
-          status: componentDescription && componentDescription.trim().length > 0 ? "pass" : "warning",
-          suggestion: componentDescription && componentDescription.trim().length > 0 ? "Component has description for MCP/AI context" : "Add a component description to help MCP and AI understand the component purpose and usage"
-        }
-      ]
+      componentReadiness,
+      accessibility
     };
+  }
+  var INTERACTIVE_KEYWORDS = [
+    "button",
+    "btn",
+    "link",
+    "anchor",
+    "checkbox",
+    "check-box",
+    "radio",
+    "toggle",
+    "switch",
+    "tab",
+    "chip",
+    "tag",
+    "input",
+    "select",
+    "dropdown",
+    "menu-item",
+    "menuitem",
+    "slider",
+    "stepper",
+    "icon-button",
+    "fab",
+    "action"
+  ];
+  function isInteractiveComponent(node, states) {
+    const nameLower = node.name.toLowerCase();
+    if (INTERACTIVE_KEYWORDS.some((kw) => nameLower.includes(kw))) return true;
+    const interactiveStates = ["hover", "pressed", "focus", "focused", "active", "disabled"];
+    if (states.some((s) => interactiveStates.includes(s.toLowerCase()))) return true;
+    return false;
+  }
+  function getLuminance(r, g, b) {
+    const [rs, gs, bs] = [r, g, b].map((c) => {
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+  }
+  function getContrastRatio(l1, l2) {
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+  function findBackgroundColor(node) {
+    let current = node.parent;
+    while (current && "type" in current) {
+      const sceneNode = current;
+      if ("fills" in sceneNode) {
+        const fills = sceneNode.fills;
+        if (Array.isArray(fills)) {
+          for (const fill of fills) {
+            if (fill.type === "SOLID" && fill.visible !== false && fill.color) {
+              if (fill.boundVariables && fill.boundVariables.color) continue;
+              return fill.color;
+            }
+          }
+        }
+      }
+      current = current.parent;
+    }
+    return null;
+  }
+  function runAccessibilityChecks(node, states) {
+    const checks = [];
+    const interactive = isInteractiveComponent(node, states);
+    if (interactive) {
+      const width = "width" in node ? node.width : 0;
+      const height = "height" in node ? node.height : 0;
+      const minDim = Math.min(width, height);
+      if (minDim >= 44) {
+        checks.push({
+          check: "Touch target size",
+          status: "pass",
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets recommended 44px minimum`
+        });
+      } else if (minDim >= 24) {
+        checks.push({
+          check: "Touch target size",
+          status: "warning",
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px`
+        });
+      } else {
+        checks.push({
+          check: "Touch target size",
+          status: "fail",
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px is below WCAG 2.5.8 minimum of 24\xD724px`
+        });
+      }
+    }
+    if (interactive) {
+      const hasFocus = states.some((s) => {
+        const lower = s.toLowerCase();
+        return lower === "focus" || lower === "focused" || lower.includes("focus");
+      });
+      checks.push({
+        check: "Focus state",
+        status: hasFocus ? "pass" : "warning",
+        suggestion: hasFocus ? "Component has a focus state for keyboard navigation" : "Add a visible focus state to support keyboard navigation (WCAG 2.4.7)"
+      });
+    }
+    if ("findAll" in node) {
+      const containerNode = node;
+      const textNodes = containerNode.findAll((n) => n.type === "TEXT");
+      if (textNodes.length > 0) {
+        let smallestSize = Infinity;
+        let hasSmallText = false;
+        for (const text of textNodes) {
+          const size = typeof text.fontSize === "number" ? text.fontSize : 0;
+          if (size > 0 && size < smallestSize) smallestSize = size;
+          if (size > 0 && size < 12) hasSmallText = true;
+        }
+        if (hasSmallText) {
+          checks.push({
+            check: "Minimum font size",
+            status: "warning",
+            suggestion: `Text as small as ${smallestSize}px detected. Consider using 12px minimum for readability`
+          });
+        } else if (smallestSize !== Infinity) {
+          checks.push({
+            check: "Minimum font size",
+            status: "pass",
+            suggestion: `Smallest text is ${smallestSize}px, meets readability guidelines`
+          });
+        }
+      }
+    }
+    if ("findAll" in node) {
+      const containerNode = node;
+      const textNodes = containerNode.findAll((n) => n.type === "TEXT");
+      let worstRatio = Infinity;
+      let checkedCount = 0;
+      let worstTextName = "";
+      for (const text of textNodes) {
+        const fills = text.fills;
+        if (!Array.isArray(fills) || fills.length === 0) continue;
+        const textFill = fills.find(
+          (f) => f.type === "SOLID" && f.visible !== false && f.color && !(f.boundVariables && f.boundVariables.color)
+        );
+        if (!textFill) continue;
+        const bgColor = findBackgroundColor(text);
+        if (!bgColor) continue;
+        const textLum = getLuminance(textFill.color.r, textFill.color.g, textFill.color.b);
+        const bgLum = getLuminance(bgColor.r, bgColor.g, bgColor.b);
+        const ratio = getContrastRatio(textLum, bgLum);
+        checkedCount++;
+        if (ratio < worstRatio) {
+          worstRatio = ratio;
+          worstTextName = text.name || "text";
+        }
+      }
+      if (checkedCount > 0 && worstRatio !== Infinity) {
+        const ratioStr = worstRatio.toFixed(1);
+        if (worstRatio >= 4.5) {
+          checks.push({
+            check: "Color contrast",
+            status: "pass",
+            suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1)`
+          });
+        } else if (worstRatio >= 3) {
+          checks.push({
+            check: "Color contrast",
+            status: "warning",
+            suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1)`
+          });
+        } else {
+          checks.push({
+            check: "Color contrast",
+            status: "fail",
+            suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1`
+          });
+        }
+      }
+    }
+    if (checks.length === 0) {
+      checks.push({
+        check: "Accessibility review",
+        status: "pass",
+        suggestion: "No accessibility issues detected for this component type"
+      });
+    }
+    return checks;
   }
   function generateFallbackMCPReadiness(data) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
@@ -2793,267 +4529,6 @@ Focus ONLY on what's actually in the Figma component. Do not add theoretical pro
       }
     }
     return notes.join(". ") + ".";
-  }
-  function generatePropertyRecommendations(componentName, existingProperties) {
-    const recommendations = [];
-    const lowerName = componentName.toLowerCase();
-    console.log("\u{1F50D} [RECOMMENDATIONS] Generating recommendations for:", componentName, "with", existingProperties.length, "existing properties");
-    const hasProperty = (name) => {
-      const lowerName2 = name.toLowerCase();
-      return existingProperties.some((prop) => {
-        const propName = prop.name.toLowerCase();
-        return propName === lowerName2 || propName.includes(lowerName2) || lowerName2.includes(propName) || // Handle common variations
-        lowerName2 === "text" && (propName === "label" || propName.includes("text")) || lowerName2 === "label" && (propName === "text" || propName.includes("label"));
-      });
-    };
-    if (lowerName.includes("avatar") || lowerName.includes("profile") || lowerName.includes("user")) {
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Different sizes for various use cases (list items, headers, etc.)",
-          examples: ["xs (24px)", "sm (32px)", "md (40px)", "lg (56px)", "xl (80px)"]
-        });
-      }
-      if (!hasProperty("initials") && !hasProperty("text")) {
-        recommendations.push({
-          name: "Initials",
-          type: "TEXT",
-          description: "User initials displayed when no image is available",
-          examples: ["JD", "AS", "MT"]
-        });
-      }
-      if (!hasProperty("image") && !hasProperty("src")) {
-        recommendations.push({
-          name: "Image",
-          type: "INSTANCE_SWAP",
-          description: "User profile image or placeholder",
-          examples: ["User photo", "Default avatar", "Company logo"]
-        });
-      }
-      if (!hasProperty("status") && !hasProperty("indicator")) {
-        recommendations.push({
-          name: "Status Indicator",
-          type: "BOOLEAN",
-          description: "Online/offline status or notification badge",
-          examples: ["true (show indicator)", "false (no indicator)"]
-        });
-      }
-      if (!hasProperty("border") && !hasProperty("ring")) {
-        recommendations.push({
-          name: "Border",
-          type: "BOOLEAN",
-          description: "Optional border around the avatar",
-          examples: ["true (with border)", "false (no border)"]
-        });
-      }
-    } else if (lowerName.includes("button") || lowerName.includes("btn")) {
-      if (!hasProperty("variant") && !hasProperty("style")) {
-        recommendations.push({
-          name: "Variant",
-          type: "VARIANT",
-          description: "Visual style variants for different hierarchy levels",
-          examples: ["primary", "secondary", "tertiary", "danger", "ghost"]
-        });
-      }
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Button sizes for different contexts",
-          examples: ["sm", "md", "lg", "xl"]
-        });
-      }
-      if (!hasProperty("state")) {
-        recommendations.push({
-          name: "State",
-          type: "VARIANT",
-          description: "Interactive states for user feedback",
-          examples: ["default", "hover", "focus", "pressed", "disabled"]
-        });
-      }
-      if (!hasProperty("icon") && !hasProperty("before") && !hasProperty("after")) {
-        recommendations.push({
-          name: "Icon Before",
-          type: "INSTANCE_SWAP",
-          description: "Optional icon before the button text",
-          examples: ["Plus icon", "Arrow icon", "No icon"]
-        });
-      }
-      if (!hasProperty("text") && !hasProperty("label")) {
-        recommendations.push({
-          name: "Text",
-          type: "TEXT",
-          description: "Button label text",
-          examples: ["Click me", "Submit", "Cancel", "Save changes"]
-        });
-      }
-    } else if (lowerName.includes("input") || lowerName.includes("field") || lowerName.includes("form")) {
-      if (!hasProperty("label")) {
-        recommendations.push({
-          name: "Label",
-          type: "TEXT",
-          description: "Input label for accessibility and clarity",
-          examples: ["Email address", "Full name", "Password"]
-        });
-      }
-      if (!hasProperty("placeholder")) {
-        recommendations.push({
-          name: "Placeholder",
-          type: "TEXT",
-          description: "Placeholder text shown when input is empty",
-          examples: ["Enter your email...", "Type here..."]
-        });
-      }
-      if (!hasProperty("state")) {
-        recommendations.push({
-          name: "State",
-          type: "VARIANT",
-          description: "Input states for different interactions",
-          examples: ["default", "focus", "error", "disabled", "success"]
-        });
-      }
-      if (!hasProperty("required")) {
-        recommendations.push({
-          name: "Required",
-          type: "BOOLEAN",
-          description: "Whether the field is required",
-          examples: ["true (required)", "false (optional)"]
-        });
-      }
-      if (!hasProperty("error") && !hasProperty("helper")) {
-        recommendations.push({
-          name: "Helper Text",
-          type: "TEXT",
-          description: "Helper or error message below the input",
-          examples: ["This field is required", "Must be a valid email"]
-        });
-      }
-    } else if (lowerName.includes("card")) {
-      if (!hasProperty("variant") && !hasProperty("elevation")) {
-        recommendations.push({
-          name: "Elevation",
-          type: "VARIANT",
-          description: "Card elevation/shadow level",
-          examples: ["none", "low", "medium", "high"]
-        });
-      }
-      if (!hasProperty("interactive") && !hasProperty("clickable")) {
-        recommendations.push({
-          name: "Interactive",
-          type: "BOOLEAN",
-          description: "Whether the card is clickable/interactive",
-          examples: ["true (clickable)", "false (static)"]
-        });
-      }
-      if (!hasProperty("image") && !hasProperty("media")) {
-        recommendations.push({
-          name: "Media",
-          type: "INSTANCE_SWAP",
-          description: "Optional image or media at the top of the card",
-          examples: ["Product image", "Hero image", "No media"]
-        });
-      }
-    } else if (lowerName.includes("badge") || lowerName.includes("tag") || lowerName.includes("chip")) {
-      if (!hasProperty("variant") && !hasProperty("color")) {
-        recommendations.push({
-          name: "Variant",
-          type: "VARIANT",
-          description: "Badge color/style variants",
-          examples: ["primary", "secondary", "success", "warning", "error"]
-        });
-      }
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Badge sizes for different contexts",
-          examples: ["sm", "md", "lg"]
-        });
-      }
-      if (!hasProperty("text") && !hasProperty("label")) {
-        recommendations.push({
-          name: "Text",
-          type: "TEXT",
-          description: "Badge text content",
-          examples: ["New", "Beta", "Sale", "5", "Premium"]
-        });
-      }
-      if (!hasProperty("removable") && !hasProperty("close")) {
-        recommendations.push({
-          name: "Removable",
-          type: "BOOLEAN",
-          description: "Whether the badge can be removed/dismissed",
-          examples: ["true (show close button)", "false (static)"]
-        });
-      }
-    } else if (lowerName.includes("icon")) {
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Icon sizes for different use cases",
-          examples: ["12px", "16px", "20px", "24px", "32px"]
-        });
-      }
-      if (!hasProperty("color") && !hasProperty("variant")) {
-        recommendations.push({
-          name: "Color",
-          type: "VARIANT",
-          description: "Icon color variants",
-          examples: ["default", "muted", "primary", "success", "warning", "error"]
-        });
-      }
-    }
-    if (recommendations.length === 0) {
-      if (!hasProperty("size")) {
-        recommendations.push({
-          name: "Size",
-          type: "VARIANT",
-          description: "Component sizes for different contexts",
-          examples: ["sm", "md", "lg"]
-        });
-      }
-      if (!hasProperty("variant") && !hasProperty("style")) {
-        recommendations.push({
-          name: "Variant",
-          type: "VARIANT",
-          description: "Visual style variants",
-          examples: ["primary", "secondary", "tertiary"]
-        });
-      }
-    }
-    const filteredRecommendations = recommendations.filter((rec) => {
-      const recName = rec.name.toLowerCase();
-      const similarExists = existingProperties.some((existing) => {
-        const existingName = existing.name.toLowerCase();
-        if (existingName === recName) return true;
-        if (existingName.includes(recName) || recName.includes(existingName)) return true;
-        const semanticMatches = [
-          ["text", "label", "content"],
-          ["size", "scale", "dimension"],
-          ["variant", "style", "type", "kind"],
-          ["state", "status", "mode"],
-          ["color", "theme", "palette"],
-          ["icon", "symbol", "graphic"]
-        ];
-        for (const group of semanticMatches) {
-          if (group.includes(recName) && group.some((term) => existingName.includes(term))) {
-            return true;
-          }
-        }
-        return false;
-      });
-      return !similarExists;
-    });
-    if (recommendations.length > filteredRecommendations.length) {
-      const filtered = recommendations.filter((rec) => !filteredRecommendations.includes(rec));
-      console.log("\u{1F50D} [RECOMMENDATIONS] Filtered out duplicates:", filtered.map((r) => r.name));
-    }
-    console.log(`\u{1F50D} [RECOMMENDATIONS] Generated ${filteredRecommendations.length} recommendations for ${componentName}`);
-    console.log("\u{1F50D} [RECOMMENDATIONS] Existing properties:", existingProperties.map((p) => p.name));
-    console.log("\u{1F50D} [RECOMMENDATIONS] Final recommendations:", filteredRecommendations.map((r) => r.name));
-    return filteredRecommendations;
   }
   function deduplicateRecommendations(items) {
     if (items.length <= 1) return items;
@@ -3710,9 +5185,414 @@ ${scoringCriteria}
   };
   var consistency_engine_default = ComponentConsistencyEngine;
 
+  // src/fixes/token-fixer.ts
+  async function bindColorToken(node, propertyType, variableId, paintIndex = 0) {
+    try {
+      if (!(propertyType in node)) {
+        return {
+          success: false,
+          message: `Node does not support ${propertyType}`,
+          error: `Property ${propertyType} not found on node type ${node.type}`
+        };
+      }
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (!variable) {
+        return {
+          success: false,
+          message: "Variable not found",
+          error: `Could not find variable with ID: ${variableId}`
+        };
+      }
+      if (variable.resolvedType !== "COLOR") {
+        return {
+          success: false,
+          message: "Variable is not a color type",
+          error: `Variable ${variable.name} is of type ${variable.resolvedType}, expected COLOR`
+        };
+      }
+      const nodeWithPaints = node;
+      const paints = [...nodeWithPaints[propertyType]];
+      if (paintIndex >= paints.length) {
+        return {
+          success: false,
+          message: "Paint index out of range",
+          error: `Paint index ${paintIndex} does not exist. Node has ${paints.length} ${propertyType}.`
+        };
+      }
+      const currentPaint = paints[paintIndex];
+      if (currentPaint.type !== "SOLID") {
+        return {
+          success: false,
+          message: "Can only bind to solid paints",
+          error: `Paint at index ${paintIndex} is of type ${currentPaint.type}, expected SOLID`
+        };
+      }
+      const boundPaint = figma.variables.setBoundVariableForPaint(
+        currentPaint,
+        "color",
+        variable
+      );
+      paints[paintIndex] = boundPaint;
+      if (propertyType === "fills") {
+        node.fills = paints;
+      } else {
+        node.strokes = paints;
+      }
+      return {
+        success: true,
+        message: `Successfully bound ${variable.name} to ${propertyType}[${paintIndex}]`,
+        appliedFix: {
+          nodeId: node.id,
+          nodeName: node.name,
+          propertyPath: `${propertyType}[${paintIndex}]`,
+          beforeValue: currentPaint.type === "SOLID" && currentPaint.color ? rgbToHex(currentPaint.color.r, currentPaint.color.g, currentPaint.color.b) : "unknown",
+          afterValue: variable.name,
+          tokenId: variableId,
+          tokenName: variable.name,
+          fixType: "color"
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: "Failed to bind color token",
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  async function bindSpacingToken(node, property, variableId) {
+    try {
+      if (!(property in node)) {
+        return {
+          success: false,
+          message: `Node does not support ${property}`,
+          error: `Property ${property} not found on node type ${node.type}`
+        };
+      }
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (!variable) {
+        return {
+          success: false,
+          message: "Variable not found",
+          error: `Could not find variable with ID: ${variableId}`
+        };
+      }
+      if (variable.resolvedType !== "FLOAT") {
+        return {
+          success: false,
+          message: "Variable is not a number type",
+          error: `Variable ${variable.name} is of type ${variable.resolvedType}, expected FLOAT`
+        };
+      }
+      const currentValue = node[property];
+      const bindableNode = node;
+      bindableNode.setBoundVariable(property, variable);
+      return {
+        success: true,
+        message: `Successfully bound ${variable.name} to ${property}`,
+        appliedFix: {
+          nodeId: node.id,
+          nodeName: node.name,
+          propertyPath: property,
+          beforeValue: typeof currentValue === "number" ? `${currentValue}px` : String(currentValue),
+          afterValue: variable.name,
+          tokenId: variableId,
+          tokenName: variable.name,
+          fixType: property.includes("Radius") ? "border" : "spacing"
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: "Failed to bind spacing token",
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  async function findMatchingColorVariable(hexColor, tolerance = 0) {
+    try {
+      const targetRgb = hexToRgb(hexColor);
+      if (!targetRgb) {
+        return [];
+      }
+      const suggestions = [];
+      const colorVariables = await figma.variables.getLocalVariablesAsync("COLOR");
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      const collectionMap = /* @__PURE__ */ new Map();
+      for (const collection of collections) {
+        collectionMap.set(collection.id, collection);
+      }
+      for (const variable of colorVariables) {
+        const collection = collectionMap.get(variable.variableCollectionId);
+        if (!collection) continue;
+        const modeId = collection.modes[0].modeId;
+        const value = variable.valuesByMode[modeId];
+        if (!value || typeof value !== "object" || !("r" in value)) {
+          continue;
+        }
+        const varColor = value;
+        const matchScore = calculateColorMatchScore(targetRgb, varColor);
+        if (matchScore >= 1 - tolerance) {
+          suggestions.push({
+            variableId: variable.id,
+            variableName: variable.name,
+            collectionName: collection.name,
+            value: rgbToHex(varColor.r, varColor.g, varColor.b),
+            matchScore,
+            type: "color"
+          });
+        }
+      }
+      return suggestions.sort((a, b) => b.matchScore - a.matchScore);
+    } catch (error) {
+      console.error("Error finding matching color variable:", error);
+      return [];
+    }
+  }
+  async function findMatchingSpacingVariable(pixelValue, tolerance = 0) {
+    try {
+      const suggestions = [];
+      const numberVariables = await figma.variables.getLocalVariablesAsync("FLOAT");
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      const collectionMap = /* @__PURE__ */ new Map();
+      for (const collection of collections) {
+        collectionMap.set(collection.id, collection);
+      }
+      for (const variable of numberVariables) {
+        const collection = collectionMap.get(variable.variableCollectionId);
+        if (!collection) continue;
+        const modeId = collection.modes[0].modeId;
+        const value = variable.valuesByMode[modeId];
+        if (typeof value !== "number") {
+          continue;
+        }
+        const difference = Math.abs(value - pixelValue);
+        if (difference <= tolerance) {
+          const matchScore = difference === 0 ? 1 : 1 - difference / (tolerance || 1);
+          suggestions.push({
+            variableId: variable.id,
+            variableName: variable.name,
+            collectionName: collection.name,
+            value: `${value}px`,
+            matchScore,
+            type: "number"
+          });
+        }
+      }
+      return suggestions.sort((a, b) => b.matchScore - a.matchScore);
+    } catch (error) {
+      console.error("Error finding matching spacing variable:", error);
+      return [];
+    }
+  }
+  async function findBestMatchingVariable(pixelValue, propertyPath, tolerance = 2) {
+    const suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
+    if (suggestions.length === 0) return suggestions;
+    const affinityMap = {
+      strokeWeight: ["stroke", "border-width", "border/width", "borderwidth"],
+      cornerRadius: ["radius", "corner", "round", "border-radius"],
+      topLeftRadius: ["radius", "corner", "round"],
+      topRightRadius: ["radius", "corner", "round"],
+      bottomLeftRadius: ["radius", "corner", "round"],
+      bottomRightRadius: ["radius", "corner", "round"],
+      paddingTop: ["padding", "spacing", "space"],
+      paddingRight: ["padding", "spacing", "space"],
+      paddingBottom: ["padding", "spacing", "space"],
+      paddingLeft: ["padding", "spacing", "space"],
+      itemSpacing: ["gap", "spacing", "space"],
+      counterAxisSpacing: ["gap", "spacing", "space"]
+    };
+    const keywords = affinityMap[propertyPath] || [];
+    if (keywords.length === 0) return suggestions;
+    const boosted = suggestions.map((s) => {
+      const nameLower = s.variableName.toLowerCase();
+      const hasAffinity = keywords.some((kw) => nameLower.includes(kw));
+      return __spreadProps(__spreadValues({}, s), {
+        matchScore: hasAffinity ? Math.min(s.matchScore + 0.3, 1) : s.matchScore
+      });
+    });
+    return boosted.sort((a, b) => b.matchScore - a.matchScore);
+  }
+  async function applyColorFix(node, propertyPath, tokenId) {
+    const match = propertyPath.match(/^(fills|strokes)\[(\d+)\]$/);
+    if (!match) {
+      return {
+        success: false,
+        message: "Invalid property path",
+        error: `Expected format: fills[n] or strokes[n], got: ${propertyPath}`
+      };
+    }
+    const [, propertyType, indexStr] = match;
+    const paintIndex = parseInt(indexStr, 10);
+    return bindColorToken(
+      node,
+      propertyType,
+      tokenId,
+      paintIndex
+    );
+  }
+  async function applySpacingFix(node, propertyPath, tokenId) {
+    const validProperties = [
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "itemSpacing",
+      "counterAxisSpacing",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomLeftRadius",
+      "bottomRightRadius",
+      "strokeWeight"
+    ];
+    if (!validProperties.includes(propertyPath)) {
+      return {
+        success: false,
+        message: "Invalid property path",
+        error: `Property ${propertyPath} is not a valid spacing property`
+      };
+    }
+    if (propertyPath === "cornerRadius") {
+      const corners = [
+        "topLeftRadius",
+        "topRightRadius",
+        "bottomLeftRadius",
+        "bottomRightRadius"
+      ];
+      const results = [];
+      for (const corner of corners) {
+        const result = await bindSpacingToken(node, corner, tokenId);
+        results.push(result);
+        if (!result.success) {
+          return {
+            success: false,
+            message: `Failed to bind ${corner}`,
+            error: result.error
+          };
+        }
+      }
+      return {
+        success: true,
+        message: `Successfully bound variable to all 4 corner radii`,
+        appliedFix: results[0].appliedFix ? __spreadProps(__spreadValues({}, results[0].appliedFix), { propertyPath: "cornerRadius" }) : void 0
+      };
+    }
+    return bindSpacingToken(
+      node,
+      propertyPath,
+      tokenId
+    );
+  }
+  async function previewFix(node, propertyPath, tokenId) {
+    try {
+      const variable = await figma.variables.getVariableByIdAsync(tokenId);
+      if (!variable) {
+        return null;
+      }
+      let fixType;
+      let beforeValue;
+      const colorMatch = propertyPath.match(/^(fills|strokes)\[(\d+)\]$/);
+      if (colorMatch) {
+        fixType = "color";
+        const [, propertyType, indexStr] = colorMatch;
+        const paintIndex = parseInt(indexStr, 10);
+        if (!(propertyType in node)) {
+          return null;
+        }
+        const nodeWithPaints = node;
+        const paints = nodeWithPaints[propertyType];
+        if (paintIndex >= paints.length) {
+          return null;
+        }
+        const paint = paints[paintIndex];
+        if (paint.type === "SOLID" && paint.color) {
+          beforeValue = rgbToHex(paint.color.r, paint.color.g, paint.color.b);
+        } else {
+          beforeValue = paint.type;
+        }
+      } else {
+        if (!(propertyPath in node)) {
+          return null;
+        }
+        const currentValue = node[propertyPath];
+        beforeValue = typeof currentValue === "number" ? `${currentValue}px` : String(currentValue);
+        fixType = propertyPath.includes("Radius") ? "border" : "spacing";
+      }
+      let afterValue = variable.name;
+      const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+      if (collection) {
+        const modeId = collection.modes[0].modeId;
+        const value = variable.valuesByMode[modeId];
+        if (typeof value === "number") {
+          afterValue = `${variable.name} (${value}px)`;
+        } else if (value && typeof value === "object" && "r" in value) {
+          const rgb = value;
+          afterValue = `${variable.name} (${rgbToHex(rgb.r, rgb.g, rgb.b)})`;
+        }
+      }
+      return {
+        nodeId: node.id,
+        nodeName: node.name,
+        propertyPath,
+        beforeValue,
+        afterValue,
+        tokenId,
+        tokenName: variable.name,
+        fixType
+      };
+    } catch (error) {
+      console.error("Error generating fix preview:", error);
+      return null;
+    }
+  }
+  function hexToRgb(hex) {
+    const cleanHex = hex.replace(/^#/, "");
+    let fullHex = cleanHex;
+    if (cleanHex.length === 3) {
+      fullHex = cleanHex[0] + cleanHex[0] + cleanHex[1] + cleanHex[1] + cleanHex[2] + cleanHex[2];
+    }
+    if (fullHex.length !== 6) {
+      return null;
+    }
+    const r = parseInt(fullHex.substring(0, 2), 16);
+    const g = parseInt(fullHex.substring(2, 4), 16);
+    const b = parseInt(fullHex.substring(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+      return null;
+    }
+    return {
+      r: r / 255,
+      g: g / 255,
+      b: b / 255
+    };
+  }
+  function calculateColorMatchScore(color1, color2) {
+    const dr = color1.r - color2.r;
+    const dg = color1.g - color2.g;
+    const db = color1.b - color2.b;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    const maxDistance = Math.sqrt(3);
+    return 1 - distance / maxDistance;
+  }
+
   // src/ui/message-handler.ts
   var storedApiKey = null;
   var selectedModel = "claude-sonnet-4-5-20250929";
+  var selectedProvider = "anthropic";
+  function isValidApiKeyFormat(apiKey, provider = selectedProvider) {
+    const trimmed = (apiKey == null ? void 0 : apiKey.trim()) || "";
+    switch (provider) {
+      case "anthropic":
+        return trimmed.startsWith("sk-ant-") && trimmed.length >= 40;
+      case "openai":
+        return trimmed.startsWith("sk-") && trimmed.length >= 20;
+      case "google":
+        return trimmed.startsWith("AIza") && trimmed.length >= 35;
+      default:
+        return false;
+    }
+  }
   var lastAnalyzedMetadata = null;
   var lastAnalyzedNode = null;
   var consistencyEngine = new consistency_engine_default({
@@ -3729,7 +5609,7 @@ ${scoringCriteria}
           await handleCheckApiKey();
           break;
         case "save-api-key":
-          await handleSaveApiKey(data.apiKey, data.model);
+          await handleSaveApiKey(data.apiKey, data.model, data.provider);
           break;
         case "update-model":
           await handleUpdateModel(data.model);
@@ -3752,6 +5632,25 @@ ${scoringCriteria}
         case "select-node":
           await handleSelectNode(data);
           break;
+        // Auto-fix handlers
+        case "preview-fix":
+          await handlePreviewFix(data);
+          break;
+        case "apply-token-fix":
+          await handleApplyTokenFix(data);
+          break;
+        case "apply-naming-fix":
+          await handleApplyNamingFix(data);
+          break;
+        case "apply-batch-fix":
+          await handleApplyBatchFix(data);
+          break;
+        case "update-description":
+          await handleUpdateDescription(data);
+          break;
+        case "add-component-property":
+          await handleAddComponentProperty(data);
+          break;
         default:
           console.warn("Unknown message type:", type);
       }
@@ -3763,36 +5662,54 @@ ${scoringCriteria}
   }
   async function handleCheckApiKey() {
     try {
+      await migrateLegacyStorage();
+      const config = await loadProviderConfig();
+      selectedProvider = config.providerId;
+      selectedModel = config.modelId;
       if (storedApiKey) {
-        sendMessageToUI("api-key-status", { hasKey: true });
+        sendMessageToUI("api-key-status", {
+          hasKey: true,
+          provider: selectedProvider,
+          model: selectedModel
+        });
         return;
       }
-      const savedKey = await figma.clientStorage.getAsync("claude-api-key");
-      if (savedKey && isValidApiKeyFormat(savedKey)) {
-        storedApiKey = savedKey;
-        sendMessageToUI("api-key-status", { hasKey: true });
+      if (config.apiKey && isValidApiKeyFormat(config.apiKey, config.providerId)) {
+        storedApiKey = config.apiKey;
+        sendMessageToUI("api-key-status", {
+          hasKey: true,
+          provider: selectedProvider,
+          model: selectedModel
+        });
       } else {
-        sendMessageToUI("api-key-status", { hasKey: false });
+        sendMessageToUI("api-key-status", {
+          hasKey: false,
+          provider: selectedProvider,
+          model: selectedModel
+        });
       }
     } catch (error) {
       console.error("Error checking API key:", error);
-      sendMessageToUI("api-key-status", { hasKey: false });
+      sendMessageToUI("api-key-status", { hasKey: false, provider: "anthropic" });
     }
   }
-  async function handleSaveApiKey(apiKey, model) {
+  async function handleSaveApiKey(apiKey, model, provider) {
     try {
-      if (!isValidApiKeyFormat(apiKey)) {
-        throw new Error("Invalid API key format. Please check your Claude API key.");
+      const providerId = provider || selectedProvider;
+      if (!isValidApiKeyFormat(apiKey, providerId)) {
+        const providerObj2 = getProvider(providerId);
+        throw new Error(`Invalid API key format for ${providerObj2.name}. Expected format: ${providerObj2.keyPlaceholder}`);
       }
+      selectedProvider = providerId;
       storedApiKey = apiKey;
       if (model) {
         selectedModel = model;
-        await figma.clientStorage.setAsync("claude-model", model);
       }
-      await figma.clientStorage.setAsync("claude-api-key", apiKey);
-      console.log("API key and model saved successfully");
-      sendMessageToUI("api-key-saved", { success: true });
-      figma.notify("API key and model saved successfully", { timeout: 2e3 });
+      await saveProviderConfig(providerId, selectedModel, apiKey);
+      console.log(`${providerId} API key and model saved successfully`);
+      const providerObj = getProvider(providerId);
+      sendMessageToUI("api-key-saved", { success: true, provider: providerId });
+      figma.notify(`${providerObj.name} API key saved successfully`, { timeout: 2e3 });
     } catch (error) {
       console.error("Error saving API key:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -3803,7 +5720,7 @@ ${scoringCriteria}
   async function handleUpdateModel(model) {
     try {
       selectedModel = model;
-      await figma.clientStorage.setAsync("claude-model", model);
+      await saveProviderConfig(selectedProvider, model);
       console.log("Model updated to:", model);
       figma.notify(`Model updated to ${model}`, { timeout: 2e3 });
     } catch (error) {
@@ -3812,10 +5729,11 @@ ${scoringCriteria}
     }
   }
   async function handleEnhancedAnalyze(options) {
-    var _a;
+    var _a, _b;
     try {
       if (!storedApiKey) {
-        throw new Error("API key not found. Please save your Claude API key first.");
+        const providerName = getProvider(selectedProvider).name;
+        throw new Error(`API key not found. Please save your ${providerName} API key first.`);
       }
       const selection = figma.currentPage.selection;
       if (selection.length === 0) {
@@ -3849,6 +5767,44 @@ ${scoringCriteria}
         selectedNode = parentComponentSet;
       }
       if (!isValidNodeForAnalysis(selectedNode)) {
+        const componentTypes = /* @__PURE__ */ new Set(["COMPONENT_SET", "COMPONENT", "INSTANCE"]);
+        let componentAncestor = null;
+        let frameAncestor = null;
+        let ancestor = selectedNode.parent;
+        while (ancestor && "type" in ancestor) {
+          const sceneAncestor = ancestor;
+          if (componentTypes.has(sceneAncestor.type) && !componentAncestor) {
+            componentAncestor = sceneAncestor;
+            break;
+          }
+          if (!frameAncestor && isValidNodeForAnalysis(sceneAncestor)) {
+            frameAncestor = sceneAncestor;
+          }
+          ancestor = ancestor.parent;
+        }
+        const bestAncestor = componentAncestor || frameAncestor;
+        if (bestAncestor) {
+          figma.notify(`Analyzing parent ${bestAncestor.type.toLowerCase()} "${bestAncestor.name}"...`, { timeout: 2e3 });
+          selectedNode = bestAncestor;
+        }
+      }
+      if (selectedNode.type === "INSTANCE") {
+        const instance = selectedNode;
+        try {
+          const mainComponent = await instance.getMainComponentAsync();
+          if (mainComponent) {
+            figma.notify("Analyzing main component instead of instance...", { timeout: 2e3 });
+            selectedNode = mainComponent;
+          }
+        } catch (e) {
+        }
+      }
+      if (selectedNode.type === "COMPONENT" && ((_b = selectedNode.parent) == null ? void 0 : _b.type) === "COMPONENT_SET") {
+        const parentComponentSet = selectedNode.parent;
+        figma.notify("Analyzing parent component set to include all variants...", { timeout: 2e3 });
+        selectedNode = parentComponentSet;
+      }
+      if (!isValidNodeForAnalysis(selectedNode)) {
         throw new Error("Please select a Frame, Component, Component Set, or Instance to analyze");
       }
       await consistencyEngine.loadDesignSystemsKnowledge();
@@ -3866,11 +5822,14 @@ ${scoringCriteria}
         componentContext,
         storedApiKey,
         selectedModel,
-        enhancedOptions
+        enhancedOptions,
+        selectedProvider
       );
       lastAnalyzedMetadata = result.metadata;
       lastAnalyzedNode = selectedNode;
-      sendMessageToUI("enhanced-analysis-result", result);
+      sendMessageToUI("enhanced-analysis-result", __spreadProps(__spreadValues({}, result), {
+        analyzedNodeId: selectedNode.id
+      }));
       figma.notify("Enhanced analysis complete! Check the results panel.", { timeout: 3e3 });
     } catch (error) {
       console.error("Error during enhanced analysis:", error);
@@ -3910,10 +5869,15 @@ ${scoringCriteria}
             continue;
           }
           const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
-          const analysis = await fetchClaude(deterministicPrompt, storedApiKey, selectedModel, true);
-          const rawEnhancedData = extractJSONFromResponse(analysis);
+          const batchLlmResponse = await callProvider(selectedProvider, storedApiKey, {
+            prompt: deterministicPrompt,
+            model: selectedModel,
+            maxTokens: 2048,
+            temperature: 0.1
+          });
+          const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
           const enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
-          let result = await processEnhancedAnalysis(enhancedData, node, node);
+          let result = await processAnalysisResult(enhancedData, componentContext, { batchMode: true });
           const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
           if (!isConsistent) {
             result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
@@ -3942,9 +5906,11 @@ ${scoringCriteria}
   async function handleClearApiKey() {
     try {
       storedApiKey = null;
+      await clearProviderKey(selectedProvider);
       await figma.clientStorage.setAsync("claude-api-key", "");
+      const providerName = getProvider(selectedProvider).name;
       sendMessageToUI("api-key-cleared", { success: true });
-      figma.notify("API key cleared", { timeout: 2e3 });
+      figma.notify(`${providerName} API key cleared`, { timeout: 2e3 });
     } catch (error) {
       console.error("Error clearing API key:", error);
     }
@@ -3953,15 +5919,21 @@ ${scoringCriteria}
     try {
       console.log("Processing chat message:", data.message);
       if (!storedApiKey) {
-        throw new Error("API key not found. Please save your Claude API key first.");
+        const providerName = getProvider(selectedProvider).name;
+        throw new Error(`API key not found. Please save your ${providerName} API key first.`);
       }
       sendMessageToUI("chat-response-loading", { isLoading: true });
       const componentContext = getCurrentComponentContext();
       const mcpResponse = await queryDesignSystemsMCP(data.message);
       const enhancedPrompt = createChatPromptWithContext(data.message, mcpResponse, data.history, componentContext);
-      const response = await fetchClaude(enhancedPrompt, storedApiKey, selectedModel, false);
+      const llmResponse = await callProvider(selectedProvider, storedApiKey, {
+        prompt: enhancedPrompt,
+        model: selectedModel,
+        maxTokens: 2048,
+        temperature: 0.7
+      });
       const chatResponse = {
-        message: response,
+        message: llmResponse.content,
         sources: mcpResponse.sources || []
       };
       sendMessageToUI("chat-response", { response: chatResponse });
@@ -4228,29 +6200,24 @@ Respond naturally and helpfully to the user's question.`;
   }
   async function initializePlugin() {
     try {
-      const savedApiKey = await figma.clientStorage.getAsync("claude-api-key");
-      if (savedApiKey) {
-        storedApiKey = savedApiKey;
-        sendMessageToUI("api-key-status", { hasKey: true });
+      const config = await loadProviderConfig();
+      selectedProvider = config.providerId;
+      selectedModel = config.modelId;
+      if (config.apiKey) {
+        storedApiKey = config.apiKey;
+        sendMessageToUI("api-key-status", {
+          hasKey: true,
+          provider: selectedProvider,
+          model: selectedModel
+        });
+      } else {
+        sendMessageToUI("api-key-status", {
+          hasKey: false,
+          provider: selectedProvider,
+          model: selectedModel
+        });
       }
-      const savedModel = await figma.clientStorage.getAsync("claude-model");
-      if (savedModel) {
-        const validModels = [
-          "claude-sonnet-4-5-20250929",
-          "claude-haiku-4-5-20251001",
-          "claude-opus-4-1-20250805",
-          "claude-sonnet-4-20250514",
-          "claude-opus-4-20250514"
-        ];
-        if (validModels.includes(savedModel)) {
-          selectedModel = savedModel;
-          console.log("Loaded saved model:", selectedModel);
-        } else {
-          console.log("Saved model is deprecated, resetting to default:", savedModel);
-          selectedModel = "claude-sonnet-4-5-20250929";
-          await figma.clientStorage.setAsync("claude-model", selectedModel);
-        }
-      }
+      console.log(`Plugin initialized with provider: ${selectedProvider}, model: ${selectedModel}`);
       console.log("\u{1F504} Initializing design systems knowledge...");
       consistencyEngine.loadDesignSystemsKnowledge().then(() => {
         console.log("\u2705 Design systems knowledge loaded successfully");
@@ -4260,6 +6227,510 @@ Respond naturally and helpfully to the user's question.`;
       console.log("Plugin initialized successfully");
     } catch (error) {
       console.error("Error initializing plugin:", error);
+    }
+  }
+  async function handlePreviewFix(data) {
+    try {
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node || !("type" in node)) {
+        sendMessageToUI("fix-preview", {
+          success: false,
+          error: "Node not found or is not a valid scene node"
+        });
+        return;
+      }
+      const sceneNode = node;
+      let preview = null;
+      if (data.type === "token") {
+        if (!data.propertyPath) {
+          sendMessageToUI("fix-preview", {
+            success: false,
+            error: "Property path is required for token fixes"
+          });
+          return;
+        }
+        const matches = data.propertyPath.match(/^(fills|strokes)\[(\d+)\]$/);
+        if (matches) {
+          const colorMatches = await findMatchingColorVariable(data.suggestedValue || "", 0.1);
+          if (colorMatches.length > 0) {
+            preview = await previewFix(sceneNode, data.propertyPath, colorMatches[0].variableId);
+          }
+        } else {
+          const pixelValue = parseFloat(data.suggestedValue || "0");
+          const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || "", 2);
+          if (spacingMatches.length > 0) {
+            preview = await previewFix(sceneNode, data.propertyPath, spacingMatches[0].variableId);
+          }
+        }
+        if (preview) {
+          const fixPreview = preview;
+          sendMessageToUI("fix-preview", {
+            success: true,
+            type: "token",
+            nodeId: fixPreview.nodeId,
+            nodeName: fixPreview.nodeName,
+            propertyPath: fixPreview.propertyPath,
+            beforeValue: fixPreview.beforeValue,
+            afterValue: fixPreview.afterValue,
+            tokenId: fixPreview.tokenId,
+            tokenName: fixPreview.tokenName
+          });
+        } else {
+          sendMessageToUI("fix-preview", {
+            success: false,
+            error: "No matching token found for this value"
+          });
+        }
+      } else if (data.type === "naming") {
+        const suggestedName = data.suggestedValue || suggestLayerName(sceneNode);
+        preview = previewRename(sceneNode, suggestedName);
+        sendMessageToUI("fix-preview", { success: true, preview });
+      } else {
+        sendMessageToUI("fix-preview", {
+          success: false,
+          error: `Unknown fix type: ${data.type}`
+        });
+      }
+    } catch (error) {
+      console.error("Error previewing fix:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("fix-preview", { success: false, error: errorMessage });
+    }
+  }
+  async function handleApplyTokenFix(data) {
+    try {
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node || !("type" in node)) {
+        sendMessageToUI("fix-applied", {
+          success: false,
+          error: "Node not found or is not a valid scene node"
+        });
+        figma.notify("Failed to apply fix: Node not found", { error: true });
+        return;
+      }
+      const sceneNode = node;
+      if (!data.propertyPath) {
+        sendMessageToUI("fix-applied", {
+          success: false,
+          error: "Property path is required for token fixes"
+        });
+        figma.notify("Failed to apply fix: Property path missing", { error: true });
+        return;
+      }
+      if (!data.tokenId) {
+        sendMessageToUI("fix-applied", {
+          success: false,
+          error: "Token ID is required for token fixes"
+        });
+        figma.notify("Failed to apply fix: Token ID missing", { error: true });
+        return;
+      }
+      let result;
+      const isColorProperty = /^(fills|strokes)\[\d+\]$/.test(data.propertyPath);
+      if (isColorProperty) {
+        result = await applyColorFix(sceneNode, data.propertyPath, data.tokenId);
+      } else {
+        result = await applySpacingFix(sceneNode, data.propertyPath, data.tokenId);
+      }
+      sendMessageToUI("fix-applied", __spreadProps(__spreadValues({}, result), {
+        fixType: "token",
+        nodeId: data.nodeId,
+        propertyPath: data.propertyPath
+      }));
+      if (result.success) {
+        figma.notify(`Applied token to ${sceneNode.name}`, { timeout: 2e3 });
+      } else {
+        figma.notify(`Failed to apply token: ${result.error || result.message}`, { error: true });
+      }
+    } catch (error) {
+      console.error("Error applying token fix:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("fix-applied", { success: false, error: errorMessage, fixType: "token", nodeId: data.nodeId });
+      figma.notify(`Failed to apply fix: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleApplyNamingFix(data) {
+    try {
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node || !("type" in node)) {
+        sendMessageToUI("fix-applied", {
+          success: false,
+          error: "Node not found or is not a valid scene node"
+        });
+        figma.notify("Failed to rename: Node not found", { error: true });
+        return;
+      }
+      const sceneNode = node;
+      const newName = data.newValue || suggestLayerName(sceneNode);
+      const oldName = sceneNode.name;
+      if (oldName === newName) {
+        sendMessageToUI("fix-applied", {
+          success: true,
+          fixType: "naming",
+          nodeId: data.nodeId,
+          message: `Layer already named "${newName}"`,
+          oldName,
+          newName
+        });
+        figma.notify(`Layer already named "${newName}"`, { timeout: 2e3 });
+        return;
+      }
+      const success = renameLayer(sceneNode, newName);
+      const result = {
+        success,
+        fixType: "naming",
+        nodeId: data.nodeId,
+        message: success ? `Renamed "${oldName}" to "${newName}"` : `Failed to rename layer`,
+        oldName,
+        newName: success ? newName : oldName
+      };
+      sendMessageToUI("fix-applied", result);
+      if (success) {
+        figma.notify(`Renamed "${oldName}" to "${newName}"`, { timeout: 2e3 });
+      } else {
+        figma.notify("Failed to rename layer", { error: true });
+      }
+    } catch (error) {
+      console.error("Error applying naming fix:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("fix-applied", { success: false, error: errorMessage });
+      figma.notify(`Failed to rename: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleApplyBatchFix(data) {
+    try {
+      const results = [];
+      let successCount = 0;
+      let errorCount = 0;
+      for (const fix of data.fixes) {
+        try {
+          const node = await figma.getNodeByIdAsync(fix.nodeId);
+          if (!node || !("type" in node)) {
+            results.push({
+              nodeId: fix.nodeId,
+              success: false,
+              message: "Node not found",
+              error: "Node not found or is not a valid scene node"
+            });
+            errorCount++;
+            continue;
+          }
+          const sceneNode = node;
+          if (fix.type === "token") {
+            if (!fix.propertyPath) {
+              results.push({
+                nodeId: fix.nodeId,
+                success: false,
+                message: "Missing property path",
+                error: "Token fixes require a propertyPath"
+              });
+              errorCount++;
+              continue;
+            }
+            let tokenId = fix.tokenId;
+            const isColorProperty = /^(fills|strokes)\[\d+\]$/.test(fix.propertyPath);
+            if (!tokenId && fix.newValue) {
+              try {
+                if (isColorProperty) {
+                  const colorMatches = await findMatchingColorVariable(fix.newValue, 0.1);
+                  if (colorMatches.length > 0) {
+                    tokenId = colorMatches[0].variableId;
+                  }
+                } else {
+                  const pixelValue = parseFloat(fix.newValue);
+                  if (!isNaN(pixelValue)) {
+                    const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || "", 2);
+                    if (spacingMatches.length > 0) {
+                      tokenId = spacingMatches[0].variableId;
+                    }
+                  }
+                }
+              } catch (matchError) {
+                console.warn("Could not find matching variable:", matchError);
+              }
+            }
+            if (!tokenId) {
+              results.push({
+                nodeId: fix.nodeId,
+                success: false,
+                message: "No matching design token found for this value",
+                error: "Could not find a matching variable to bind"
+              });
+              errorCount++;
+              continue;
+            }
+            let result;
+            if (isColorProperty) {
+              result = await applyColorFix(sceneNode, fix.propertyPath, tokenId);
+            } else {
+              result = await applySpacingFix(sceneNode, fix.propertyPath, tokenId);
+            }
+            results.push({
+              nodeId: fix.nodeId,
+              success: result.success,
+              message: result.message,
+              error: result.error
+            });
+            if (result.success) {
+              successCount++;
+            } else {
+              errorCount++;
+            }
+          } else if (fix.type === "naming") {
+            const newName = fix.newValue || suggestLayerName(sceneNode);
+            const oldName = sceneNode.name;
+            const success = renameLayer(sceneNode, newName);
+            results.push({
+              nodeId: fix.nodeId,
+              success,
+              message: success ? `Renamed "${oldName}" to "${newName}"` : "Failed to rename layer"
+            });
+            if (success) {
+              successCount++;
+            } else {
+              errorCount++;
+            }
+          } else {
+            results.push({
+              nodeId: fix.nodeId,
+              success: false,
+              message: `Unknown fix type: ${fix.type}`,
+              error: `Unsupported fix type: ${fix.type}`
+            });
+            errorCount++;
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error";
+          results.push({
+            nodeId: fix.nodeId,
+            success: false,
+            message: "Error applying fix",
+            error: errorMessage
+          });
+          errorCount++;
+        }
+      }
+      const summary = {
+        total: data.fixes.length,
+        success: successCount,
+        errors: errorCount,
+        results
+      };
+      sendMessageToUI("batch-fix-applied", summary);
+      if (errorCount === 0) {
+        figma.notify(`Applied ${successCount} fix${successCount !== 1 ? "es" : ""} successfully`, { timeout: 2e3 });
+      } else if (successCount > 0) {
+        figma.notify(`Applied ${successCount} fix${successCount !== 1 ? "es" : ""}, ${errorCount} failed`, { timeout: 3e3 });
+      } else {
+        figma.notify(`Failed to apply ${errorCount} fix${errorCount !== 1 ? "es" : ""}`, { error: true });
+      }
+    } catch (error) {
+      console.error("Error applying batch fixes:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("batch-fix-applied", {
+        total: data.fixes.length,
+        success: 0,
+        errors: data.fixes.length,
+        error: errorMessage
+      });
+      figma.notify(`Batch fix failed: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleUpdateDescription(data) {
+    try {
+      const node = await figma.getNodeByIdAsync(data.nodeId);
+      if (!node) {
+        sendMessageToUI("description-updated", {
+          success: false,
+          error: "Node not found"
+        });
+        figma.notify("Failed to update description: Node not found", { error: true });
+        return;
+      }
+      if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+        sendMessageToUI("description-updated", {
+          success: false,
+          error: "Node is not a component or component set"
+        });
+        figma.notify("Description can only be set on components", { error: true });
+        return;
+      }
+      const componentNode = node;
+      const oldDescription = componentNode.description;
+      componentNode.description = data.description;
+      sendMessageToUI("description-updated", {
+        success: true,
+        oldDescription,
+        newDescription: data.description
+      });
+      figma.notify("Component description updated", { timeout: 2e3 });
+    } catch (error) {
+      console.error("Error updating description:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("description-updated", {
+        success: false,
+        error: errorMessage
+      });
+      figma.notify(`Failed to update description: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleAddComponentProperty(data) {
+    try {
+      const { nodeId, propertyName, propertyType, defaultValue } = data;
+      const node = await figma.getNodeByIdAsync(nodeId);
+      if (!node) {
+        sendMessageToUI("property-added", {
+          success: false,
+          propertyName,
+          message: "Node not found"
+        });
+        figma.notify("Node not found", { error: true });
+        return;
+      }
+      let targetNode = null;
+      if (node.type === "COMPONENT") {
+        const component = node;
+        if (component.parent && component.parent.type === "COMPONENT_SET") {
+          targetNode = component.parent;
+        } else {
+          targetNode = component;
+        }
+      } else if (node.type === "COMPONENT_SET") {
+        targetNode = node;
+      } else if (node.type === "INSTANCE") {
+        const mainComponent = await node.getMainComponentAsync();
+        if (mainComponent) {
+          if (mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
+            targetNode = mainComponent.parent;
+          } else {
+            targetNode = mainComponent;
+          }
+        }
+      }
+      if (!targetNode) {
+        sendMessageToUI("property-added", {
+          success: false,
+          propertyName,
+          message: "Selected node is not a component"
+        });
+        figma.notify("Selected node is not a component", { error: true });
+        return;
+      }
+      const existingDefs = targetNode.componentPropertyDefinitions;
+      for (const key of Object.keys(existingDefs)) {
+        const baseName = key.replace(/#\d+:\d+$/, "");
+        if (baseName.toLowerCase() === propertyName.toLowerCase()) {
+          sendMessageToUI("property-added", {
+            success: false,
+            propertyName,
+            message: `Property "${propertyName}" already exists`
+          });
+          figma.notify(`Property "${propertyName}" already exists`, { error: true });
+          return;
+        }
+      }
+      let figmaType;
+      switch (propertyType.toLowerCase()) {
+        case "boolean":
+          figmaType = "BOOLEAN";
+          break;
+        case "text":
+          figmaType = "TEXT";
+          break;
+        case "slot":
+          figmaType = "INSTANCE_SWAP";
+          break;
+        case "variant":
+          if (targetNode.type === "COMPONENT_SET") {
+            figmaType = "VARIANT";
+          } else {
+            figmaType = "TEXT";
+          }
+          break;
+        default:
+          figmaType = "TEXT";
+      }
+      targetNode.addComponentProperty(propertyName, figmaType, defaultValue);
+      let stagingNote = "";
+      if (figmaType === "VARIANT" && targetNode.type === "COMPONENT_SET" && data.variantOptions && data.variantOptions.length > 1) {
+        const componentSet = targetNode;
+        const existingChildren = [...componentSet.children];
+        const additionalOptions = data.variantOptions.slice(1);
+        const searchStr = `${propertyName}=${defaultValue}`;
+        const page = figma.currentPage;
+        let containerNode = componentSet;
+        while (containerNode.parent && containerNode.parent.type !== "PAGE") {
+          containerNode = containerNode.parent;
+        }
+        const absX = containerNode.absoluteTransform[0][2];
+        const absY = containerNode.absoluteTransform[1][2];
+        const stagingX = absX;
+        const stagingY = absY + containerNode.height + 50;
+        const section = figma.createSection();
+        section.name = `FigmaLint: ${propertyName} Variants`;
+        page.appendChild(section);
+        section.x = stagingX;
+        section.y = stagingY;
+        const label = figma.createText();
+        await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+        label.fontName = { family: "Inter", style: "Medium" };
+        label.characters = `New "${propertyName}" variants \u2014 drag into the ComponentSet`;
+        label.fontSize = 14;
+        label.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
+        section.appendChild(label);
+        label.x = 24;
+        label.y = 24;
+        const padding = 24;
+        const childGap = 32;
+        let currentY = label.y + label.height + 24;
+        let maxWidth = label.width + padding * 2;
+        for (const option of additionalOptions) {
+          const replaceStr = `${propertyName}=${option}`;
+          const optionLabel = figma.createText();
+          await figma.loadFontAsync({ family: "Inter", style: "Semi Bold" });
+          optionLabel.fontName = { family: "Inter", style: "Semi Bold" };
+          optionLabel.characters = `${propertyName}=${option}`;
+          optionLabel.fontSize = 12;
+          optionLabel.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.3, b: 0.9 } }];
+          section.appendChild(optionLabel);
+          optionLabel.x = padding;
+          optionLabel.y = currentY;
+          currentY += optionLabel.height + 12;
+          let rowX = padding;
+          let rowMaxHeight = 0;
+          for (const child of existingChildren) {
+            const clone = child.clone();
+            clone.name = clone.name.replace(searchStr, replaceStr);
+            section.appendChild(clone);
+            clone.x = rowX;
+            clone.y = currentY;
+            rowX += clone.width + childGap;
+            rowMaxHeight = Math.max(rowMaxHeight, clone.height);
+          }
+          maxWidth = Math.max(maxWidth, rowX - childGap + padding);
+          currentY += rowMaxHeight + childGap;
+        }
+        section.resizeWithoutConstraints(
+          Math.max(maxWidth, 400),
+          currentY + padding
+        );
+        stagingNote = ` \u2014 new variants created in staging section to the right`;
+      }
+      sendMessageToUI("property-added", {
+        success: true,
+        propertyName,
+        message: `Property "${propertyName}" added successfully${stagingNote}`
+      });
+      figma.notify(`Property "${propertyName}" added${stagingNote ? " (see staging section)" : ""}`, { timeout: 3e3 });
+    } catch (error) {
+      console.error("Error adding component property:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("property-added", {
+        success: false,
+        propertyName: data.propertyName,
+        message: errorMessage
+      });
+      figma.notify(`Failed to add property: ${errorMessage}`, { error: true });
     }
   }
 

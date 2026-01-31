@@ -1,6 +1,7 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { ClaudeAPIRequest, ClaudeAPIResponse, ComponentContext } from '../types';
+import { extractInstanceNames } from '../core/component-analyzer';
 
 // Claude API Configuration
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
@@ -160,6 +161,11 @@ ${componentContext.additionalContext ? `
 - Considerations: ${componentContext.additionalContext.suggestedConsiderations.join('; ') || 'None'}
 ` : '- No additional context available'}
 
+**Existing Figma Description:**
+${componentContext.existingDescription ? `"${componentContext.existingDescription}"\n(Build upon this if present, or create a comprehensive new description)` : 'None set — create a comprehensive description from scratch'}
+
+- Nested Component Instances: ${extractInstanceNames(componentContext.hierarchy).join(', ') || 'None detected'}
+
 **IMPORTANT: Focus on what makes this component ready for CODE GENERATION via MCP.**
 Evaluate based on these criteria that actually matter for development:
 
@@ -202,7 +208,7 @@ Evaluate based on these criteria that actually matter for development:
 **Response Format (JSON only):**
 {
   "component": "Component name and purpose",
-  "description": "Detailed component description and use cases",
+  "description": "Start with a brief 1-2 sentence summary of what this component is and its key variants/capabilities. Then provide structured sections: PURPOSE: What this component is and its primary function. BEHAVIOR: Interactive behavior patterns (e.g., 'expanding one accordion panel collapses all others', 'dropdown closes on outside click'). Skip this section if the component is not interactive. COMPOSITION: List all nested/child component instances used (e.g., 'Contains Button, Icon, and Badge sub-components'). Note: AI code generators should check the development codebase for these sub-components before creating new ones. USAGE: When and how to use this component vs alternatives. CODE GENERATION NOTES: Implementation considerations — mention leveraging existing sub-components from the codebase, design patterns to follow, and interaction details not visible from design specs alone.",
   "props": [
     {
       "name": "property name",
@@ -272,6 +278,14 @@ Evaluate based on these criteria that actually matter for development:
       "description": "What this property controls"
     }
   ],
+  "recommendedProperties": [
+    {
+      "name": "Figma property name to add (e.g. 'Size', 'Icon Before')",
+      "type": "VARIANT|BOOLEAN|TEXT|INSTANCE_SWAP",
+      "description": "Why this property improves the component for design system usage and developer handoff",
+      "examples": ["specific example values relevant to this component"]
+    }
+  ],
   "audit": {
     "tokenOpportunities": ["Specific recommendations for design token implementation in Figma"],
     "structureIssues": ["Component structure improvements for better design system integration"]
@@ -301,6 +315,14 @@ Evaluate based on these criteria that actually matter for development:
 3. **Visual Design**: Prioritize visual consistency, token usage, and design handoff
 4. **Component Architecture**: Evaluate how the component is structured in Figma
 5. **Practical Recommendations**: Suggest improvements that designers can actually implement
+
+**Recommended Properties Guidelines:**
+For the "recommendedProperties" field, compare the component's EXISTING properties against best practices from established design systems (Material Design, Carbon, Ant Design, Polaris, Lightning, Spectrum, etc.):
+- Only recommend Figma component properties that do NOT already exist on this component
+- Use Figma property types: VARIANT (for enumerated options like size/style), BOOLEAN (for toggles like show/hide icon), TEXT (for editable text like labels), INSTANCE_SWAP (for swappable sub-components like icons)
+- Each recommendation must be specific to THIS component type and its actual structure — do not suggest generic properties that don't apply
+- If the component already has comprehensive properties, return an empty array — never force recommendations
+- Consider what developers will need when consuming this component in code
 
 **CRITICAL: AVOID ALL Development-Only Concerns:**
 - Do NOT suggest implementing ARIA attributes, accessibility APIs, or semantic HTML (this is code-level)
@@ -346,7 +368,7 @@ Keep the response concise and actionable for a designer.
  */
 export function extractJSONFromResponse(response: string): any {
   try {
-    console.log('🔍 Starting JSON extraction from Claude response...');
+    console.log('🔍 Starting JSON extraction from LLM response...');
     console.log('📝 Response length:', response.length);
     console.log('📝 Response preview (first 200 chars):', response.substring(0, 200));
 
@@ -392,9 +414,9 @@ export function extractJSONFromResponse(response: string): any {
     throw new Error('No valid JSON found in response after trying all strategies');
 
   } catch (error) {
-    console.error('❌ Failed to parse JSON from Claude response:', error);
+    console.error('❌ Failed to parse JSON from LLM response:', error);
     console.log('📝 Full response for debugging:', response);
-    throw new Error('Invalid JSON response from Claude API');
+    throw new Error('Invalid JSON response from LLM API');
   }
 }
 
@@ -750,8 +772,8 @@ export async function createMCPEnhancedAnalysis(
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.warn('⚠️ MCP-enhanced analysis failed, falling back to standard Claude analysis:', errorMessage);
-    // Fallback to existing Claude-heavy approach
+    console.warn('⚠️ MCP-enhanced analysis failed, falling back to standard LLM analysis:', errorMessage);
+    // Fallback to LLM-only approach
     return null;
   }
 }

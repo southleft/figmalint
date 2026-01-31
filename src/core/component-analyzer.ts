@@ -1,9 +1,11 @@
 /// <reference types="@figma/plugin-typings" />
 
-import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
+import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, AuditCheck, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
 import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
-import { fetchClaude, extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
+import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
+import { callProvider, ProviderId } from '../api/providers';
+import { analyzeNamingIssues } from '../fixes/naming-fixer';
 
 /**
  * Extract comprehensive component context for analysis
@@ -283,6 +285,28 @@ function getLayerNames(hierarchy: LayerHierarchy[]): string[] {
 
   traverse(hierarchy);
   return names;
+}
+
+/**
+ * Extract unique INSTANCE node names from a layer hierarchy.
+ * Used to inform AI prompts about nested/child component instances.
+ */
+export function extractInstanceNames(hierarchy: LayerHierarchy[]): string[] {
+  const names = new Set<string>();
+
+  function traverse(layers: LayerHierarchy[]) {
+    for (const layer of layers) {
+      if (layer.type === 'INSTANCE') {
+        names.add(layer.name);
+      }
+      if (layer.children) {
+        traverse(layer.children);
+      }
+    }
+  }
+
+  traverse(hierarchy);
+  return Array.from(names);
 }
 
 /**
@@ -926,8 +950,141 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
     }
 
   } else if (node.type === 'INSTANCE') {
-    // This case is already handled above in PRIORITY 1
-    console.log('🔍 [DEBUG] Instance case already handled in priority 1');
+    const instance = node as InstanceNode;
+    console.log('🔍 [DEBUG] Processing INSTANCE node (fallback — Priority 1 may have been skipped)');
+
+    // If Priority 1 didn't run (no selectedNode), extract from the instance directly
+    if (actualProperties.length === 0) {
+      try {
+        const mainComponent = await instance.getMainComponentAsync();
+        if (mainComponent) {
+          // If main component belongs to a component set, extract from the set
+          if (mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
+            const componentSet = mainComponent.parent as ComponentSetNode;
+            console.log('🔍 [DEBUG] Instance fallback: extracting from parent component set:', componentSet.name);
+
+            try {
+              if ('componentPropertyDefinitions' in componentSet) {
+                const propertyDefinitions = componentSet.componentPropertyDefinitions;
+                if (propertyDefinitions && typeof propertyDefinitions === 'object') {
+                  for (const propName in propertyDefinitions) {
+                    const prop = propertyDefinitions[propName];
+                    let displayName = propName;
+                    let values: string[] = [];
+                    let defaultValue = '';
+
+                    if (propName.includes('#')) {
+                      displayName = propName.split('#')[0];
+                    }
+
+                    switch (prop.type) {
+                      case 'VARIANT':
+                        values = prop.variantOptions || [];
+                        defaultValue = String(prop.defaultValue) || values[0] || 'default';
+                        break;
+                      case 'BOOLEAN':
+                        values = ['true', 'false'];
+                        defaultValue = prop.defaultValue ? 'true' : 'false';
+                        break;
+                      case 'TEXT':
+                        values = [String(prop.defaultValue || 'Text content')];
+                        defaultValue = String(prop.defaultValue || 'Text content');
+                        break;
+                      case 'INSTANCE_SWAP':
+                        if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
+                          values = prop.preferredValues.map((v: any) => v.key || v.name || 'Component instance');
+                        } else {
+                          values = ['Component instance'];
+                        }
+                        defaultValue = values[0] || 'Component instance';
+                        break;
+                      default:
+                        values = ['Property value'];
+                        defaultValue = 'Default';
+                    }
+
+                    actualProperties.push({ name: displayName, values, default: defaultValue });
+                  }
+                  console.log(`🔍 [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from component set`);
+                }
+              }
+            } catch (error) {
+              console.warn('🔍 [WARN] Instance fallback: could not access componentPropertyDefinitions:', error);
+            }
+
+            // Also get variant group properties if needed
+            if (actualProperties.length === 0) {
+              try {
+                const variantProps = componentSet.variantGroupProperties;
+                if (variantProps) {
+                  for (const propName in variantProps) {
+                    const prop = variantProps[propName];
+                    if (!actualProperties.find(p => p.name === propName)) {
+                      actualProperties.push({
+                        name: propName,
+                        values: prop.values,
+                        default: prop.values[0] || 'default'
+                      });
+                    }
+                  }
+                }
+              } catch (error) {
+                console.warn('🔍 [WARN] Instance fallback: could not access variantGroupProperties:', error);
+              }
+            }
+          } else {
+            // Main component is standalone (no component set)
+            console.log('🔍 [DEBUG] Instance fallback: extracting from standalone main component');
+            try {
+              if ('componentPropertyDefinitions' in mainComponent) {
+                const propertyDefinitions = mainComponent.componentPropertyDefinitions;
+                if (propertyDefinitions && typeof propertyDefinitions === 'object') {
+                  for (const propName in propertyDefinitions) {
+                    const prop = propertyDefinitions[propName];
+                    let displayName = propName;
+                    let values: string[] = [];
+                    let defaultValue = '';
+
+                    if (propName.includes('#')) {
+                      displayName = propName.split('#')[0];
+                    }
+
+                    switch (prop.type) {
+                      case 'BOOLEAN':
+                        values = ['true', 'false'];
+                        defaultValue = prop.defaultValue ? 'true' : 'false';
+                        break;
+                      case 'TEXT':
+                        values = [String(prop.defaultValue || 'Text content')];
+                        defaultValue = String(prop.defaultValue || 'Text content');
+                        break;
+                      case 'INSTANCE_SWAP':
+                        if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
+                          values = prop.preferredValues.map((v: any) => v.key || v.name || 'Component instance');
+                        } else {
+                          values = ['Component instance'];
+                        }
+                        defaultValue = values[0] || 'Component instance';
+                        break;
+                      default:
+                        values = ['Property value'];
+                        defaultValue = 'Default';
+                    }
+
+                    actualProperties.push({ name: displayName, values, default: defaultValue });
+                  }
+                  console.log(`🔍 [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from main component`);
+                }
+              }
+            } catch (error) {
+              console.warn('🔍 [WARN] Instance fallback: could not access componentPropertyDefinitions on main component:', error);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('🔍 [WARN] Instance fallback: could not get main component:', error);
+      }
+    }
   }
 
   // Remove duplicates and return
@@ -1174,7 +1331,8 @@ export async function processEnhancedAnalysis(
   context: ComponentContext,
   apiKey: string,
   model: string,
-  options: EnhancedAnalysisOptions = {}
+  options: EnhancedAnalysisOptions = {},
+  providerId: ProviderId = 'anthropic'
 ): Promise<EnhancedAnalysisResult> {
   console.log('🎯 Starting enhanced component analysis...');
 
@@ -1201,6 +1359,9 @@ export async function processEnhancedAnalysis(
     }
   }
 
+  // Thread existing description into context for downstream prompts
+  context.existingDescription = componentDescription;
+
   // Log extracted data for debugging
   console.log(`📊 [ANALYSIS] Extracted from Figma API:`);
   console.log(`  Properties: ${actualProperties.length}`);
@@ -1215,28 +1376,33 @@ export async function processEnhancedAnalysis(
   let analysisResult: any;
 
   if (useMCP) {
-    console.log('🔄 Using hybrid Claude + MCP approach...');
+    console.log(`🔄 Using hybrid LLM + MCP approach (${providerId})...`);
 
-    // Step 1: Use Claude for direct Figma data extraction and analysis
-    const claudePrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
-    const claudeResponse = await fetchClaude(claudePrompt, apiKey, model);
-    const claudeData = extractJSONFromResponse(claudeResponse);
+    // Step 1: Use LLM for direct Figma data extraction and analysis
+    const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
+    const llmResponse = await callProvider(providerId, apiKey, {
+      prompt: llmPrompt,
+      model,
+      maxTokens: 2048,
+      temperature: 0.1,
+    });
+    const llmData = extractJSONFromResponse(llmResponse.content);
 
-    if (!claudeData) {
-      throw new Error('Failed to extract JSON from Claude response');
+    if (!llmData) {
+      throw new Error('Failed to extract JSON from LLM response');
     }
 
     // Step 2: Use MCP for best practices and recommendations (lightweight queries)
     let mcpEnhancements = null;
     try {
-      mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, claudeData);
+      mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, llmData);
       console.log('✅ MCP enhancements received');
     } catch (mcpError) {
-      console.warn('⚠️ MCP enhancement failed, continuing with Claude data only:', mcpError);
+      console.warn('⚠️ MCP enhancement failed, continuing with LLM data only:', mcpError);
     }
 
-    // Step 3: Merge Claude data with MCP enhancements
-    analysisResult = mergClaudeAndMCPResults(claudeData, mcpEnhancements, {
+    // Step 3: Merge LLM data with MCP enhancements
+    analysisResult = mergClaudeAndMCPResults(llmData, mcpEnhancements, {
       node,
       context,
       actualProperties,
@@ -1246,11 +1412,16 @@ export async function processEnhancedAnalysis(
     });
 
   } else {
-    // Fallback to Claude-only analysis
-    console.log('📝 Using Claude-only analysis...');
+    // Fallback to LLM-only analysis (no MCP)
+    console.log(`📝 Using ${providerId}-only analysis...`);
     const prompt = createEnhancedMetadataPrompt(context);
-    const response = await fetchClaude(prompt, apiKey, model);
-    analysisResult = extractJSONFromResponse(response);
+    const llmFallbackResponse = await callProvider(providerId, apiKey, {
+      prompt,
+      model,
+      maxTokens: 2048,
+      temperature: 0.1,
+    });
+    analysisResult = extractJSONFromResponse(llmFallbackResponse.content);
 
     if (!analysisResult) {
       throw new Error('Failed to extract JSON from response');
@@ -1273,6 +1444,7 @@ function createFigmaDataExtractionPrompt(
   componentDescription: string
 ): string {
   const componentFamily = context.additionalContext?.componentFamily || 'generic';
+  const nestedInstances = extractInstanceNames(context.hierarchy);
 
   return `Analyze this Figma component and extract its structure and patterns.
 
@@ -1280,7 +1452,8 @@ function createFigmaDataExtractionPrompt(
 - Name: ${context.name}
 - Type: ${context.type}
 - Family: ${componentFamily}
-- Description: ${componentDescription || 'No description provided'}
+- Existing Figma Description: ${componentDescription || 'None set'}
+- Nested Component Instances: ${nestedInstances.length > 0 ? nestedInstances.join(', ') : 'None detected'}
 
 **Actual Figma Properties (${actualProperties.length} total):**
 ${actualProperties.slice(0, 10).map(p => `- ${p.name}: ${p.values.join(', ')} (default: ${p.default})`).join('\n')}
@@ -1303,11 +1476,12 @@ ${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
 3. All states detected in the component
 4. Token usage analysis
 5. Structural patterns and variants
+6. Recommended properties this component SHOULD have but currently LACKS
 
 Return JSON in this exact format:
 {
   "component": "Component name and type",
-  "description": "Clear description based on structure",
+  "description": "Start with a brief 1-2 sentence summary of what this component is and its key variants/capabilities. Then provide structured sections: PURPOSE: What this component is and its primary function. BEHAVIOR: Interactive behavior patterns (skip if not interactive). COMPOSITION: List all nested/child component instances used — note that AI code generators should check the development codebase for these sub-components before creating new ones. USAGE: When and how to use this component vs alternatives. CODE GENERATION NOTES: Implementation considerations including leveraging existing sub-components and interaction details not visible from design specs alone.",
   "props": [
     {
       "name": "property name from Figma",
@@ -1330,10 +1504,20 @@ Return JSON in this exact format:
     "layers": ${context.hierarchy.length},
     "hasSlots": ${context.detectedSlots.length > 0},
     "complexity": "low|medium|high"
-  }
+  },
+  "recommendedProperties": [
+    {
+      "name": "Figma property name to add",
+      "type": "VARIANT|BOOLEAN|TEXT|INSTANCE_SWAP",
+      "description": "Why this property improves the component",
+      "examples": ["specific example values"]
+    }
+  ]
 }
 
-Focus ONLY on what's actually in the Figma component. Do not add theoretical properties or states.`;
+For "recommendedProperties": Compare the EXISTING properties listed above against design system best practices (Material Design, Carbon, Ant Design, Polaris, etc.). Only recommend Figma component properties that do NOT already exist. Use Figma property types (VARIANT, BOOLEAN, TEXT, INSTANCE_SWAP). If the component already has comprehensive properties, return an empty array.
+
+Focus ONLY on what's actually in the Figma component for existing data. Recommendations should draw from your knowledge of design system best practices.`;
 }
 
 /**
@@ -1497,6 +1681,9 @@ function mergClaudeAndMCPResults(
   }));
   merged.states = merged.states || fallbackData.actualStates;
 
+  // Pass through AI-generated property recommendations
+  merged.recommendedProperties = claudeData.recommendedProperties || [];
+
   return merged;
 }
 
@@ -1606,7 +1793,7 @@ function generatePropertyCheatSheet(
 /**
  * Process analysis result from Claude and convert to EnhancedAnalysisResult
  */
-async function processAnalysisResult(
+export async function processAnalysisResult(
   filteredData: any,
   context: ComponentContext,
   options: EnhancedAnalysisOptions
@@ -1626,7 +1813,9 @@ async function processAnalysisResult(
     }
 
     // Extract actual properties from the Figma component
-    const actualProperties = await extractActualComponentProperties(node);
+    // Pass node as selectedNode too — node IS the selected node from selection[0],
+    // and extractActualComponentProperties needs it for Priority 1 instance extraction
+    const actualProperties = await extractActualComponentProperties(node, node);
 
     // Extract actual states
     const actualStates = await extractActualComponentStates(node);
@@ -1733,11 +1922,21 @@ async function processAnalysisResult(
     console.log('📤 Sending to UI - metadata.states:', metadata.states);
     console.log('📤 Sending to UI - metadata.mcpReadiness:', metadata.mcpReadiness);
 
-    // Create audit results
-    const audit: DetailedAuditResults = createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
+    // Create audit results with best practices analysis
+    const audit: DetailedAuditResults = await createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
 
-    // Generate property recommendations if the component has few properties
-    const recommendations = generatePropertyRecommendations(context.name, actualProperties);
+    // Extract AI-generated property recommendations from the LLM response
+    const recommendations = (filteredData.recommendedProperties || []).map((rec: any) => ({
+      name: rec.name || '',
+      type: rec.type || 'VARIANT',
+      description: rec.description || '',
+      examples: rec.examples || []
+    })).filter((rec: any) => rec.name);
+    console.log(`💡 AI-generated property recommendations: ${recommendations.length}`);
+
+    // Analyze naming issues (depth-limited to 5 for performance)
+    const namingIssues = analyzeNamingIssues(node, 5);
+    console.log(`📛 Found ${namingIssues.length} naming issues`);
 
     console.log('✅ Analysis result processed successfully');
 
@@ -1746,7 +1945,9 @@ async function processAnalysisResult(
       tokens,
       audit,
       properties: actualProperties,
-      recommendations
+      recommendations,
+      namingIssues,
+      existingDescription: componentDescription
     };
   } catch (error) {
     console.error('Error processing analysis result:', error);
@@ -1757,7 +1958,7 @@ async function processAnalysisResult(
 /**
  * Create audit results from Claude analysis data
  */
-function createAuditResults(
+async function createAuditResults(
   filteredData: any,
   context: ComponentContext,
   node: SceneNode,
@@ -1765,31 +1966,274 @@ function createAuditResults(
   actualStates: string[],
   tokens: TokenAnalysis,
   componentDescription?: string
-): DetailedAuditResults {
+): Promise<DetailedAuditResults> {
+  // Check parent component set description for context-aware description check
+  let parentHasDescription = false;
+  let parentDescription = '';
+  if (node.type === 'COMPONENT' && node.parent?.type === 'COMPONENT_SET') {
+    const parentSet = node.parent as ComponentSetNode;
+    parentDescription = parentSet.description || '';
+    parentHasDescription = parentDescription.trim().length > 0;
+  } else if (node.type === 'COMPONENT_SET') {
+    parentHasDescription = !!(componentDescription && componentDescription.trim().length > 0);
+  }
+
+  const hasDescription = !!(componentDescription && componentDescription.trim().length > 0);
+
+  // Build description check with component set awareness
+  let descriptionStatus: 'pass' | 'warning' = hasDescription ? 'pass' : 'warning';
+  let descriptionSuggestion = '';
+  if (hasDescription) {
+    descriptionSuggestion = 'Component has description for MCP/AI context';
+  } else if (parentHasDescription) {
+    descriptionStatus = 'pass';
+    descriptionSuggestion = 'Component set has a description. Consider adding a variant-specific description for richer context.';
+  } else {
+    descriptionSuggestion = 'Add a component description to help MCP and AI understand the component purpose and usage';
+  }
+
+  // Component Readiness checks (property config + description)
+  const componentReadiness: AuditCheck[] = [
+    {
+      check: 'Property configuration',
+      status: actualProperties.length > 0 ? 'pass' : 'warning',
+      suggestion: actualProperties.length > 0
+        ? 'Component has configurable properties'
+        : 'Consider adding properties for component customization'
+    },
+    {
+      check: 'Component description',
+      status: descriptionStatus,
+      suggestion: descriptionSuggestion
+    }
+  ];
+
+  // Real accessibility checks
+  const accessibility = runAccessibilityChecks(node, actualStates);
+
   return {
-    // Basic state checking
     states: actualStates.map(state => ({
       name: state,
       found: true
     })),
-    // Basic accessibility audit
-    accessibility: [
-      {
-        check: 'Property configuration',
-        status: actualProperties.length > 0 ? 'pass' : 'warning',
-        suggestion: actualProperties.length > 0
-          ? 'Component has configurable properties'
-          : 'Consider adding properties for component customization'
-      },
-      {
-        check: 'Component description',
-        status: componentDescription && componentDescription.trim().length > 0 ? 'pass' : 'warning',
-        suggestion: componentDescription && componentDescription.trim().length > 0
-          ? 'Component has description for MCP/AI context'
-          : 'Add a component description to help MCP and AI understand the component purpose and usage'
-      }
-    ]
+    componentReadiness,
+    accessibility
   };
+}
+
+// ============================================================================
+// Accessibility Check Helpers
+// ============================================================================
+
+const INTERACTIVE_KEYWORDS = [
+  'button', 'btn', 'link', 'anchor', 'checkbox', 'check-box',
+  'radio', 'toggle', 'switch', 'tab', 'chip', 'tag',
+  'input', 'select', 'dropdown', 'menu-item', 'menuitem',
+  'slider', 'stepper', 'icon-button', 'fab', 'action'
+];
+
+/**
+ * Determine if a component is interactive based on name, states, and structure
+ */
+function isInteractiveComponent(node: SceneNode, states: string[]): boolean {
+  const nameLower = node.name.toLowerCase();
+  // Check name keywords
+  if (INTERACTIVE_KEYWORDS.some(kw => nameLower.includes(kw))) return true;
+  // Check if it has interactive states (hover, pressed, focus, active, disabled)
+  const interactiveStates = ['hover', 'pressed', 'focus', 'focused', 'active', 'disabled'];
+  if (states.some(s => interactiveStates.includes(s.toLowerCase()))) return true;
+  return false;
+}
+
+/**
+ * Get the luminance of an RGB color (0-1 range) for contrast calculation
+ */
+function getLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map(c => {
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/**
+ * Calculate WCAG contrast ratio between two luminance values
+ */
+function getContrastRatio(l1: number, l2: number): number {
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Find the nearest background color by walking up the parent chain
+ */
+function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number } | null {
+  let current: BaseNode | null = node.parent;
+  while (current && 'type' in current) {
+    const sceneNode = current as SceneNode;
+    if ('fills' in sceneNode) {
+      const fills = (sceneNode as any).fills;
+      if (Array.isArray(fills)) {
+        for (const fill of fills) {
+          if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
+            // Skip if bound to a variable — we can't resolve the actual value reliably
+            if (fill.boundVariables && fill.boundVariables.color) continue;
+            return fill.color;
+          }
+        }
+      }
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
+ * Run real accessibility checks on a component node
+ */
+function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[] {
+  const checks: AuditCheck[] = [];
+  const interactive = isInteractiveComponent(node, states);
+
+  // 1. Touch target size (for interactive components)
+  if (interactive) {
+    const width = 'width' in node ? (node as any).width : 0;
+    const height = 'height' in node ? (node as any).height : 0;
+    const minDim = Math.min(width, height);
+
+    if (minDim >= 44) {
+      checks.push({
+        check: 'Touch target size',
+        status: 'pass',
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets recommended 44px minimum`
+      });
+    } else if (minDim >= 24) {
+      checks.push({
+        check: 'Touch target size',
+        status: 'warning',
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px`
+      });
+    } else {
+      checks.push({
+        check: 'Touch target size',
+        status: 'fail',
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px is below WCAG 2.5.8 minimum of 24×24px`
+      });
+    }
+  }
+
+  // 2. Focus state (for interactive components)
+  if (interactive) {
+    const hasFocus = states.some(s => {
+      const lower = s.toLowerCase();
+      return lower === 'focus' || lower === 'focused' || lower.includes('focus');
+    });
+    checks.push({
+      check: 'Focus state',
+      status: hasFocus ? 'pass' : 'warning',
+      suggestion: hasFocus
+        ? 'Component has a focus state for keyboard navigation'
+        : 'Add a visible focus state to support keyboard navigation (WCAG 2.4.7)'
+    });
+  }
+
+  // 3. Minimum font size
+  if ('findAll' in node) {
+    const containerNode = node as FrameNode | ComponentNode | ComponentSetNode;
+    const textNodes = containerNode.findAll(n => n.type === 'TEXT') as TextNode[];
+    if (textNodes.length > 0) {
+      let smallestSize = Infinity;
+      let hasSmallText = false;
+      for (const text of textNodes) {
+        const size = typeof text.fontSize === 'number' ? text.fontSize : 0;
+        if (size > 0 && size < smallestSize) smallestSize = size;
+        if (size > 0 && size < 12) hasSmallText = true;
+      }
+
+      if (hasSmallText) {
+        checks.push({
+          check: 'Minimum font size',
+          status: 'warning',
+          suggestion: `Text as small as ${smallestSize}px detected. Consider using 12px minimum for readability`
+        });
+      } else if (smallestSize !== Infinity) {
+        checks.push({
+          check: 'Minimum font size',
+          status: 'pass',
+          suggestion: `Smallest text is ${smallestSize}px, meets readability guidelines`
+        });
+      }
+    }
+  }
+
+  // 4. Color contrast (text vs background)
+  if ('findAll' in node) {
+    const containerNode = node as FrameNode | ComponentNode | ComponentSetNode;
+    const textNodes = containerNode.findAll(n => n.type === 'TEXT') as TextNode[];
+    let worstRatio = Infinity;
+    let checkedCount = 0;
+    let worstTextName = '';
+
+    for (const text of textNodes) {
+      // Get text fill color (skip variable-bound fills)
+      const fills = (text as any).fills;
+      if (!Array.isArray(fills) || fills.length === 0) continue;
+      const textFill = fills.find((f: any) =>
+        f.type === 'SOLID' && f.visible !== false && f.color &&
+        !(f.boundVariables && f.boundVariables.color)
+      );
+      if (!textFill) continue;
+
+      // Find background color
+      const bgColor = findBackgroundColor(text);
+      if (!bgColor) continue;
+
+      const textLum = getLuminance(textFill.color.r, textFill.color.g, textFill.color.b);
+      const bgLum = getLuminance(bgColor.r, bgColor.g, bgColor.b);
+      const ratio = getContrastRatio(textLum, bgLum);
+      checkedCount++;
+
+      if (ratio < worstRatio) {
+        worstRatio = ratio;
+        worstTextName = text.name || 'text';
+      }
+    }
+
+    if (checkedCount > 0 && worstRatio !== Infinity) {
+      const ratioStr = worstRatio.toFixed(1);
+      // WCAG AA: 4.5:1 for normal text, 3:1 for large text
+      if (worstRatio >= 4.5) {
+        checks.push({
+          check: 'Color contrast',
+          status: 'pass',
+          suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1)`
+        });
+      } else if (worstRatio >= 3) {
+        checks.push({
+          check: 'Color contrast',
+          status: 'warning',
+          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1)`
+        });
+      } else {
+        checks.push({
+          check: 'Color contrast',
+          status: 'fail',
+          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1`
+        });
+      }
+    }
+  }
+
+  // If no checks were applicable (e.g., non-interactive, no text), add a generic pass
+  if (checks.length === 0) {
+    checks.push({
+      check: 'Accessibility review',
+      status: 'pass',
+      suggestion: 'No accessibility issues detected for this component type'
+    });
+  }
+
+  return checks;
 }
 
 /**
@@ -2138,332 +2582,6 @@ function enhanceMCPReadinessWithFallback(mcpData: any, data: {
         }
       )
   };
-}
-
-/**
- * Generate property recommendations for components with few or no properties
- */
-function generatePropertyRecommendations(componentName: string, existingProperties: Array<{ name: string; values: string[]; default: string }>): Array<{ name: string; type: string; description: string; examples: string[] }> {
-  const recommendations: Array<{ name: string; type: string; description: string; examples: string[] }> = [];
-  const lowerName = componentName.toLowerCase();
-
-  console.log('🔍 [RECOMMENDATIONS] Generating recommendations for:', componentName, 'with', existingProperties.length, 'existing properties');
-
-  // Check what properties are already present
-  const hasProperty = (name: string) => {
-    const lowerName = name.toLowerCase();
-    return existingProperties.some(prop => {
-      const propName = prop.name.toLowerCase();
-      // Exact match or very close match
-      return propName === lowerName ||
-             propName.includes(lowerName) ||
-             lowerName.includes(propName) ||
-             // Handle common variations
-             (lowerName === 'text' && (propName === 'label' || propName.includes('text'))) ||
-             (lowerName === 'label' && (propName === 'text' || propName.includes('label')));
-    });
-  };
-
-  // Avatar/Profile component recommendations
-  if (lowerName.includes('avatar') || lowerName.includes('profile') || lowerName.includes('user')) {
-    if (!hasProperty('size')) {
-      recommendations.push({
-        name: 'Size',
-        type: 'VARIANT',
-        description: 'Different sizes for various use cases (list items, headers, etc.)',
-        examples: ['xs (24px)', 'sm (32px)', 'md (40px)', 'lg (56px)', 'xl (80px)']
-      });
-    }
-
-    if (!hasProperty('initials') && !hasProperty('text')) {
-      recommendations.push({
-        name: 'Initials',
-        type: 'TEXT',
-        description: 'User initials displayed when no image is available',
-        examples: ['JD', 'AS', 'MT']
-      });
-    }
-
-    if (!hasProperty('image') && !hasProperty('src')) {
-      recommendations.push({
-        name: 'Image',
-        type: 'INSTANCE_SWAP',
-        description: 'User profile image or placeholder',
-        examples: ['User photo', 'Default avatar', 'Company logo']
-      });
-    }
-
-    if (!hasProperty('status') && !hasProperty('indicator')) {
-      recommendations.push({
-        name: 'Status Indicator',
-        type: 'BOOLEAN',
-        description: 'Online/offline status or notification badge',
-        examples: ['true (show indicator)', 'false (no indicator)']
-      });
-    }
-
-    if (!hasProperty('border') && !hasProperty('ring')) {
-      recommendations.push({
-        name: 'Border',
-        type: 'BOOLEAN',
-        description: 'Optional border around the avatar',
-        examples: ['true (with border)', 'false (no border)']
-      });
-    }
-  }
-
-  // Button component recommendations
-  else if (lowerName.includes('button') || lowerName.includes('btn')) {
-    if (!hasProperty('variant') && !hasProperty('style')) {
-      recommendations.push({
-        name: 'Variant',
-        type: 'VARIANT',
-        description: 'Visual style variants for different hierarchy levels',
-        examples: ['primary', 'secondary', 'tertiary', 'danger', 'ghost']
-      });
-    }
-
-    if (!hasProperty('size')) {
-      recommendations.push({
-        name: 'Size',
-        type: 'VARIANT',
-        description: 'Button sizes for different contexts',
-        examples: ['sm', 'md', 'lg', 'xl']
-      });
-    }
-
-    if (!hasProperty('state')) {
-      recommendations.push({
-        name: 'State',
-        type: 'VARIANT',
-        description: 'Interactive states for user feedback',
-        examples: ['default', 'hover', 'focus', 'pressed', 'disabled']
-      });
-    }
-
-    if (!hasProperty('icon') && !hasProperty('before') && !hasProperty('after')) {
-      recommendations.push({
-        name: 'Icon Before',
-        type: 'INSTANCE_SWAP',
-        description: 'Optional icon before the button text',
-        examples: ['Plus icon', 'Arrow icon', 'No icon']
-      });
-    }
-
-    if (!hasProperty('text') && !hasProperty('label')) {
-      recommendations.push({
-        name: 'Text',
-        type: 'TEXT',
-        description: 'Button label text',
-        examples: ['Click me', 'Submit', 'Cancel', 'Save changes']
-      });
-    }
-  }
-
-  // Input/Form component recommendations
-  else if (lowerName.includes('input') || lowerName.includes('field') || lowerName.includes('form')) {
-    if (!hasProperty('label')) {
-      recommendations.push({
-        name: 'Label',
-        type: 'TEXT',
-        description: 'Input label for accessibility and clarity',
-        examples: ['Email address', 'Full name', 'Password']
-      });
-    }
-
-    if (!hasProperty('placeholder')) {
-      recommendations.push({
-        name: 'Placeholder',
-        type: 'TEXT',
-        description: 'Placeholder text shown when input is empty',
-        examples: ['Enter your email...', 'Type here...']
-      });
-    }
-
-    if (!hasProperty('state')) {
-      recommendations.push({
-        name: 'State',
-        type: 'VARIANT',
-        description: 'Input states for different interactions',
-        examples: ['default', 'focus', 'error', 'disabled', 'success']
-      });
-    }
-
-    if (!hasProperty('required')) {
-      recommendations.push({
-        name: 'Required',
-        type: 'BOOLEAN',
-        description: 'Whether the field is required',
-        examples: ['true (required)', 'false (optional)']
-      });
-    }
-
-    if (!hasProperty('error') && !hasProperty('helper')) {
-      recommendations.push({
-        name: 'Helper Text',
-        type: 'TEXT',
-        description: 'Helper or error message below the input',
-        examples: ['This field is required', 'Must be a valid email']
-      });
-    }
-  }
-
-  // Card component recommendations
-  else if (lowerName.includes('card')) {
-    if (!hasProperty('variant') && !hasProperty('elevation')) {
-      recommendations.push({
-        name: 'Elevation',
-        type: 'VARIANT',
-        description: 'Card elevation/shadow level',
-        examples: ['none', 'low', 'medium', 'high']
-      });
-    }
-
-    if (!hasProperty('interactive') && !hasProperty('clickable')) {
-      recommendations.push({
-        name: 'Interactive',
-        type: 'BOOLEAN',
-        description: 'Whether the card is clickable/interactive',
-        examples: ['true (clickable)', 'false (static)']
-      });
-    }
-
-    if (!hasProperty('image') && !hasProperty('media')) {
-      recommendations.push({
-        name: 'Media',
-        type: 'INSTANCE_SWAP',
-        description: 'Optional image or media at the top of the card',
-        examples: ['Product image', 'Hero image', 'No media']
-      });
-    }
-  }
-
-  // Badge/Tag component recommendations
-  else if (lowerName.includes('badge') || lowerName.includes('tag') || lowerName.includes('chip')) {
-    if (!hasProperty('variant') && !hasProperty('color')) {
-      recommendations.push({
-        name: 'Variant',
-        type: 'VARIANT',
-        description: 'Badge color/style variants',
-        examples: ['primary', 'secondary', 'success', 'warning', 'error']
-      });
-    }
-
-    if (!hasProperty('size')) {
-      recommendations.push({
-        name: 'Size',
-        type: 'VARIANT',
-        description: 'Badge sizes for different contexts',
-        examples: ['sm', 'md', 'lg']
-      });
-    }
-
-    if (!hasProperty('text') && !hasProperty('label')) {
-      recommendations.push({
-        name: 'Text',
-        type: 'TEXT',
-        description: 'Badge text content',
-        examples: ['New', 'Beta', 'Sale', '5', 'Premium']
-      });
-    }
-
-    if (!hasProperty('removable') && !hasProperty('close')) {
-      recommendations.push({
-        name: 'Removable',
-        type: 'BOOLEAN',
-        description: 'Whether the badge can be removed/dismissed',
-        examples: ['true (show close button)', 'false (static)']
-      });
-    }
-  }
-
-  // Icon component recommendations
-  else if (lowerName.includes('icon')) {
-    if (!hasProperty('size')) {
-      recommendations.push({
-        name: 'Size',
-        type: 'VARIANT',
-        description: 'Icon sizes for different use cases',
-        examples: ['12px', '16px', '20px', '24px', '32px']
-      });
-    }
-
-    if (!hasProperty('color') && !hasProperty('variant')) {
-      recommendations.push({
-        name: 'Color',
-        type: 'VARIANT',
-        description: 'Icon color variants',
-        examples: ['default', 'muted', 'primary', 'success', 'warning', 'error']
-      });
-    }
-  }
-
-  // Generic component recommendations (if no specific type detected)
-  if (recommendations.length === 0) {
-    // Add some common recommendations for any component
-    if (!hasProperty('size')) {
-      recommendations.push({
-        name: 'Size',
-        type: 'VARIANT',
-        description: 'Component sizes for different contexts',
-        examples: ['sm', 'md', 'lg']
-      });
-    }
-
-    if (!hasProperty('variant') && !hasProperty('style')) {
-      recommendations.push({
-        name: 'Variant',
-        type: 'VARIANT',
-        description: 'Visual style variants',
-        examples: ['primary', 'secondary', 'tertiary']
-      });
-    }
-  }
-
-  // Filter out recommendations that are too similar to existing properties
-  const filteredRecommendations = recommendations.filter(rec => {
-    const recName = rec.name.toLowerCase();
-    const similarExists = existingProperties.some(existing => {
-      const existingName = existing.name.toLowerCase();
-
-      // Exact match
-      if (existingName === recName) return true;
-
-      // Partial matches
-      if (existingName.includes(recName) || recName.includes(existingName)) return true;
-
-      // Common semantic equivalents
-      const semanticMatches = [
-        ['text', 'label', 'content'],
-        ['size', 'scale', 'dimension'],
-        ['variant', 'style', 'type', 'kind'],
-        ['state', 'status', 'mode'],
-        ['color', 'theme', 'palette'],
-        ['icon', 'symbol', 'graphic']
-      ];
-
-      for (const group of semanticMatches) {
-        if (group.includes(recName) && group.some(term => existingName.includes(term))) {
-          return true;
-        }
-      }
-
-      return false;
-    });
-    return !similarExists;
-  });
-
-  // Debug logging
-  if (recommendations.length > filteredRecommendations.length) {
-    const filtered = recommendations.filter(rec => !filteredRecommendations.includes(rec));
-    console.log('🔍 [RECOMMENDATIONS] Filtered out duplicates:', filtered.map(r => r.name));
-  }
-
-  console.log(`🔍 [RECOMMENDATIONS] Generated ${filteredRecommendations.length} recommendations for ${componentName}`);
-  console.log('🔍 [RECOMMENDATIONS] Existing properties:', existingProperties.map(p => p.name));
-  console.log('🔍 [RECOMMENDATIONS] Final recommendations:', filteredRecommendations.map(r => r.name));
-
-  return filteredRecommendations;
 }
 
 /**
