@@ -192,7 +192,6 @@ export type UIMessageType =
   | 'select-node'
   // Auto-fix message types
   | 'preview-fix'
-  | 'apply-fix'
   | 'apply-token-fix'
   | 'apply-naming-fix'
   | 'apply-batch-fix'
