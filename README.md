@@ -4,6 +4,8 @@ An AI-powered Figma plugin that audits components for design system compliance, 
 
 FigmaLint analyzes your components against real standards, surfaces hard-coded values and naming issues, and produces structured documentation ready for developer handoff or AI code generation.
 
+**[Install from Figma Community](https://www.figma.com/community/plugin/1521241390290871981/figmalint)**
+
 ## Features
 
 ### Multi-Provider AI Analysis
