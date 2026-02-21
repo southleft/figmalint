@@ -47,6 +47,7 @@ scripts/test-*.js
 
 # Local configuration
 .claude/
+.serena/
 settings.local.json
 
 # Development UI files

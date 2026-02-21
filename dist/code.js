@@ -6483,7 +6483,8 @@ Respond naturally and helpfully to the user's question.`;
             results.push({
               nodeId: fix.nodeId,
               success,
-              message: success ? `Renamed "${oldName}" to "${newName}"` : "Failed to rename layer"
+              message: success ? `Renamed "${oldName}" to "${newName}"` : "Failed to rename layer",
+              newName: success ? newName : oldName
             });
             if (success) {
               successCount++;

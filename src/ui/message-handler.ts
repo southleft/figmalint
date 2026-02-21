@@ -1276,7 +1276,8 @@ async function handleApplyBatchFix(data: BatchFixRequest): Promise<void> {
             success,
             message: success
               ? `Renamed "${oldName}" to "${newName}"`
-              : 'Failed to rename layer'
+              : 'Failed to rename layer',
+            newName: success ? newName : oldName
           });
 
           if (success) {

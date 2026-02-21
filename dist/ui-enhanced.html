@@ -2159,6 +2159,45 @@
       opacity: 0.4;
     }
 
+    /* Active selection highlight while fix modal is open */
+    .token-item-compact.token-item-selected {
+      background: var(--interactive-light, rgba(0, 122, 255, 0.08));
+      border-left: 3px solid var(--interactive);
+      box-shadow: inset 0 0 0 1px var(--interactive-light, rgba(0, 122, 255, 0.12));
+    }
+
+    /* Persistent green indicator for successfully fixed items */
+    .token-item-compact.token-item-fixed {
+      background: var(--success-bg);
+      border-left: 3px solid var(--success);
+      opacity: 0.7;
+    }
+
+    .token-item-compact.token-item-fixed .token-name {
+      text-decoration: line-through;
+      color: var(--text-tertiary);
+    }
+
+    /* Editable rename input in fix modal */
+    .rename-input {
+      font-size: 13px;
+      color: var(--text-primary);
+      font-family: 'SF Mono', Monaco, monospace;
+      background: var(--bg-primary);
+      border: 1px solid var(--interactive);
+      border-radius: var(--radius-sm);
+      padding: 6px 8px;
+      width: 100%;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+
+    .rename-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(98, 77, 227, 0.15);
+    }
+
 
     /* Inline icon system (Lucide stroke-based) */
     .ico {
@@ -2821,6 +2860,9 @@
       const modal = document.getElementById('fix-modal');
       modal.classList.remove('active');
       pendingFix = null;
+      // Clear any token item selection highlight
+      document.querySelectorAll('.token-item-compact.token-item-selected')
+        .forEach(el => el.classList.remove('token-item-selected'));
     }
 
     // Confirm and apply the pending fix
@@ -2838,10 +2880,13 @@
           newValue
         });
       } else if (type === 'naming') {
+        // Read the (possibly edited) value from the rename input, falling back to original suggestion
+        const renameInput = document.getElementById('rename-input');
+        const finalName = (renameInput ? renameInput.value.trim() : '') || newValue;
         sendMessageToPlugin('apply-naming-fix', {
           type: 'naming',
           nodeId,
-          newValue
+          newValue: finalName
         });
       } else if (type === 'description') {
         // Get the textarea value (may have been edited by user)
@@ -2852,6 +2897,20 @@
           description
         });
       } else if (type === 'batch') {
+        // Read edited values from grouped rename inputs (if present)
+        const groupInputs = document.querySelectorAll('input[data-rename-group]');
+        if (groupInputs.length > 0) {
+          const groupValues = {};
+          groupInputs.forEach(input => {
+            groupValues[input.getAttribute('data-rename-group')] = input.value.trim();
+          });
+          fixes.forEach(fix => {
+            if (fix._groupIdx !== undefined && groupValues[fix._groupIdx]) {
+              fix.newValue = groupValues[fix._groupIdx];
+            }
+            delete fix._groupIdx;
+          });
+        }
         sendMessageToPlugin('apply-batch-fix', {
           fixes: fixes,
           confirmAll: true
@@ -2866,6 +2925,16 @@
     function previewTokenFix(nodeId, propertyPath, currentValue) {
       // Select the node in Figma so the user can see which element will be updated
       selectFigmaNode(nodeId);
+
+      // Highlight the selected token item so the user can track which one they're fixing
+      document.querySelectorAll('.token-item-compact.token-item-selected')
+        .forEach(el => el.classList.remove('token-item-selected'));
+      const fixBtn = document.querySelector(`.fix-btn[data-node-id="${nodeId}"]`);
+      if (fixBtn) {
+        const tokenItem = fixBtn.closest('.token-item-compact');
+        if (tokenItem) tokenItem.classList.add('token-item-selected');
+      }
+
       sendMessageToPlugin('preview-fix', {
         type: 'token',
         nodeId,
@@ -3119,7 +3188,7 @@
         <div class="preview-arrow">↓</div>
         <div class="preview-box">
           <div class="preview-label">New Name</div>
-          <div class="preview-value">${escapeHtml(suggestedName)}</div>
+          <input type="text" id="rename-input" class="rename-input" value="${escapeHtml(suggestedName)}">
         </div>
       `;
 
@@ -5137,7 +5206,7 @@
               }
 
               const fixButton = token.context?.nodeId && token.context?.property ?
-                `<button class="fix-btn" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
+                `<button class="fix-btn" data-node-id="${token.context.nodeId}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
 
               html += `
                 <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
@@ -5180,7 +5249,7 @@
               }
 
               const fixButton = token.context?.nodeId && token.context?.property ?
-                `<button class="fix-btn" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
+                `<button class="fix-btn" data-node-id="${token.context.nodeId}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
 
               html += `
                 <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
@@ -5253,7 +5322,7 @@
             }
 
             const fixButton = token.context?.nodeId && token.context?.property ?
-              `<button class="fix-btn" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
+              `<button class="fix-btn" data-node-id="${token.context.nodeId}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>` : '';
 
             html += `
               <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
@@ -6032,6 +6101,16 @@
             if (treeItem) {
               treeItem.style.opacity = '0.4';
               treeItem.classList.add('fix-applied-success');
+              // Update the displayed suggested name to show what was actually applied
+              if (data.newName) {
+                const labelEl = treeItem.querySelector('.audit-label');
+                if (labelEl) {
+                  const codes = labelEl.querySelectorAll('code');
+                  if (codes.length >= 2) {
+                    codes[1].textContent = data.newName;
+                  }
+                }
+              }
             }
           }
           // Decrement naming issues count in summary bar
@@ -6072,12 +6151,13 @@
             btn.disabled = true;
             const tokenItem = btn.closest('.token-item-compact');
             if (tokenItem) {
-              tokenItem.style.opacity = '0.4';
+              // Flash animation then transition to persistent green fixed state
+              tokenItem.classList.remove('warning', 'token-item-selected');
+              tokenItem.classList.add('token-item-fixed');
               tokenItem.classList.add('fix-applied-success');
-              const nameEl = tokenItem.querySelector('.token-name');
-              if (nameEl) {
-                nameEl.style.textDecoration = 'line-through';
-              }
+              tokenItem.addEventListener('animationend', () => {
+                tokenItem.classList.remove('fix-applied-success');
+              }, { once: true });
             }
           });
 
@@ -6147,23 +6227,51 @@
       // Update quick actions count
       decrementQuickActionsCount(successCount);
 
-      // Mark successfully renamed naming tree items
+      // Mark successfully fixed items in the UI (both naming and token)
       if (data.results && data.results.length > 0) {
         let namingSuccessCount = 0;
         data.results.forEach(result => {
           if (result.success && result.nodeId) {
-            const btn = document.querySelector(`.audit-action-button[data-node-id="${result.nodeId}"]`);
-            if (btn) {
-              btn.textContent = '\u2713';
-              btn.classList.add('fix-applied');
-              btn.disabled = true;
-              const treeItem = btn.closest('.naming-tree-item');
+            // Try naming tree items first
+            const namingBtn = document.querySelector(`.audit-action-button[data-node-id="${result.nodeId}"]`);
+            if (namingBtn) {
+              namingBtn.textContent = '\u2713';
+              namingBtn.classList.add('fix-applied');
+              namingBtn.disabled = true;
+              const treeItem = namingBtn.closest('.naming-tree-item');
               if (treeItem) {
                 treeItem.style.opacity = '0.4';
                 treeItem.classList.add('fix-applied-success');
+                // Update displayed name to show what was actually applied
+                if (result.newName) {
+                  const labelEl = treeItem.querySelector('.audit-label');
+                  if (labelEl) {
+                    const codes = labelEl.querySelectorAll('code');
+                    if (codes.length >= 2) {
+                      codes[1].textContent = result.newName;
+                    }
+                  }
+                }
               }
               namingSuccessCount++;
             }
+
+            // Also update token fix buttons
+            const tokenBtns = document.querySelectorAll(`.fix-btn[data-node-id="${result.nodeId}"]`);
+            tokenBtns.forEach(btn => {
+              btn.textContent = '\u2713';
+              btn.classList.add('fix-applied');
+              btn.disabled = true;
+              const tokenItem = btn.closest('.token-item-compact');
+              if (tokenItem) {
+                tokenItem.classList.remove('warning', 'token-item-selected');
+                tokenItem.classList.add('token-item-fixed');
+                tokenItem.classList.add('fix-applied-success');
+                tokenItem.addEventListener('animationend', () => {
+                  tokenItem.classList.remove('fix-applied-success');
+                }, { once: true });
+              }
+            });
           }
         });
 
@@ -6189,6 +6297,40 @@
               renameAllBtn.textContent = '\u2713 Done';
               renameAllBtn.disabled = true;
               renameAllBtn.classList.add('fix-applied');
+            }
+          }
+        }
+      }
+
+      // Disable section-level "Fix All" buttons if all items in that section are fixed
+      ['section-colors', 'section-stroke-weight', 'section-border-radius', 'section-spacing'].forEach(sectionId => {
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+        const remainingWarnings = section.querySelectorAll('.token-item-compact.warning');
+        if (remainingWarnings.length === 0) {
+          const sectionFixAll = section.querySelector('.fix-btn');
+          if (sectionFixAll && !sectionFixAll.closest('.token-item-compact')) {
+            sectionFixAll.textContent = '\u2713 Done';
+            sectionFixAll.disabled = true;
+            sectionFixAll.classList.add('fix-applied');
+          }
+        }
+      });
+
+      // Update the batch token fix bar count
+      if (successCount > 0) {
+        const batchBar = document.querySelector('.batch-action-bar .batch-label');
+        if (batchBar) {
+          const match = batchBar.textContent.match(/(\d+)/);
+          if (match) {
+            const remaining = Math.max(0, parseInt(match[1], 10) - successCount);
+            if (remaining > 0) {
+              batchBar.innerHTML = `${ICO.warnTriangle} ${remaining} hard-coded value${remaining !== 1 ? 's' : ''} found`;
+            } else {
+              const bar = batchBar.closest('.batch-action-bar');
+              if (bar) {
+                bar.innerHTML = '<span class="batch-label" style="color: var(--success);">\u2713 All hard-coded values fixed</span>';
+              }
             }
           }
         }
@@ -6257,20 +6399,67 @@
         return;
       }
 
-      const fixes = unfixedIssues.map(issue => ({
-        type: 'naming',
-        nodeId: issue.nodeId,
-        newValue: issue.suggestedName
-      }));
+      // Group issues by suggested name for cleaner editing
+      const groups = {};
+      unfixedIssues.forEach(issue => {
+        const key = issue.suggestedName;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(issue);
+      });
 
-      const previewHtml = `
+      const groupKeys = Object.keys(groups);
+
+      let previewHtml = `
         <div style="margin-bottom: 12px;">
-          <p style="font-size: 12px; margin-bottom: 8px;">This will rename <strong>${fixes.length}</strong> layer${fixes.length !== 1 ? 's' : ''} to semantic names.</p>
-          <div style="max-height: 200px; overflow-y: auto; font-size: 11px; color: var(--text-secondary);">
-            ${unfixedIssues.map(issue => `<div style="margin-bottom: 4px; padding: 2px 0;"><span style="opacity: 0.6;">${escapeHtml(issue.currentName)}</span> → <strong>${escapeHtml(issue.suggestedName)}</strong></div>`).join('')}
+          <p style="font-size: 12px; margin-bottom: 10px;">This will rename <strong>${unfixedIssues.length}</strong> layer${unfixedIssues.length !== 1 ? 's' : ''} to semantic names.</p>
+          <div style="max-height: 260px; overflow-y: auto;">
+      `;
+
+      groupKeys.forEach((suggestedName, idx) => {
+        const issues = groups[suggestedName];
+        const currentNames = [...new Set(issues.map(i => i.currentName))];
+        previewHtml += `
+            <div class="rename-group" style="background: var(--surface); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-size: 10px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase;">${escapeHtml(currentNames.join(', '))} — ${issues.length} layer${issues.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                <span style="font-size: 11px; opacity: 0.6;">${escapeHtml(currentNames[0])}</span>
+                <span style="color: var(--primary); font-weight: 600;">→</span>
+                <input type="text"
+                  class="rename-input"
+                  data-rename-group="${idx}"
+                  value="${escapeHtml(suggestedName)}"
+                  style="flex: 1; min-width: 0;">
+              </div>
+              <div style="font-size: 10px; color: var(--text-tertiary); line-height: 1.5;">
+                ${issues.map(issue => {
+                  const path = issue.path || '';
+                  const shortPath = path.split(' > ').slice(-3).join(' > ');
+                  return `<div style="padding: 1px 0;">· ${escapeHtml(shortPath)}</div>`;
+                }).join('')}
+              </div>
+            </div>
+        `;
+      });
+
+      previewHtml += `
           </div>
         </div>
       `;
+
+      // Build fixes array with group index metadata for reading edited values on confirm
+      const fixes = [];
+      groupKeys.forEach((suggestedName, idx) => {
+        groups[suggestedName].forEach(issue => {
+          fixes.push({
+            type: 'naming',
+            nodeId: issue.nodeId,
+            newValue: suggestedName,
+            _groupIdx: idx
+          });
+        });
+      });
 
       showFixModal('Rename All Layers', previewHtml, {
         type: 'batch',
