@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import ChatContainer from './components/chat/ChatContainer';
+import SettingsPanel from './components/shared/SettingsPanel';
 import { useChat } from './hooks/useChat';
 import { usePluginMessages, usePostToPlugin } from './hooks/usePluginMessages';
 import type { PluginEvent, LintResult, LintError, AiReviewData, ReferoComparisonData } from './lib/messages';
@@ -12,6 +13,7 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState(false);
   const [backendAvailable, setBackendAvailable] = useState(false);
   const [analysisMode, setAnalysisMode] = useState<'quick' | 'deep'>('quick');
+  const [showSettings, setShowSettings] = useState(false);
   const walkthroughIndex = useRef(0);
   const referoPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingLintResult = useRef<LintResult | null>(null);
@@ -161,6 +163,12 @@ export default function App() {
             break;
           case 'api-key-status':
             setHasApiKey((event.data as any)?.hasKey || false);
+            break;
+          case 'api-key-saved':
+            if ((event.data as any)?.success) {
+              setHasApiKey(true);
+              chat.addMessage({ kind: 'ai-text', content: 'API key saved successfully.' });
+            }
             break;
         }
       },
@@ -315,6 +323,28 @@ export default function App() {
           break;
         }
 
+        case 'export-json': {
+          const jsonResult = chat.lintResult;
+          if (jsonResult) {
+            const report = {
+              component: componentName || 'Component',
+              timestamp: new Date().toISOString(),
+              combinedScore: chat.combinedScore,
+              lint: {
+                summary: jsonResult.summary,
+                errors: jsonResult.errors,
+                issuesFixed: chat.issuesFixed,
+              },
+              aiReview: chat.aiReview || undefined,
+            };
+            navigator.clipboard.writeText(JSON.stringify(report, null, 2)).then(
+              () => chat.addMessage({ kind: 'ai-text', content: 'JSON report copied to clipboard!' }),
+              () => chat.addMessage({ kind: 'ai-text', content: 'Failed to copy JSON to clipboard.' }),
+            );
+          }
+          break;
+        }
+
         case 'toggle-mode': {
           const next = analysisMode === 'quick' ? 'deep' : 'quick';
           setAnalysisMode(next);
@@ -337,15 +367,41 @@ export default function App() {
   );
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
+      {/* Settings panel (overlay) */}
+      {showSettings && (
+        <SettingsPanel
+          hasApiKey={hasApiKey}
+          analysisMode={analysisMode}
+          backendAvailable={backendAvailable}
+          onSaveApiKey={(key, prov) => post('save-api-key', { apiKey: key, provider: prov })}
+          onClearApiKey={() => { post('clear-api-key'); setHasApiKey(false); }}
+          onToggleMode={() => {
+            const next = analysisMode === 'quick' ? 'deep' : 'quick';
+            setAnalysisMode(next);
+          }}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
       {/* Top analyze bar (shown when no results yet) */}
       {chat.messages.length === 0 && !chat.isAnalyzing && (
-        <div className="px-3 py-2 border-b border-border">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
           <button
-            className="w-full py-2 bg-bg-brand text-fg-onbrand text-12 font-medium rounded-md hover:opacity-90 transition-opacity"
+            className="flex-1 py-2 bg-bg-brand text-fg-onbrand text-12 font-medium rounded-md hover:opacity-90 transition-opacity"
             onClick={handleAnalyze}
           >
             Analyze Selection
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="shrink-0 w-8 h-8 flex items-center justify-center text-fg-tertiary hover:text-fg rounded-md hover:bg-bg-hover transition-colors"
+            title="Settings"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
           </button>
         </div>
       )}
@@ -358,6 +414,7 @@ export default function App() {
         onSendMessage={handleSendMessage}
         onAction={handleAction}
         onJumpToNode={handleJumpToNode}
+        onOpenSettings={() => setShowSettings(true)}
       />
     </div>
   );

@@ -25,8 +25,16 @@ export default function QuickActions({ onAnalyze, hasFixable, analysisMode = 'qu
       <button
         className="shrink-0 px-2 py-1 text-11 text-fg-secondary hover:bg-bg-hover rounded-md transition-colors"
         onClick={() => onAction('export')}
+        title="Copy markdown report"
       >
         Export
+      </button>
+      <button
+        className="shrink-0 px-2 py-1 text-11 text-fg-tertiary hover:bg-bg-hover rounded-md transition-colors"
+        onClick={() => onAction('export-json')}
+        title="Copy JSON report"
+      >
+        JSON
       </button>
       <button
         className="shrink-0 px-2 py-1 text-11 text-fg-tertiary hover:bg-bg-hover rounded-md transition-colors"

@@ -13,6 +13,7 @@ interface ChatContainerProps {
   onSendMessage: (text: string) => void;
   onAction: (action: string, params?: Record<string, unknown>) => void;
   onJumpToNode: (nodeId: string) => void;
+  onOpenSettings?: () => void;
 }
 
 export default function ChatContainer({
@@ -23,6 +24,7 @@ export default function ChatContainer({
   onSendMessage,
   onAction,
   onJumpToNode,
+  onOpenSettings,
 }: ChatContainerProps) {
   const { messages, score, lintResult, isAnalyzing, issuesFixed } = state;
   const totalIssues = lintResult?.summary.totalErrors || 0;
@@ -47,6 +49,7 @@ export default function ChatContainer({
         score={score}
         totalIssues={totalIssues}
         issuesFixed={issuesFixed}
+        onOpenSettings={onOpenSettings}
       />
 
       {/* Message stream */}
