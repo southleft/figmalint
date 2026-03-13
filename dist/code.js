@@ -2642,6 +2642,195 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     return str.replace(/([a-z])([A-Z])/g, "$1-$2").replace(/[\s_]+/g, "-").replace(/[^a-zA-Z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
   }
 
+  // src/lint/types.ts
+  var SPACING_SCALE = [0, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96];
+  function findClosestSpacingValues(value) {
+    if (SPACING_SCALE.includes(value)) return [];
+    const sorted = [...SPACING_SCALE].map((v) => ({ v, diff: Math.abs(v - value) })).sort((a, b) => a.diff - b.diff);
+    const closest = [];
+    for (const s of sorted) {
+      if (closest.length >= 2) break;
+      if (!closest.includes(s.v)) closest.push(s.v);
+    }
+    return closest.sort((a, b) => a - b);
+  }
+
+  // src/lint/spacing.ts
+  var issueCounter = 0;
+  function nextId() {
+    return `spacing-${++issueCounter}`;
+  }
+  function isValidSpacing(value) {
+    return SPACING_SCALE.includes(value);
+  }
+  function spacingLabel(property) {
+    const map = {
+      itemSpacing: "Gap",
+      paddingTop: "Padding Top",
+      paddingBottom: "Padding Bottom",
+      paddingLeft: "Padding Left",
+      paddingRight: "Padding Right",
+      counterAxisSpacing: "Counter-axis Gap"
+    };
+    return map[property] || property;
+  }
+  function checkFrameSpacing(node, issues) {
+    var _a;
+    if (node.layoutMode === "NONE") return 0;
+    let checked = 0;
+    const spacingProperties = [
+      { prop: "itemSpacing", value: node.itemSpacing },
+      { prop: "paddingTop", value: node.paddingTop },
+      { prop: "paddingBottom", value: node.paddingBottom },
+      { prop: "paddingLeft", value: node.paddingLeft },
+      { prop: "paddingRight", value: node.paddingRight }
+    ];
+    if ("counterAxisSpacing" in node && typeof node.counterAxisSpacing === "number") {
+      spacingProperties.push({
+        prop: "counterAxisSpacing",
+        value: node.counterAxisSpacing
+      });
+    }
+    for (const { prop, value } of spacingProperties) {
+      checked++;
+      if (!isValidSpacing(value)) {
+        const suggestions = findClosestSpacingValues(value);
+        issues.push({
+          id: nextId(),
+          type: "spacing",
+          severity: "warning",
+          nodeId: node.id,
+          nodeName: node.name,
+          message: `${spacingLabel(prop)} is ${value}px \u2014 not in spacing scale`,
+          currentValue: `${value}px`,
+          suggestions: suggestions.map((s) => `${s}px`),
+          autoFixable: true,
+          fixAction: {
+            type: "fixSpacing",
+            params: {
+              nodeId: node.id,
+              property: prop,
+              currentValue: value,
+              suggestedValue: (_a = suggestions[0]) != null ? _a : value
+            }
+          }
+        });
+      }
+    }
+    return checked;
+  }
+  function traverseForSpacing(node, issues, skipLocked, skipHidden, parentLocked) {
+    const isLocked = parentLocked || "locked" in node && node.locked;
+    const isHidden = "visible" in node && !node.visible;
+    if (skipLocked && isLocked) return { checked: 0, passed: 0 };
+    if (skipHidden && isHidden) return { checked: 0, passed: 0 };
+    let checked = 0;
+    let passed = 0;
+    if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+      const preLen = issues.length;
+      const count = checkFrameSpacing(node, issues);
+      checked += count;
+      passed += count - (issues.length - preLen);
+    }
+    if ("children" in node) {
+      for (const child of node.children) {
+        const sub = traverseForSpacing(child, issues, skipLocked, skipHidden, isLocked);
+        checked += sub.checked;
+        passed += sub.passed;
+      }
+    }
+    return { checked, passed };
+  }
+  function checkSpacing(nodes, options = {}) {
+    const { skipLocked = true, skipHidden = true } = options;
+    issueCounter = 0;
+    const issues = [];
+    let totalChecked = 0;
+    let totalPassed = 0;
+    for (const node of nodes) {
+      const { checked, passed } = traverseForSpacing(node, issues, skipLocked, skipHidden, false);
+      totalChecked += checked;
+      totalPassed += passed;
+    }
+    return {
+      issues,
+      summary: {
+        totalChecked,
+        passed: totalPassed,
+        failed: issues.length
+      }
+    };
+  }
+
+  // src/lint/auto-layout.ts
+  var issueCounter2 = 0;
+  function nextId2() {
+    return `autolayout-${++issueCounter2}`;
+  }
+  function traverseForAutoLayout(node, issues, skipLocked, skipHidden, parentLocked) {
+    const isLocked = parentLocked || "locked" in node && node.locked;
+    const isHidden = "visible" in node && !node.visible;
+    if (skipLocked && isLocked) return { totalFrames: 0, withAutoLayout: 0 };
+    if (skipHidden && isHidden) return { totalFrames: 0, withAutoLayout: 0 };
+    let totalFrames = 0;
+    let withAutoLayout = 0;
+    const isFrameLike = node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE";
+    if (isFrameLike && "children" in node) {
+      const children = node.children;
+      if (children.length >= 2) {
+        totalFrames++;
+        const frameNode = node;
+        if (frameNode.layoutMode !== "NONE") {
+          withAutoLayout++;
+        } else {
+          issues.push({
+            id: nextId2(),
+            type: "autoLayout",
+            severity: "warning",
+            nodeId: node.id,
+            nodeName: node.name,
+            message: `Frame "${node.name}" has ${children.length} children but no Auto Layout`,
+            currentValue: "No Auto Layout",
+            suggestions: ["HORIZONTAL", "VERTICAL"],
+            autoFixable: false
+            // Converting to auto-layout can break designs
+          });
+        }
+      }
+    }
+    if ("children" in node) {
+      for (const child of node.children) {
+        const sub = traverseForAutoLayout(child, issues, skipLocked, skipHidden, isLocked);
+        totalFrames += sub.totalFrames;
+        withAutoLayout += sub.withAutoLayout;
+      }
+    }
+    return { totalFrames, withAutoLayout };
+  }
+  function checkAutoLayout(nodes, options = {}) {
+    const { skipLocked = true, skipHidden = true } = options;
+    issueCounter2 = 0;
+    const issues = [];
+    let totalFrames = 0;
+    let withAutoLayout = 0;
+    for (const node of nodes) {
+      const sub = traverseForAutoLayout(node, issues, skipLocked, skipHidden, false);
+      totalFrames += sub.totalFrames;
+      withAutoLayout += sub.withAutoLayout;
+    }
+    const withoutAutoLayout = totalFrames - withAutoLayout;
+    const percentage = totalFrames > 0 ? Math.round(withAutoLayout / totalFrames * 100) : 100;
+    return {
+      issues,
+      summary: {
+        totalFrames,
+        withAutoLayout,
+        withoutAutoLayout,
+        percentage
+      }
+    };
+  }
+
   // src/core/design-lint.ts
   var DEFAULT_LINT_SETTINGS = {
     checkFills: true,
@@ -2649,6 +2838,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     checkEffects: true,
     checkTextStyles: true,
     checkRadius: true,
+    checkSpacing: true,
+    checkAutoLayout: true,
     allowedRadii: [0, 2, 4, 8, 12, 16, 24, 32],
     skipLockedLayers: true,
     skipHiddenLayers: true
@@ -2900,8 +3091,37 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     for (const node of nodes) {
       totalNodes += traverseAndLint(node, settings, errors, "", false);
     }
+    const skipOpts = { skipLocked: settings.skipLockedLayers, skipHidden: settings.skipHiddenLayers };
+    if (settings.checkSpacing) {
+      const spacingResult = checkSpacing(nodes, skipOpts);
+      for (const issue of spacingResult.issues) {
+        errors.push({
+          nodeId: issue.nodeId,
+          nodeName: issue.nodeName,
+          nodeType: "FRAME",
+          errorType: "spacing",
+          message: issue.message,
+          value: issue.currentValue || "",
+          path: issue.nodeName
+        });
+      }
+    }
+    if (settings.checkAutoLayout) {
+      const autoLayoutResult = checkAutoLayout(nodes, skipOpts);
+      for (const issue of autoLayoutResult.issues) {
+        errors.push({
+          nodeId: issue.nodeId,
+          nodeName: issue.nodeName,
+          nodeType: "FRAME",
+          errorType: "autoLayout",
+          message: issue.message,
+          value: issue.currentValue || "",
+          path: issue.nodeName
+        });
+      }
+    }
     const nodesWithErrors = new Set(errors.map((e) => e.nodeId)).size;
-    const byType = { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0 };
+    const byType = { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0, spacing: 0, autoLayout: 0 };
     for (const err of errors) {
       byType[err.errorType]++;
     }
@@ -2925,7 +3145,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         errors: [],
         ignoredNodeIds: [],
         ignoredErrorKeys: [],
-        summary: { totalErrors: 0, byType: { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0 }, totalNodes: 0, nodesWithErrors: 0 }
+        summary: { totalErrors: 0, byType: { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0, spacing: 0, autoLayout: 0 }, totalNodes: 0, nodesWithErrors: 0 }
       };
     }
     return runDesignLint(selection, settings);
@@ -4054,6 +4274,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
 - Missing effect styles: ${byType.effect || 0}
 - Missing text styles: ${byType.text || 0}
 - Non-standard border radius: ${byType.radius || 0}
+- Off-grid spacing: ${byType.spacing || 0}
+- Missing auto-layout: ${byType.autoLayout || 0}
 Top issues:
 ${topErrors}
 `;
@@ -4500,6 +4722,24 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     } else {
       checks.push({ check: "Border radius", status: "pass", suggestion: "All radii match design system standards" });
     }
+    if (byType.spacing > 0) {
+      checks.push({
+        check: `Spacing rhythm (${byType.spacing} off-grid)`,
+        status: "warning",
+        suggestion: `${byType.spacing} spacing value${byType.spacing > 1 ? "s are" : " is"} not on the 4/8px grid`
+      });
+    } else {
+      checks.push({ check: "Spacing rhythm", status: "pass", suggestion: "All spacing values follow the design grid" });
+    }
+    if (byType.autoLayout > 0) {
+      checks.push({
+        check: `Auto Layout (${byType.autoLayout} missing)`,
+        status: "warning",
+        suggestion: `${byType.autoLayout} frame${byType.autoLayout > 1 ? "s lack" : " lacks"} auto-layout`
+      });
+    } else {
+      checks.push({ check: "Auto Layout", status: "pass", suggestion: "All container frames use auto-layout" });
+    }
     return checks;
   }
   function generateDeterministicReview(lintResult, audit, tokens, namingIssues) {
@@ -4507,7 +4747,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     if (lintResult) {
       for (const err of lintResult.errors) {
         findings.push({
-          severity: err.errorType === "radius" ? "warning" : "critical",
+          severity: err.errorType === "radius" || err.errorType === "spacing" || err.errorType === "autoLayout" ? "warning" : "critical",
           category: "Style Consistency",
           title: err.message,
           description: `Layer "${err.nodeName}" (${err.nodeType}) at ${err.path}`,
@@ -4593,6 +4833,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     if (lintResult && lintResult.summary.byType.fill > 0) nextSteps.push("Apply fill styles to layers using hard-coded colors");
     if (lintResult && lintResult.summary.byType.text > 0) nextSteps.push("Apply text styles to text layers");
     if (lintResult && lintResult.summary.byType.stroke > 0) nextSteps.push("Apply stroke styles to layers with hard-coded strokes");
+    if (lintResult && lintResult.summary.byType.spacing > 0) nextSteps.push("Fix off-grid spacing values to match the 4/8px grid");
+    if (lintResult && lintResult.summary.byType.autoLayout > 0) nextSteps.push("Apply auto-layout to container frames");
     if (hardCoded > 0) nextSteps.push("Replace hard-coded values with design tokens");
     if (namingIssues.length > 0) nextSteps.push("Rename generic layers to semantic names");
     if (missingStates.length > 0) nextSteps.push(`Add missing states: ${missingStates.map((s) => s.name).join(", ")}`);
@@ -4601,7 +4843,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
   }
   async function generateDesignReview(context, lintResult, audit, tokens, namingIssues, recommendations, apiKey, model, providerId) {
     var _a;
-    const lintSummary = lintResult ? `${lintResult.summary.totalErrors} lint issues (${lintResult.summary.byType.fill} fills, ${lintResult.summary.byType.stroke} strokes, ${lintResult.summary.byType.effect} effects, ${lintResult.summary.byType.text} text, ${lintResult.summary.byType.radius} radius)` : "0 lint issues";
+    const lintSummary = lintResult ? `${lintResult.summary.totalErrors} lint issues (${lintResult.summary.byType.fill} fills, ${lintResult.summary.byType.stroke} strokes, ${lintResult.summary.byType.effect} effects, ${lintResult.summary.byType.text} text, ${lintResult.summary.byType.radius} radius, ${lintResult.summary.byType.spacing || 0} spacing, ${lintResult.summary.byType.autoLayout || 0} auto-layout)` : "0 lint issues";
     const accessFails = (audit.accessibility || []).filter((c) => c.status === "fail").length;
     const readinessFails = (audit.componentReadiness || []).filter((c) => c.status === "fail").length;
     const missingStates = (audit.states || []).filter((s) => !s.found);
@@ -6137,6 +6379,30 @@ ${scoringCriteria}
     return 1 - distance / maxDistance;
   }
 
+  // src/extract/screenshot.ts
+  async function exportScreenshot(node, maxWidth = 1024) {
+    const bytes = await node.exportAsync({
+      format: "PNG",
+      constraint: { type: "WIDTH", value: Math.min(maxWidth, node.width) }
+    });
+    return uint8ArrayToBase64(bytes);
+  }
+  function uint8ArrayToBase64(bytes) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let result = "";
+    const len = bytes.length;
+    for (let i = 0; i < len; i += 3) {
+      const b0 = bytes[i];
+      const b1 = i + 1 < len ? bytes[i + 1] : 0;
+      const b2 = i + 2 < len ? bytes[i + 2] : 0;
+      result += chars[b0 >> 2];
+      result += chars[(b0 & 3) << 4 | b1 >> 4];
+      result += i + 1 < len ? chars[(b1 & 15) << 2 | b2 >> 6] : "=";
+      result += i + 2 < len ? chars[b2 & 63] : "=";
+    }
+    return result;
+  }
+
   // src/ui/message-handler.ts
   var storedApiKey = null;
   var selectedModel = "claude-sonnet-4-5-20250929";
@@ -6239,6 +6505,16 @@ ${scoringCriteria}
           break;
         case "lint-load-settings":
           handleLintLoadSettings();
+          break;
+        // Chat UI handlers
+        case "jump-to-node":
+          handleJumpToNode(data);
+          break;
+        case "fix-spacing":
+          handleFixSpacing(data);
+          break;
+        case "export-screenshot":
+          await handleExportScreenshot(data);
           break;
         default:
           console.warn("Unknown message type:", type);
@@ -6853,6 +7129,65 @@ Respond naturally and helpfully to the user's question.`;
       sendMessageToUI("lint-settings-loaded", DEFAULT_LINT_SETTINGS);
     }
   }
+  function handleJumpToNode(data) {
+    try {
+      const node = figma.getNodeById(data.nodeId);
+      if (node && node.type !== "DOCUMENT" && node.type !== "PAGE") {
+        figma.currentPage.selection = [node];
+        figma.viewport.scrollAndZoomIntoView([node]);
+      }
+    } catch (error) {
+      console.warn("Could not jump to node:", data.nodeId, error);
+    }
+  }
+  function handleFixSpacing(data) {
+    try {
+      const node = figma.getNodeById(data.nodeId);
+      if (node && (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE")) {
+        const oldValue = node[data.property];
+        node[data.property] = data.value;
+        sendMessageToUI("fix-applied", {
+          type: "spacing",
+          nodeId: data.nodeId,
+          nodeName: node.name,
+          property: data.property,
+          oldValue,
+          newValue: data.value
+        });
+      }
+    } catch (error) {
+      console.warn("Could not fix spacing:", error);
+      sendMessageToUI("fix-error", { error: "Failed to apply spacing fix" });
+    }
+  }
+  async function handleExportScreenshot(data) {
+    try {
+      let node = null;
+      if (data == null ? void 0 : data.nodeId) {
+        const found = figma.getNodeById(data.nodeId);
+        if (found && found.type !== "DOCUMENT" && found.type !== "PAGE") {
+          node = found;
+        }
+      } else if (figma.currentPage.selection.length > 0) {
+        node = figma.currentPage.selection[0];
+      }
+      if (!node) {
+        sendMessageToUI("screenshot-error", { error: "No node selected" });
+        return;
+      }
+      const base64 = await exportScreenshot(node);
+      sendMessageToUI("screenshot-result", {
+        nodeId: node.id,
+        nodeName: node.name,
+        screenshot: base64,
+        width: node.width,
+        height: node.height
+      });
+    } catch (error) {
+      console.warn("Could not export screenshot:", error);
+      sendMessageToUI("screenshot-error", { error: "Failed to export screenshot" });
+    }
+  }
   async function initializePlugin() {
     try {
       const config = await loadProviderConfig();
@@ -7391,7 +7726,7 @@ Respond naturally and helpfully to the user's question.`;
   }
 
   // src/code.ts
-  var PLUGIN_WINDOW_SIZE = { width: 400, height: 700 };
+  var PLUGIN_WINDOW_SIZE = { width: 380, height: 600, themeColors: true };
   try {
     figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
     console.log("\u2705 FigmaLint v2.0 - UI shown successfully");

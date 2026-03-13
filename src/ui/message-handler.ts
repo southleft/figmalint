@@ -39,6 +39,7 @@ import {
   RenamePreview,
 } from '../fixes/naming-fixer';
 import { FixRequest, FixPreviewRequest, BatchFixRequest, LintSettings } from '../types';
+import { exportScreenshot } from '../extract/screenshot';
 import {
   lintSelection,
   ignoreNode,
@@ -163,6 +164,16 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         break;
       case 'lint-load-settings':
         handleLintLoadSettings();
+        break;
+      // Chat UI handlers
+      case 'jump-to-node':
+        handleJumpToNode(data);
+        break;
+      case 'fix-spacing':
+        handleFixSpacing(data);
+        break;
+      case 'export-screenshot':
+        await handleExportScreenshot(data);
         break;
       default:
         console.warn('Unknown message type:', type);
@@ -1019,6 +1030,74 @@ async function handleLintLoadSettings(): Promise<void> {
   } catch (error) {
     console.warn('Could not load lint settings:', error);
     sendMessageToUI('lint-settings-loaded', DEFAULT_LINT_SETTINGS);
+  }
+}
+
+// ──────────────────────────────────────────────
+// Chat UI Handlers
+// ──────────────────────────────────────────────
+
+function handleJumpToNode(data: { nodeId: string }): void {
+  try {
+    const node = figma.getNodeById(data.nodeId);
+    if (node && node.type !== 'DOCUMENT' && node.type !== 'PAGE') {
+      figma.currentPage.selection = [node as SceneNode];
+      figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+    }
+  } catch (error) {
+    console.warn('Could not jump to node:', data.nodeId, error);
+  }
+}
+
+function handleFixSpacing(data: { nodeId: string; property: string; value: number }): void {
+  try {
+    const node = figma.getNodeById(data.nodeId) as FrameNode;
+    if (node && (node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE')) {
+      const oldValue = (node as any)[data.property];
+      (node as any)[data.property] = data.value;
+      sendMessageToUI('fix-applied', {
+        type: 'spacing',
+        nodeId: data.nodeId,
+        nodeName: node.name,
+        property: data.property,
+        oldValue,
+        newValue: data.value,
+      });
+    }
+  } catch (error) {
+    console.warn('Could not fix spacing:', error);
+    sendMessageToUI('fix-error', { error: 'Failed to apply spacing fix' });
+  }
+}
+
+async function handleExportScreenshot(data: { nodeId?: string }): Promise<void> {
+  try {
+    let node: SceneNode | null = null;
+    if (data?.nodeId) {
+      const found = figma.getNodeById(data.nodeId);
+      if (found && found.type !== 'DOCUMENT' && found.type !== 'PAGE') {
+        node = found as SceneNode;
+      }
+    } else if (figma.currentPage.selection.length > 0) {
+      node = figma.currentPage.selection[0];
+    }
+
+    if (!node) {
+      sendMessageToUI('screenshot-error', { error: 'No node selected' });
+      return;
+    }
+
+    const base64 = await exportScreenshot(node);
+    sendMessageToUI('screenshot-result', {
+      nodeId: node.id,
+      nodeName: node.name,
+      screenshot: base64,
+      width: node.width,
+      height: node.height,
+    });
+  } catch (error) {
+    console.warn('Could not export screenshot:', error);
+    sendMessageToUI('screenshot-error', { error: 'Failed to export screenshot' });
   }
 }
 

@@ -206,7 +206,11 @@ export type UIMessageType =
   | 'lint-select-node'
   | 'lint-select-all-with-value'
   | 'lint-save-settings'
-  | 'lint-load-settings';
+  | 'lint-load-settings'
+  // Chat UI message types
+  | 'jump-to-node'
+  | 'fix-spacing'
+  | 'export-screenshot';
 
 // Auto-fix Types
 export interface FixRequest {
@@ -356,7 +360,7 @@ export type TokenCategory = 'colors' | 'spacing' | 'typography' | 'effects' | 'b
 // Design Lint Types (deterministic, non-AI rules)
 // ──────────────────────────────────────────────
 
-export type LintErrorType = 'fill' | 'stroke' | 'effect' | 'text' | 'radius';
+export type LintErrorType = 'fill' | 'stroke' | 'effect' | 'text' | 'radius' | 'spacing' | 'autoLayout';
 
 export interface LintError {
   nodeId: string;
@@ -388,6 +392,8 @@ export interface LintSettings {
   checkEffects: boolean;
   checkTextStyles: boolean;
   checkRadius: boolean;
+  checkSpacing: boolean;
+  checkAutoLayout: boolean;
   allowedRadii: number[];
   skipLockedLayers: boolean;
   skipHiddenLayers: boolean;

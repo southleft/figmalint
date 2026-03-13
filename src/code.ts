@@ -3,7 +3,7 @@
 import { handleUIMessage, initializePlugin } from './ui/message-handler';
 
 // Plugin configuration
-const PLUGIN_WINDOW_SIZE = { width: 400, height: 700 };
+const PLUGIN_WINDOW_SIZE = { width: 380, height: 600, themeColors: true };
 
 // Plugin initialization
 try {

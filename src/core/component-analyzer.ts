@@ -1466,6 +1466,8 @@ function createFigmaDataExtractionPrompt(
 - Missing effect styles: ${byType.effect || 0}
 - Missing text styles: ${byType.text || 0}
 - Non-standard border radius: ${byType.radius || 0}
+- Off-grid spacing: ${byType.spacing || 0}
+- Missing auto-layout: ${byType.autoLayout || 0}
 Top issues:
 ${topErrors}
 `;
@@ -2070,6 +2072,26 @@ function lintErrorsToAuditChecks(lintResult: LintResult): AuditCheck[] {
     checks.push({ check: 'Border radius', status: 'pass', suggestion: 'All radii match design system standards' });
   }
 
+  if (byType.spacing > 0) {
+    checks.push({
+      check: `Spacing rhythm (${byType.spacing} off-grid)`,
+      status: 'warning',
+      suggestion: `${byType.spacing} spacing value${byType.spacing > 1 ? 's are' : ' is'} not on the 4/8px grid`
+    });
+  } else {
+    checks.push({ check: 'Spacing rhythm', status: 'pass', suggestion: 'All spacing values follow the design grid' });
+  }
+
+  if (byType.autoLayout > 0) {
+    checks.push({
+      check: `Auto Layout (${byType.autoLayout} missing)`,
+      status: 'warning',
+      suggestion: `${byType.autoLayout} frame${byType.autoLayout > 1 ? 's lack' : ' lacks'} auto-layout`
+    });
+  } else {
+    checks.push({ check: 'Auto Layout', status: 'pass', suggestion: 'All container frames use auto-layout' });
+  }
+
   return checks;
 }
 
@@ -2088,7 +2110,7 @@ function generateDeterministicReview(
   if (lintResult) {
     for (const err of lintResult.errors) {
       findings.push({
-        severity: err.errorType === 'radius' ? 'warning' : 'critical',
+        severity: (err.errorType === 'radius' || err.errorType === 'spacing' || err.errorType === 'autoLayout') ? 'warning' : 'critical',
         category: 'Style Consistency',
         title: err.message,
         description: `Layer "${err.nodeName}" (${err.nodeType}) at ${err.path}`,
@@ -2190,6 +2212,8 @@ function generateDeterministicReview(
   if (lintResult && lintResult.summary.byType.fill > 0) nextSteps.push('Apply fill styles to layers using hard-coded colors');
   if (lintResult && lintResult.summary.byType.text > 0) nextSteps.push('Apply text styles to text layers');
   if (lintResult && lintResult.summary.byType.stroke > 0) nextSteps.push('Apply stroke styles to layers with hard-coded strokes');
+  if (lintResult && lintResult.summary.byType.spacing > 0) nextSteps.push('Fix off-grid spacing values to match the 4/8px grid');
+  if (lintResult && lintResult.summary.byType.autoLayout > 0) nextSteps.push('Apply auto-layout to container frames');
   if (hardCoded > 0) nextSteps.push('Replace hard-coded values with design tokens');
   if (namingIssues.length > 0) nextSteps.push('Rename generic layers to semantic names');
   if (missingStates.length > 0) nextSteps.push(`Add missing states: ${missingStates.map(s => s.name).join(', ')}`);
@@ -2213,7 +2237,7 @@ async function generateDesignReview(
   providerId: ProviderId
 ): Promise<DesignReviewSummary> {
   // Build context for AI review
-  const lintSummary = lintResult ? `${lintResult.summary.totalErrors} lint issues (${lintResult.summary.byType.fill} fills, ${lintResult.summary.byType.stroke} strokes, ${lintResult.summary.byType.effect} effects, ${lintResult.summary.byType.text} text, ${lintResult.summary.byType.radius} radius)` : '0 lint issues';
+  const lintSummary = lintResult ? `${lintResult.summary.totalErrors} lint issues (${lintResult.summary.byType.fill} fills, ${lintResult.summary.byType.stroke} strokes, ${lintResult.summary.byType.effect} effects, ${lintResult.summary.byType.text} text, ${lintResult.summary.byType.radius} radius, ${lintResult.summary.byType.spacing || 0} spacing, ${lintResult.summary.byType.autoLayout || 0} auto-layout)` : '0 lint issues';
   const accessFails = (audit.accessibility || []).filter(c => c.status === 'fail').length;
   const readinessFails = (audit.componentReadiness || []).filter(c => c.status === 'fail').length;
   const missingStates = (audit.states || []).filter(s => !s.found);
