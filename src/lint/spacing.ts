@@ -1,17 +1,20 @@
 /// <reference types="@figma/plugin-typings" />
 
-import { LintIssue, SpacingLintResult, SPACING_SCALE, findClosestSpacingValues } from './types';
+import { LintIssue, SpacingLintResult, DEFAULT_SPACING_SCALE, findClosestSpacingValues } from './types';
 
 let issueCounter = 0;
 function nextId(): string {
   return `spacing-${++issueCounter}`;
 }
 
+/** Module-level scale, set per checkSpacing call */
+let activeScale: readonly number[] = DEFAULT_SPACING_SCALE;
+
 /**
- * Check if a spacing value is in the allowed scale.
+ * Check if a spacing value is in the active scale.
  */
 function isValidSpacing(value: number): boolean {
-  return SPACING_SCALE.includes(value as typeof SPACING_SCALE[number]);
+  return activeScale.includes(value);
 }
 
 /**
@@ -57,7 +60,7 @@ function checkFrameSpacing(node: FrameNode | ComponentNode | InstanceNode, issue
     checked++;
 
     if (!isValidSpacing(value)) {
-      const suggestions = findClosestSpacingValues(value);
+      const suggestions = findClosestSpacingValues(value, activeScale);
       issues.push({
         id: nextId(),
         type: 'spacing',
@@ -125,13 +128,15 @@ function traverseForSpacing(
 
 /**
  * Run spacing rhythm lint on the given nodes.
- * Checks itemSpacing, padding values against the standard spacing scale.
+ * Checks itemSpacing, padding values against the spacing scale.
+ * @param scale Custom spacing scale — defaults to DEFAULT_SPACING_SCALE
  */
 export function checkSpacing(
   nodes: readonly SceneNode[],
-  options: { skipLocked?: boolean; skipHidden?: boolean } = {}
+  options: { skipLocked?: boolean; skipHidden?: boolean; scale?: readonly number[] } = {}
 ): SpacingLintResult {
-  const { skipLocked = true, skipHidden = true } = options;
+  const { skipLocked = true, skipHidden = true, scale } = options;
+  activeScale = scale || DEFAULT_SPACING_SCALE;
   issueCounter = 0;
 
   const issues: LintIssue[] = [];

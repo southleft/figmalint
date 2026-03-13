@@ -46,21 +46,28 @@ export interface AnalyzeRequest {
   mode: 'quick' | 'deep';
 }
 
+export interface AiReviewCategory {
+  rating: 'pass' | 'needs_improvement' | 'fail';
+  evidence: string[];
+  recommendation: string | null;
+}
+
+export interface AiReviewResult {
+  visualHierarchy: AiReviewCategory;
+  statesCoverage: AiReviewCategory & { missingStates: string[] };
+  platformAlignment: AiReviewCategory & { detectedPlatform: string };
+  colorHarmony: AiReviewCategory;
+  recommendations: Array<{ title: string; description: string; severity: string }>;
+  summary: string;
+}
+
 export interface AnalysisResult {
   sessionId: string;
   pageType: string;
   lintResult: AnalyzeRequest['lintResult'];
-  aiReview: {
-    visualHierarchy: { score: number; notes: string };
-    spacingRhythm: { score: number; notes: string };
-    colorHarmony: { score: number; notes: string };
-    missingStates: string[];
-    recommendations: Array<{ title: string; description: string; severity: string }>;
-    overallScore: number;
-    summary: string;
-  };
+  aiReview: AiReviewResult;
   referoComparison?: ReferoComparison;
-  combinedScore: number;
+  designHealthScore: number;
 }
 
 /**
@@ -102,15 +109,16 @@ export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> 
   ]);
 
   const pageType = pageTypeResult.status === 'fulfilled' ? pageTypeResult.value : 'unknown';
-  const aiReview = aiReviewResult.status === 'fulfilled'
+
+  const defaultCategory: AiReviewCategory = { rating: 'fail', evidence: ['AI review unavailable'], recommendation: null };
+  const aiReview: AiReviewResult = aiReviewResult.status === 'fulfilled'
     ? aiReviewResult.value
     : {
-        visualHierarchy: { score: 0, notes: 'AI review unavailable' },
-        spacingRhythm: { score: 0, notes: 'AI review unavailable' },
-        colorHarmony: { score: 0, notes: 'AI review unavailable' },
-        missingStates: [] as string[],
-        recommendations: [] as Array<{ title: string; description: string; severity: string }>,
-        overallScore: 0,
+        visualHierarchy: { ...defaultCategory },
+        statesCoverage: { ...defaultCategory, missingStates: [] },
+        platformAlignment: { ...defaultCategory, detectedPlatform: 'unknown' },
+        colorHarmony: { ...defaultCategory },
+        recommendations: [],
         summary: 'AI review was unavailable for this analysis.',
       };
 
@@ -135,21 +143,41 @@ export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> 
       .catch(() => { /* Refero failure is non-critical */ });
   }
 
-  // Compute combined score: 5-category weighted model
-  const byType = req.lintResult.summary.byType || {};
+  // Compute Design Health Score — severity-weighted, no AI component
+  // Matches frontend formula: Tokens 30%, Spacing 20%, Layout 10%, A11y 30%, Naming 10%
+  const SEVERITY_WEIGHT: Record<string, number> = { critical: 10, warning: 3, info: 1 };
+  const errors = req.lintResult.errors;
   const total = Math.max(req.lintResult.summary.totalNodes, 1);
-  const tokenFailed = (byType.fill ?? 0) + (byType.stroke ?? 0) + (byType.effect ?? 0) + (byType.text ?? 0);
-  const tokensScore = Math.max(0, Math.round((1 - tokenFailed / (total * 4)) * 100));
-  const spacingScore = Math.max(0, Math.round((1 - (byType.spacing ?? 0) / total) * 100));
-  const layoutScore = Math.max(0, Math.round((1 - (byType.autoLayout ?? 0) / total) * 100));
-  const a11yFailed = byType.accessibility ?? 0;
-  const a11yScore = Math.max(0, Math.round((1 - a11yFailed / Math.max(total, a11yFailed)) * 100));
-  const combinedScore = Math.round(
-    tokensScore * 0.25 + spacingScore * 0.15 + layoutScore * 0.10 + a11yScore * 0.25 + aiReview.overallScore * 0.25
+
+  function severityScore(errs: typeof errors, checkable: number): number {
+    const failed = errs.length;
+    const passed = Math.max(0, checkable - failed);
+    const weightedFailed = errs.reduce((sum, e) => sum + (SEVERITY_WEIGHT[(e as any).severity || 'warning'] || 3), 0);
+    const weightedPassed = passed * 10;
+    const t = weightedPassed + weightedFailed;
+    return t > 0 ? Math.round((weightedPassed / t) * 100) : 100;
+  }
+
+  const GENERIC_NAME_RE = /^(Frame|Group|Rectangle|Ellipse|Vector|Line|Polygon|Star)\s*\d+$/i;
+
+  const tokenErrors = errors.filter(e => ['fill', 'stroke', 'effect', 'text'].includes(e.errorType));
+  const spacingErrors = errors.filter(e => e.errorType === 'spacing');
+  const layoutErrors = errors.filter(e => e.errorType === 'autoLayout');
+  const a11yErrors = errors.filter(e => e.errorType === 'accessibility' && !GENERIC_NAME_RE.test(e.nodeName));
+  const namingErrors = errors.filter(e =>
+    (e.errorType === 'accessibility' && GENERIC_NAME_RE.test(e.nodeName)) || e.errorType === 'radius'
+  );
+
+  const designHealthScore = Math.round(
+    severityScore(tokenErrors, total * 4) * 0.30 +
+    severityScore(spacingErrors, total) * 0.20 +
+    severityScore(layoutErrors, total) * 0.10 +
+    severityScore(a11yErrors, total) * 0.30 +
+    severityScore(namingErrors, total) * 0.10
   );
 
   // Save to session
-  saveAnalysisResult(sessionId, pageType, aiReview, req.lintResult, combinedScore, referoComparison);
+  saveAnalysisResult(sessionId, pageType, aiReview, req.lintResult, designHealthScore, referoComparison);
 
   return {
     sessionId,
@@ -157,7 +185,7 @@ export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> 
     lintResult: req.lintResult,
     aiReview,
     ...(referoComparison && { referoComparison }),
-    combinedScore,
+    designHealthScore,
   };
 }
 

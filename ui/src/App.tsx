@@ -52,8 +52,7 @@ export default function App() {
 
       chat.handleAiReview({
         sessionId: result.sessionId,
-        aiReview: result.aiReview,
-        combinedScore: result.combinedScore,
+        aiReview: result.aiReview as AiReviewData,
         referoComparison: result.referoComparison,
       });
 
@@ -306,7 +305,7 @@ export default function App() {
         case 'export': {
           const result = chat.lintResult;
           if (result) {
-            const md = buildFullReport(result, componentName, chat.issuesFixed, chat.aiReview, chat.combinedScore);
+            const md = buildFullReport(result, componentName, chat.issuesFixed, chat.aiReview);
             navigator.clipboard.writeText(md).then(
               () => {
                 chat.addMessage({
@@ -331,7 +330,6 @@ export default function App() {
             const report = {
               component: componentName || 'Component',
               timestamp: new Date().toISOString(),
-              combinedScore: chat.combinedScore,
               lint: {
                 summary: jsonResult.summary,
                 errors: jsonResult.errors,
@@ -428,23 +426,14 @@ function buildFullReport(
   componentName?: string,
   issuesFixed?: number,
   aiReview?: AiReviewData | null,
-  combinedScore?: number | null,
 ): string {
   const lines = [
     `# Design Review Report: ${componentName || 'Component'}`,
     '',
-  ];
-
-  // Combined score header
-  if (combinedScore != null) {
-    lines.push(`**Combined Score: ${combinedScore}/100**`, '');
-  }
-
-  lines.push(
     `Total lint issues: ${result.summary.totalErrors} across ${result.summary.nodesWithErrors} layers`,
     ...(issuesFixed ? [`Fixed: ${issuesFixed}`] : []),
     '',
-  );
+  ];
 
   // Lint breakdown
   lines.push('## Lint Issues', '');
@@ -457,18 +446,19 @@ function buildFullReport(
   if (byType.spacing > 0) lines.push(`- **Spacing:** ${byType.spacing} off-grid`);
   if (byType.autoLayout > 0) lines.push(`- **Auto Layout:** ${byType.autoLayout} missing`);
 
-  // AI Review section
+  // AI Review section (rubric-based)
   if (aiReview) {
-    lines.push('', '## AI Visual Review', '');
-    lines.push(`**Overall AI Score: ${aiReview.overallScore}/100**`, '');
-    lines.push(`| Category | Score | Notes |`);
-    lines.push(`|----------|-------|-------|`);
-    lines.push(`| Visual Hierarchy | ${aiReview.visualHierarchy.score}/10 | ${aiReview.visualHierarchy.notes} |`);
-    lines.push(`| Spacing & Rhythm | ${aiReview.spacingRhythm.score}/10 | ${aiReview.spacingRhythm.notes} |`);
-    lines.push(`| Color Harmony | ${aiReview.colorHarmony.score}/10 | ${aiReview.colorHarmony.notes} |`);
+    lines.push('', '## AI Design Review', '');
+    lines.push(`| Category | Rating |`);
+    lines.push(`|----------|--------|`);
+    lines.push(`| Visual Hierarchy | ${aiReview.visualHierarchy.rating.toUpperCase()} |`);
+    lines.push(`| States Coverage | ${aiReview.statesCoverage.rating.toUpperCase()} |`);
+    lines.push(`| Platform Alignment | ${aiReview.platformAlignment.rating.toUpperCase()} (${aiReview.platformAlignment.detectedPlatform}) |`);
+    lines.push(`| Color Harmony | ${aiReview.colorHarmony.rating.toUpperCase()} |`);
 
-    if (aiReview.missingStates.length > 0) {
-      lines.push('', `**Missing states:** ${aiReview.missingStates.join(', ')}`);
+    const missingStates = aiReview.statesCoverage?.missingStates || [];
+    if (missingStates.length > 0) {
+      lines.push('', `**Missing states:** ${missingStates.join(', ')}`);
     }
 
     if (aiReview.recommendations.length > 0) {

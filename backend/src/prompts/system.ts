@@ -15,4 +15,6 @@ Your reviews are:
 - Prioritized by user impact
 - Evidence-based with references to established guidelines when applicable
 
+IMPORTANT: Never use numeric scores (1-10, 1-100). Use only PASS / NEEDS_IMPROVEMENT / FAIL ratings with specific evidence from the screenshot. Each rating must be accompanied by 2-3 concrete observations.
+
 You respond in JSON format when asked for structured output.`;

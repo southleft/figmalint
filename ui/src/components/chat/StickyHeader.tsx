@@ -9,9 +9,9 @@ interface StickyHeaderProps {
 }
 
 function getVerdictInfo(score: number): { label: string; color: string; bg: string } {
-  if (score >= 90) return { label: 'PASSED', color: 'text-fg-success', bg: 'bg-bg-success' };
-  if (score >= 60) return { label: 'NEEDS WORK', color: 'text-fg-warning', bg: 'bg-bg-warning' };
-  return { label: 'ISSUES FOUND', color: 'text-fg-danger', bg: 'bg-bg-danger' };
+  if (score >= 90) return { label: 'EXCELLENT', color: 'text-fg-success', bg: 'bg-bg-success' };
+  if (score >= 70) return { label: 'NEEDS WORK', color: 'text-fg-warning', bg: 'bg-bg-warning' };
+  return { label: 'POOR', color: 'text-fg-danger', bg: 'bg-bg-danger' };
 }
 
 export default function StickyHeader({ componentName, score, totalIssues, issuesFixed, onOpenSettings }: StickyHeaderProps) {

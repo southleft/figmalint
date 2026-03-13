@@ -41,14 +41,14 @@ export async function analyzeComponent(data: {
   sessionId: string;
   pageType: string;
   aiReview: {
-    visualHierarchy: { score: number; notes: string };
-    spacingRhythm: { score: number; notes: string };
-    colorHarmony: { score: number; notes: string };
-    missingStates: string[];
+    visualHierarchy: { rating: string; evidence: string[]; recommendation: string | null };
+    statesCoverage: { rating: string; evidence: string[]; recommendation: string | null; missingStates: string[] };
+    platformAlignment: { rating: string; evidence: string[]; recommendation: string | null; detectedPlatform: string };
+    colorHarmony: { rating: string; evidence: string[]; recommendation: string | null };
     recommendations: Array<{ title: string; description: string; severity: string }>;
-    overallScore: number;
     summary: string;
   };
+  designHealthScore: number;
   referoComparison?: {
     matchingPatterns: Array<{ pattern: string; frequency: string }>;
     missingPatterns: Array<{ pattern: string; frequency: string; exampleCompanies: string[] }>;
@@ -57,7 +57,6 @@ export async function analyzeComponent(data: {
     summary: string;
     screenshots: Array<{ id: string; title: string; company: string; pageType: string; thumbnailUrl: string; fullUrl: string; platform: 'web' | 'ios' | 'android'; tags?: string[] }>;
   };
-  combinedScore: number;
 }> {
   const resp = await fetch(`${backendUrl}/api/analyze`, {
     method: 'POST',

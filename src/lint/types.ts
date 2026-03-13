@@ -59,21 +59,24 @@ export interface AutoLayoutLintResult {
 }
 
 /**
- * Allowed spacing scale — standard 4px/8px grid values.
+ * Default spacing scale — standard 4px/8px grid values.
+ * Can be overridden via TeamLintConfig.scales.spacing.
  */
-export const SPACING_SCALE = [0, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96] as const;
+export const DEFAULT_SPACING_SCALE: readonly number[] = [0, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96];
+
+/** @deprecated Use DEFAULT_SPACING_SCALE */
+export const SPACING_SCALE = DEFAULT_SPACING_SCALE;
 
 /**
- * Find the closest values from the spacing scale to a given value.
+ * Find the closest values from a spacing scale to a given value.
  */
-export function findClosestSpacingValues(value: number): number[] {
-  if (SPACING_SCALE.includes(value as typeof SPACING_SCALE[number])) return [];
+export function findClosestSpacingValues(value: number, scale: readonly number[] = DEFAULT_SPACING_SCALE): number[] {
+  if (scale.includes(value)) return [];
 
-  const sorted = [...SPACING_SCALE]
+  const sorted = [...scale]
     .map(v => ({ v, diff: Math.abs(v - value) }))
     .sort((a, b) => a.diff - b.diff);
 
-  // Return the two closest distinct values
   const closest: number[] = [];
   for (const s of sorted) {
     if (closest.length >= 2) break;

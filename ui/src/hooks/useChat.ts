@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ChatMessage, ChatMessageType, LintResult, LintError, ScoreBreakdown, CategoryScore, AiReviewData, ReferoComparisonData } from '../lib/messages';
+import type { ChatMessage, ChatMessageType, LintResult, LintError, ScoreBreakdown, CategoryScore, ScoreGrade, AiReviewData, ReferoComparisonData } from '../lib/messages';
 
 let messageIdCounter = 0;
 function nextId(): string {
@@ -10,63 +10,76 @@ function createMessage(message: ChatMessageType): ChatMessage {
   return { id: nextId(), timestamp: Date.now(), message };
 }
 
-/**
- * Compute a category score from passed/failed counts.
- */
-function catScore(passed: number, failed: number): CategoryScore {
-  const total = passed + failed;
-  const score = total > 0 ? Math.round((passed / total) * 100) : 100;
-  return { score, passed, failed };
+/** Severity weights for the Design Health Score (Cypress model). */
+const SEVERITY_WEIGHT: Record<string, number> = { critical: 10, warning: 3, info: 1 };
+
+function getGrade(score: number): ScoreGrade {
+  if (score >= 90) return 'excellent';
+  if (score >= 70) return 'needs-work';
+  return 'poor';
 }
 
 /**
- * Compute a 5-category score breakdown from a LintResult.
- * Categories: Tokens (25%), Spacing (15%), Layout (10%), Accessibility (25%), AI Review (25%).
- * AI Review score is set to 0 initially and updated when AI results arrive.
+ * Compute a severity-weighted category score.
+ * Each error's severity drives its weight. Passed nodes get the max weight (10).
  */
-function computeScoreBreakdown(result: LintResult, aiScore?: number): ScoreBreakdown {
-  const s = result.summary;
-  const total = s.totalNodes || 1;
-  const bt = s.byType as Record<string, number>;
+function severityScore(errors: LintError[], totalCheckable: number): CategoryScore {
+  const failed = errors.length;
+  const passed = Math.max(0, totalCheckable - failed);
+  const weightedFailed = errors.reduce((sum, e) => sum + (SEVERITY_WEIGHT[e.severity || 'warning'] || 3), 0);
+  const weightedPassed = passed * 10; // passed nodes assumed weight 10 (critical-level pass)
+  const total = weightedPassed + weightedFailed;
+  const score = total > 0 ? Math.round((weightedPassed / total) * 100) : 100;
+  return { score, passed, failed };
+}
+
+/** Generic name pattern for naming category. */
+const GENERIC_NAME_RE = /^(Frame|Group|Rectangle|Ellipse|Vector|Line|Polygon|Star)\s*\d+$/i;
+
+/**
+ * Compute Design Health Score — purely deterministic, no AI.
+ * 5 categories: Tokens (30%), Spacing (20%), Layout (10%), Accessibility (30%), Naming (10%).
+ */
+function computeScoreBreakdown(result: LintResult): ScoreBreakdown {
+  const total = result.summary.totalNodes || 1;
 
   // Tokens = fill + stroke + effect + text
-  const tokenFailed = (bt.fill || 0) + (bt.stroke || 0) + (bt.effect || 0) + (bt.text || 0);
-  const tokens = catScore(Math.max(0, total * 4 - tokenFailed), tokenFailed);
+  const tokenErrors = result.errors.filter(e =>
+    e.errorType === 'fill' || e.errorType === 'stroke' || e.errorType === 'effect' || e.errorType === 'text'
+  );
+  const tokens = severityScore(tokenErrors, total * 4);
 
   // Spacing
-  const spacingFailed = bt.spacing || 0;
-  const spacing = catScore(Math.max(0, total - spacingFailed), spacingFailed);
+  const spacingErrors = result.errors.filter(e => e.errorType === 'spacing');
+  const spacing = severityScore(spacingErrors, total);
 
   // Layout (auto-layout)
-  const layoutFailed = bt.autoLayout || 0;
-  const layout = catScore(Math.max(0, total - layoutFailed), layoutFailed);
+  const layoutErrors = result.errors.filter(e => e.errorType === 'autoLayout');
+  const layout = severityScore(layoutErrors, total);
 
-  // Accessibility — weight critical errors double
-  const a11yErrors = result.errors.filter(e => e.errorType === 'accessibility');
-  const a11yWeighted = a11yErrors.reduce((sum, e) => sum + (e.severity === 'critical' ? 2 : 1), 0);
-  const a11yCheckable = Math.max(total, a11yWeighted);
-  const a11yPassed = Math.max(0, a11yCheckable - a11yWeighted);
-  const accessibility = catScore(a11yPassed, a11yErrors.length);
+  // Accessibility — all a11y errors except generic naming
+  const a11yErrors = result.errors.filter(e =>
+    e.errorType === 'accessibility' && !GENERIC_NAME_RE.test(e.nodeName)
+  );
+  const accessibility = severityScore(a11yErrors, total);
 
-  // AI Review (default 0, updated later)
-  const ai = aiScore ?? 0;
-  const aiReview = { score: ai };
+  // Naming — generic names (from a11y tier 2) + radius as naming proxy
+  const namingErrors = result.errors.filter(e =>
+    (e.errorType === 'accessibility' && GENERIC_NAME_RE.test(e.nodeName)) ||
+    e.errorType === 'radius'
+  );
+  const naming = severityScore(namingErrors, total);
 
-  // Weighted average (AI gets 25% only when available)
-  const weights = [
-    { score: tokens.score, weight: 0.25 },
-    { score: spacing.score, weight: 0.15 },
-    { score: layout.score, weight: 0.10 },
-    { score: accessibility.score, weight: 0.25 },
-    { score: ai, weight: 0.25 },
-  ];
+  // Weighted average (30/20/10/30/10)
+  const overall = Math.round(
+    tokens.score * 0.30 +
+    spacing.score * 0.20 +
+    layout.score * 0.10 +
+    accessibility.score * 0.30 +
+    naming.score * 0.10
+  );
 
-  // If AI hasn't scored yet, redistribute its weight proportionally
-  const activeWeights = ai > 0 ? weights : weights.filter(w => w.weight !== 0.25 || w.score !== ai);
-  const totalWeight = activeWeights.reduce((sum, w) => sum + w.weight, 0);
-  const overall = Math.round(activeWeights.reduce((sum, w) => sum + (w.score * w.weight / totalWeight), 0));
-
-  return { overall, tokens, spacing, layout, accessibility, aiReview };
+  return { overall, grade: getGrade(overall), tokens, spacing, layout, accessibility, naming };
 }
 
 export interface ChatState {
@@ -77,7 +90,6 @@ export interface ChatState {
   issuesFixed: number;
   sessionId: string | null;
   aiReview: AiReviewData | null;
-  combinedScore: number | null;
   isStreaming: boolean;
 }
 
@@ -90,7 +102,6 @@ export function useChat() {
     issuesFixed: 0,
     sessionId: null,
     aiReview: null,
-    combinedScore: null,
     isStreaming: false,
   });
 
@@ -252,25 +263,14 @@ export function useChat() {
   const handleAiReview = useCallback((data: {
     sessionId: string;
     aiReview: AiReviewData;
-    combinedScore: number;
     referoComparison?: ReferoComparisonData;
   }) => {
     const messages: ChatMessage[] = [];
 
-    // AI review card
+    // AI review card (rubric-based: Pass/NI/Fail)
     messages.push(createMessage({
       kind: 'ai-review',
       data: data.aiReview,
-    }));
-
-    // Combined score
-    messages.push(createMessage({
-      kind: 'combined-score',
-      data: {
-        lintScore: state.score?.overall || 0,
-        aiScore: data.aiReview.overallScore,
-        combined: data.combinedScore,
-      },
     }));
 
     // Summary text
@@ -290,11 +290,12 @@ export function useChat() {
       }));
     }
 
-    // Missing states
-    if (data.aiReview.missingStates.length > 0) {
+    // Missing states (from statesCoverage)
+    const missingStates = data.aiReview.statesCoverage?.missingStates || [];
+    if (missingStates.length > 0) {
       messages.push(createMessage({
         kind: 'ai-text',
-        content: `**Missing states:** ${data.aiReview.missingStates.join(', ')}`,
+        content: `**Missing states:** ${missingStates.join(', ')}`,
       }));
     }
 
@@ -330,10 +331,9 @@ export function useChat() {
       isAnalyzing: false,
       sessionId: data.sessionId,
       aiReview: data.aiReview,
-      combinedScore: data.combinedScore,
       messages: [...prev.messages, ...messages],
     }));
-  }, [state.score]);
+  }, []);
 
   const setSessionId = useCallback((id: string) => {
     setState(prev => ({ ...prev, sessionId: id }));
@@ -380,7 +380,6 @@ export function useChat() {
       issuesFixed: 0,
       sessionId: null,
       aiReview: null,
-      combinedScore: null,
       isStreaming: false,
     });
   }, []);

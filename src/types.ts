@@ -207,6 +207,8 @@ export type UIMessageType =
   | 'lint-select-all-with-value'
   | 'lint-save-settings'
   | 'lint-load-settings'
+  | 'lint-save-team-config'
+  | 'lint-load-team-config'
   // Chat UI message types
   | 'jump-to-node'
   | 'fix-spacing'
@@ -411,6 +413,26 @@ export interface LintSettings {
   allowedRadii: number[];
   skipLockedLayers: boolean;
   skipHiddenLayers: boolean;
+  /** Custom spacing scale (overrides default 4px/8px grid) */
+  spacingScale?: number[];
+  /** Per-rule severity overrides (set to 'off' to disable a rule) */
+  severityOverrides?: Partial<Record<LintErrorType, 'critical' | 'warning' | 'info' | 'off'>>;
+  /** Layer name glob patterns to ignore during linting */
+  ignorePatterns?: string[];
+}
+
+/**
+ * Team-shared config stored via figma.root.setSharedPluginData.
+ * Visible to all editors of the Figma file.
+ */
+export interface TeamLintConfig {
+  version: 1;
+  scales: {
+    radius: number[];
+    spacing: number[];
+  };
+  severityOverrides: Partial<Record<LintErrorType, 'critical' | 'warning' | 'info' | 'off'>>;
+  ignorePatterns: string[];
 }
 
 // Chat Types

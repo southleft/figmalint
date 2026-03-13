@@ -43,22 +43,39 @@ export async function detectPageType(screenshotBase64: string): Promise<string> 
   return response.content[0].text.trim().toLowerCase();
 }
 
+interface AiReviewCategory {
+  rating: 'pass' | 'needs_improvement' | 'fail';
+  evidence: string[];
+  recommendation: string | null;
+}
+
+interface AiReviewResult {
+  visualHierarchy: AiReviewCategory;
+  statesCoverage: AiReviewCategory & { missingStates: string[] };
+  platformAlignment: AiReviewCategory & { detectedPlatform: string };
+  colorHarmony: AiReviewCategory;
+  recommendations: Array<{ title: string; description: string; severity: string }>;
+  summary: string;
+}
+
+const VALID_RATINGS = new Set(['pass', 'needs_improvement', 'fail']);
+
+function normalizeCategory(raw: any): AiReviewCategory {
+  return {
+    rating: VALID_RATINGS.has(raw?.rating) ? raw.rating : 'fail',
+    evidence: Array.isArray(raw?.evidence) ? raw.evidence : [],
+    recommendation: typeof raw?.recommendation === 'string' ? raw.recommendation : null,
+  };
+}
+
 /**
- * Generate a design review from a screenshot + lint context.
+ * Generate a rubric-based design review from a screenshot + lint context.
  */
 export async function generateReview(
   screenshotBase64: string,
   lintSummary: string,
   componentInfo: string
-): Promise<{
-  visualHierarchy: { score: number; notes: string };
-  spacingRhythm: { score: number; notes: string };
-  colorHarmony: { score: number; notes: string };
-  missingStates: string[];
-  recommendations: Array<{ title: string; description: string; severity: string }>;
-  overallScore: number;
-  summary: string;
-}> {
+): Promise<AiReviewResult> {
   const anthropic = getClient();
   const prompt = buildReviewPrompt(lintSummary, componentInfo);
 
@@ -84,26 +101,35 @@ export async function generateReview(
     throw new Error('Empty response from AI review');
   }
   const text = response.content[0].text;
-  // Extract JSON from the response
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('No JSON in review response');
 
   const parsed = JSON.parse(jsonMatch[0]);
 
-  // Validate required fields in parsed review
-  if (typeof parsed.overallScore !== 'number') {
-    throw new Error('AI review missing overallScore');
-  }
-  if (!parsed.visualHierarchy || !parsed.spacingRhythm || !parsed.colorHarmony) {
-    throw new Error('AI review missing required score categories');
+  // Validate and normalize to rubric format
+  if (!parsed.visualHierarchy || !parsed.colorHarmony) {
+    throw new Error('AI review missing required categories');
   }
 
-  // Merge statesCoverage.missing into missingStates for backward compat
-  if (parsed.statesCoverage?.missing && (!parsed.missingStates || parsed.missingStates.length === 0)) {
-    parsed.missingStates = parsed.statesCoverage.missing;
-  }
+  const statesCov = normalizeCategory(parsed.statesCoverage);
+  const platformAl = normalizeCategory(parsed.platformAlignment);
 
-  return parsed;
+  return {
+    visualHierarchy: normalizeCategory(parsed.visualHierarchy),
+    statesCoverage: {
+      ...statesCov,
+      missingStates: Array.isArray(parsed.statesCoverage?.missingStates) ? parsed.statesCoverage.missingStates : [],
+    },
+    platformAlignment: {
+      ...platformAl,
+      detectedPlatform: typeof parsed.platformAlignment?.detectedPlatform === 'string'
+        ? parsed.platformAlignment.detectedPlatform
+        : 'web',
+    },
+    colorHarmony: normalizeCategory(parsed.colorHarmony),
+    recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+    summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+  };
 }
 
 /**

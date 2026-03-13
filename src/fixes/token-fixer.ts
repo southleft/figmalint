@@ -1,6 +1,7 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { rgbToHex } from '../utils/figma-helpers';
+import { srgbToLab, ciede2000 } from './color-distance';
 
 // ============================================================================
 // Types
@@ -952,23 +953,20 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 }
 
 /**
- * Calculate color match score (0-1, 1 = exact match)
+ * Calculate color match score (0-1, 1 = exact match) using CIEDE2000.
+ * Perceptually accurate: ΔE < 3 = indistinguishable, ΔE ≥ 10 = clearly different.
  */
 function calculateColorMatchScore(
   color1: { r: number; g: number; b: number },
   color2: { r: number; g: number; b: number }
 ): number {
-  // Calculate Euclidean distance in RGB space (normalized 0-1)
-  const dr = color1.r - color2.r;
-  const dg = color1.g - color2.g;
-  const db = color1.b - color2.b;
+  const lab1 = srgbToLab(color1.r, color1.g, color1.b);
+  const lab2 = srgbToLab(color2.r, color2.g, color2.b);
+  const deltaE = ciede2000(lab1, lab2);
 
-  // Max distance is sqrt(3) for colors at opposite corners of RGB cube
-  const distance = Math.sqrt(dr * dr + dg * dg + db * db);
-  const maxDistance = Math.sqrt(3);
-
-  // Convert distance to match score (1 = exact match, 0 = completely different)
-  return 1 - (distance / maxDistance);
+  if (deltaE < 3) return 1.0;      // perceptually identical
+  if (deltaE >= 10) return 0.0;    // clearly different
+  return 1 - (deltaE - 3) / 7;     // linear interpolation
 }
 
 /**

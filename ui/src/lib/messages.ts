@@ -111,16 +111,22 @@ export type ChatMessageType =
   | { kind: 'batch-summary'; data: { total: number; applied: number; failed: number } }
   | { kind: 'score-update'; data: { oldScore: number; newScore: number; issuesRemaining: number } }
   | { kind: 'ai-review'; data: AiReviewData }
-  | { kind: 'refero-gallery'; data: ReferoComparisonData }
-  | { kind: 'combined-score'; data: { lintScore: number; aiScore: number; combined: number } };
+  | { kind: 'refero-gallery'; data: ReferoComparisonData };
+
+export type AiRating = 'pass' | 'needs_improvement' | 'fail';
+
+export interface AiReviewCategory {
+  rating: AiRating;
+  evidence: string[];
+  recommendation: string | null;
+}
 
 export interface AiReviewData {
-  visualHierarchy: { score: number; notes: string };
-  spacingRhythm: { score: number; notes: string };
-  colorHarmony: { score: number; notes: string };
-  missingStates: string[];
+  visualHierarchy: AiReviewCategory;
+  statesCoverage: AiReviewCategory & { missingStates: string[] };
+  platformAlignment: AiReviewCategory & { detectedPlatform: string };
+  colorHarmony: AiReviewCategory;
   recommendations: Array<{ title: string; description: string; severity: string }>;
-  overallScore: number;
   summary: string;
 }
 
@@ -150,13 +156,16 @@ export interface CategoryScore {
   failed: number;
 }
 
+export type ScoreGrade = 'excellent' | 'needs-work' | 'poor';
+
 export interface ScoreBreakdown {
   overall: number;
+  grade: ScoreGrade;
   tokens: CategoryScore;
   spacing: CategoryScore;
   layout: CategoryScore;
   accessibility: CategoryScore;
-  aiReview: { score: number };
+  naming: CategoryScore;
 }
 
 export interface ActionButton {

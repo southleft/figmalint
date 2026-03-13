@@ -166,6 +166,104 @@ function checkGenericLayerNames(node: SceneNode, issues: LintIssue[]): void {
 }
 
 // ──────────────────────────────────────────────
+// Tier 2.5: Non-text contrast (WCAG 1.4.11)
+// ──────────────────────────────────────────────
+
+function checkNonTextContrast(node: SceneNode, issues: LintIssue[]): void {
+  // Only check interactive-looking component/instance nodes
+  if (node.type !== 'COMPONENT' && node.type !== 'INSTANCE') return;
+  if (!isInteractiveName(node.name)) return;
+
+  const frame = node as ComponentNode | InstanceNode;
+
+  // Find boundary color: outermost visible fill or stroke
+  let boundaryColor: { r: number; g: number; b: number } | null = null;
+
+  // Check strokes first (more likely to be the boundary)
+  const strokes = frame.strokes;
+  if (Array.isArray(strokes)) {
+    const visibleStroke = strokes.find((s: Paint) => s.type === 'SOLID' && s.visible !== false);
+    if (visibleStroke && visibleStroke.type === 'SOLID') {
+      boundaryColor = (visibleStroke as SolidPaint).color;
+    }
+  }
+
+  // Fall back to fills if no stroke
+  if (!boundaryColor) {
+    const fills = frame.fills;
+    if (fills !== figma.mixed && Array.isArray(fills)) {
+      const visibleFill = fills.find((f: Paint) => f.type === 'SOLID' && f.visible !== false);
+      if (visibleFill && visibleFill.type === 'SOLID') {
+        boundaryColor = (visibleFill as SolidPaint).color;
+      }
+    }
+  }
+
+  if (!boundaryColor) return;
+
+  const bgColor = findBackgroundColor(node);
+  if (!bgColor) return;
+
+  const boundaryLum = getLuminance(boundaryColor.r, boundaryColor.g, boundaryColor.b);
+  const bgLum = getLuminance(bgColor.r, bgColor.g, bgColor.b);
+  const ratio = getContrastRatio(boundaryLum, bgLum);
+
+  if (ratio < 3) {
+    issues.push({
+      id: nextId(),
+      type: 'accessibility',
+      severity: 'warning',
+      nodeId: node.id,
+      nodeName: node.name,
+      message: `Non-text contrast ${ratio.toFixed(1)}:1 below WCAG 1.4.11 minimum of 3:1`,
+      currentValue: `${ratio.toFixed(1)}:1`,
+      suggestions: ['Increase boundary contrast to at least 3:1 against background'],
+      autoFixable: false,
+    });
+  }
+}
+
+// ──────────────────────────────────────────────
+// Tier 2.5: Color-only information (WCAG 1.4.1 heuristic)
+// ──────────────────────────────────────────────
+
+const STATUS_NAME_PATTERN = /\b(error|success|warning|status|alert|badge|danger|info)\b/i;
+
+function checkColorOnlyInfo(node: SceneNode, issues: LintIssue[]): void {
+  if (node.type !== 'FRAME' && node.type !== 'COMPONENT' && node.type !== 'INSTANCE') return;
+  if (!STATUS_NAME_PATTERN.test(node.name)) return;
+
+  const frame = node as FrameNode | ComponentNode | InstanceNode;
+  if (!('children' in frame) || frame.children.length === 0) return;
+
+  // Check if there's a text node or icon child
+  const hasTextOrIcon = frame.children.some(child => {
+    if (child.type === 'TEXT') return true;
+    if (/icon|svg|symbol|glyph/i.test(child.name)) return true;
+    if ('children' in child) {
+      return (child as any).children?.some?.((c: SceneNode) =>
+        c.type === 'TEXT' || /icon|svg|symbol|glyph/i.test(c.name)
+      );
+    }
+    return false;
+  });
+
+  if (!hasTextOrIcon) {
+    issues.push({
+      id: nextId(),
+      type: 'accessibility',
+      severity: 'info',
+      nodeId: node.id,
+      nodeName: node.name,
+      message: `"${node.name}" may rely on color alone to convey status (WCAG 1.4.1)`,
+      currentValue: 'No text or icon indicator',
+      suggestions: ['Add a text label or icon to supplement the color indicator'],
+      autoFixable: false,
+    });
+  }
+}
+
+// ──────────────────────────────────────────────
 // Tier 3: State coverage
 // ──────────────────────────────────────────────
 
@@ -226,6 +324,10 @@ function traverseForAccessibility(
   checkIconOnlyWithoutLabel(node, issues);
   checkGenericLayerNames(node, issues);
 
+  // Tier 2.5: New WCAG checks
+  checkNonTextContrast(node, issues);
+  checkColorOnlyInfo(node, issues);
+
   // Tier 3: State coverage (only check once per component set)
   if (node.type === 'COMPONENT' && node.parent?.type === 'COMPONENT_SET') {
     const setId = node.parent.id;
@@ -258,6 +360,8 @@ export interface AccessibilityLintResult {
     textSizeIssues: number;
     namingIssues: number;
     stateIssues: number;
+    nonTextContrastIssues: number;
+    colorOnlyIssues: number;
   };
 }
 
@@ -290,6 +394,8 @@ export function checkAccessibility(
       textSizeIssues: issues.filter(i => i.message.includes('Text size')).length,
       namingIssues: issues.filter(i => i.message.includes('text label') || i.message.includes('Generic')).length,
       stateIssues: issues.filter(i => i.message.includes('missing states')).length,
+      nonTextContrastIssues: issues.filter(i => i.message.includes('Non-text contrast')).length,
+      colorOnlyIssues: issues.filter(i => i.message.includes('color alone')).length,
     },
   };
 }

@@ -381,28 +381,48 @@ function traverseAndLint(
  * No AI required — checks fills, strokes, effects, text styles, and border radius
  * against applied Figma styles and variables.
  */
+/**
+ * Check if a node name matches any of the ignore glob patterns.
+ * Supports simple glob: * matches any chars, ? matches one char.
+ */
+function matchesIgnorePattern(name: string, patterns: string[]): boolean {
+  for (const pattern of patterns) {
+    const regex = new RegExp(
+      '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
+    );
+    if (regex.test(name)) return true;
+  }
+  return false;
+}
+
 export function runDesignLint(
   nodes: readonly SceneNode[],
   settings: LintSettings = DEFAULT_LINT_SETTINGS
 ): LintResult {
   const errors: LintError[] = [];
   let totalNodes = 0;
+  const ignorePatterns = settings.ignorePatterns || [];
+  const severityOverrides = settings.severityOverrides || {};
 
   for (const node of nodes) {
     totalNodes += traverseAndLint(node, settings, errors, '', false);
   }
 
   // Run new spacing and auto-layout checks
-  const skipOpts = { skipLocked: settings.skipLockedLayers, skipHidden: settings.skipHiddenLayers };
+  const skipOpts = {
+    skipLocked: settings.skipLockedLayers,
+    skipHidden: settings.skipHiddenLayers,
+    scale: settings.spacingScale,
+  };
 
-  if (settings.checkSpacing) {
+  if (settings.checkSpacing && severityOverrides.spacing !== 'off') {
     const spacingResult = checkSpacing(nodes, skipOpts);
     for (const issue of spacingResult.issues) {
-      // Apply same ignore filter as traverseAndLint
       const val = issue.currentValue || '';
       if (ignoredNodeIds.has(issue.nodeId)) continue;
       if (ignoredErrorKeys.has(errorKey(issue.nodeId, 'spacing'))) continue;
       if (ignoredErrorKeys.has(errorKey(issue.nodeId, 'spacing', val))) continue;
+      if (matchesIgnorePattern(issue.nodeName, ignorePatterns)) continue;
 
       errors.push({
         nodeId: issue.nodeId,
@@ -417,12 +437,12 @@ export function runDesignLint(
     }
   }
 
-  if (settings.checkAutoLayout) {
-    const autoLayoutResult = checkAutoLayout(nodes, skipOpts);
+  if (settings.checkAutoLayout && severityOverrides.autoLayout !== 'off') {
+    const autoLayoutResult = checkAutoLayout(nodes, { skipLocked: settings.skipLockedLayers, skipHidden: settings.skipHiddenLayers });
     for (const issue of autoLayoutResult.issues) {
-      // Apply same ignore filter as traverseAndLint
       if (ignoredNodeIds.has(issue.nodeId)) continue;
       if (ignoredErrorKeys.has(errorKey(issue.nodeId, 'autoLayout'))) continue;
+      if (matchesIgnorePattern(issue.nodeName, ignorePatterns)) continue;
 
       errors.push({
         nodeId: issue.nodeId,
@@ -436,11 +456,12 @@ export function runDesignLint(
     }
   }
 
-  if (settings.checkAccessibility) {
-    const a11yResult = checkAccessibility(nodes, skipOpts);
+  if (settings.checkAccessibility && severityOverrides.accessibility !== 'off') {
+    const a11yResult = checkAccessibility(nodes, { skipLocked: settings.skipLockedLayers, skipHidden: settings.skipHiddenLayers });
     for (const issue of a11yResult.issues) {
       if (ignoredNodeIds.has(issue.nodeId)) continue;
       if (ignoredErrorKeys.has(errorKey(issue.nodeId, 'accessibility'))) continue;
+      if (matchesIgnorePattern(issue.nodeName, ignorePatterns)) continue;
 
       errors.push({
         nodeId: issue.nodeId,
@@ -455,9 +476,20 @@ export function runDesignLint(
     }
   }
 
-  // Assign severity to all errors that don't have one yet
-  for (const err of errors) {
-    if (!err.severity) {
+  // Filter out errors for rules set to 'off' via severity overrides
+  const filteredErrors = errors.filter(err => severityOverrides[err.errorType] !== 'off');
+
+  // Filter out errors matching ignore patterns (for traverseAndLint errors that weren't already filtered)
+  const finalErrors = ignorePatterns.length > 0
+    ? filteredErrors.filter(err => !matchesIgnorePattern(err.nodeName, ignorePatterns))
+    : filteredErrors;
+
+  // Assign severity: use override if set, else default
+  for (const err of finalErrors) {
+    const override = severityOverrides[err.errorType];
+    if (override && override !== 'off') {
+      err.severity = override;
+    } else if (!err.severity) {
       switch (err.errorType) {
         case 'fill': case 'stroke': case 'effect': case 'text': case 'spacing':
           err.severity = 'warning';
@@ -473,23 +505,23 @@ export function runDesignLint(
   }
 
   // Count unique nodes with errors
-  const nodesWithErrors = new Set(errors.map(e => e.nodeId)).size;
+  const nodesWithErrors = new Set(finalErrors.map(e => e.nodeId)).size;
 
   // Build summary
   const byType: Record<LintErrorType, number> = { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0, spacing: 0, autoLayout: 0, accessibility: 0 };
-  for (const err of errors) {
+  for (const err of finalErrors) {
     byType[err.errorType]++;
   }
 
   const summary: LintSummary = {
-    totalErrors: errors.length,
+    totalErrors: finalErrors.length,
     byType,
     totalNodes,
     nodesWithErrors,
   };
 
   return {
-    errors,
+    errors: finalErrors,
     ignoredNodeIds: Array.from(ignoredNodeIds),
     ignoredErrorKeys: Array.from(ignoredErrorKeys),
     summary,

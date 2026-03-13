@@ -169,6 +169,12 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
       case 'lint-load-settings':
         handleLintLoadSettings();
         break;
+      case 'lint-save-team-config':
+        handleSaveTeamConfig(data);
+        break;
+      case 'lint-load-team-config':
+        handleLoadTeamConfig();
+        break;
       // Chat UI handlers
       case 'jump-to-node':
         handleJumpToNode(data);
@@ -1057,6 +1063,52 @@ async function handleLintLoadSettings(): Promise<void> {
   } catch (error) {
     console.warn('Could not load lint settings:', error);
     sendMessageToUI('lint-settings-loaded', DEFAULT_LINT_SETTINGS);
+  }
+}
+
+// ──────────────────────────────────────────────
+// Team Config Handlers (shared plugin data)
+// ──────────────────────────────────────────────
+
+function handleSaveTeamConfig(data: { config: any }): void {
+  try {
+    const config = data.config;
+    if (!config || config.version !== 1) {
+      sendMessageToUI('team-config-saved', { success: false, error: 'Invalid config version' });
+      return;
+    }
+    figma.root.setSharedPluginData('figmalint', 'config', JSON.stringify(config));
+    sendMessageToUI('team-config-saved', { success: true });
+  } catch (error) {
+    sendMessageToUI('team-config-saved', { success: false, error: String(error) });
+  }
+}
+
+function handleLoadTeamConfig(): void {
+  try {
+    const raw = figma.root.getSharedPluginData('figmalint', 'config');
+    if (raw) {
+      const config = JSON.parse(raw);
+      // Merge team config into current lint settings
+      if (config.scales?.spacing) {
+        currentLintSettings.spacingScale = config.scales.spacing;
+      }
+      if (config.scales?.radius) {
+        currentLintSettings.allowedRadii = config.scales.radius;
+      }
+      if (config.severityOverrides) {
+        currentLintSettings.severityOverrides = config.severityOverrides;
+      }
+      if (config.ignorePatterns) {
+        currentLintSettings.ignorePatterns = config.ignorePatterns;
+      }
+      sendMessageToUI('team-config-loaded', { config, settings: currentLintSettings });
+    } else {
+      sendMessageToUI('team-config-loaded', { config: null, settings: currentLintSettings });
+    }
+  } catch (error) {
+    console.warn('Could not load team config:', error);
+    sendMessageToUI('team-config-loaded', { config: null, settings: currentLintSettings });
   }
 }
 
