@@ -5576,6 +5576,299 @@ ${scoringCriteria}
     return 1 - distance / maxDistance;
   }
 
+  // src/core/design-lint.ts
+  var DEFAULT_LINT_SETTINGS = {
+    checkFills: true,
+    checkStrokes: true,
+    checkEffects: true,
+    checkTextStyles: true,
+    checkRadius: true,
+    allowedRadii: [0, 2, 4, 8, 12, 16, 24, 32],
+    skipLockedLayers: true,
+    skipHiddenLayers: true
+  };
+  var ignoredNodeIds = /* @__PURE__ */ new Set();
+  var ignoredErrorKeys = /* @__PURE__ */ new Set();
+  function errorKey(nodeId, errorType) {
+    return `${nodeId}::${errorType}`;
+  }
+  function ignoreNode(nodeId) {
+    ignoredNodeIds.add(nodeId);
+  }
+  function ignoreError(nodeId, errorType) {
+    ignoredErrorKeys.add(errorKey(nodeId, errorType));
+  }
+  function ignoreAllOfType(errors, errorType) {
+    for (const err of errors) {
+      if (err.errorType === errorType) {
+        ignoredErrorKeys.add(errorKey(err.nodeId, err.errorType));
+      }
+    }
+  }
+  function clearIgnored() {
+    ignoredNodeIds.clear();
+    ignoredErrorKeys.clear();
+  }
+  function determineFill(paint) {
+    if (paint.type === "SOLID") {
+      const { r, g, b } = paint.color;
+      const hex = rgbToHex(r, g, b);
+      const opacity = paint.opacity !== void 0 && paint.opacity < 1 ? ` (${Math.round(paint.opacity * 100)}%)` : "";
+      return hex + opacity;
+    }
+    if (paint.type === "IMAGE") return "Image fill";
+    if (paint.type === "VIDEO") return "Video fill";
+    if (paint.type.includes("GRADIENT")) return `${paint.type.replace("GRADIENT_", "").toLowerCase()} gradient`;
+    return paint.type;
+  }
+  function hasBoundVariable(node, property) {
+    try {
+      if ("boundVariables" in node) {
+        const bound = node.boundVariables;
+        if (bound && bound[property]) return true;
+      }
+    } catch (e) {
+    }
+    return false;
+  }
+  function checkFills(node, errors, path) {
+    if (!("fills" in node)) return;
+    const fills = node.fills;
+    if (fills === figma.mixed || !Array.isArray(fills)) return;
+    const visibleFills = fills.filter((f) => f.visible !== false);
+    if (visibleFills.length === 0) return;
+    if (hasBoundVariable(node, "fills")) return;
+    if ("fillStyleId" in node) {
+      const styleId = node.fillStyleId;
+      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
+    }
+    for (const fill of visibleFills) {
+      const value = determineFill(fill);
+      errors.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        nodeType: node.type,
+        errorType: "fill",
+        message: `Missing fill style: ${value}`,
+        value,
+        path
+      });
+    }
+  }
+  function checkStrokes(node, errors, path) {
+    if (!("strokes" in node)) return;
+    const strokes = node.strokes;
+    if (!Array.isArray(strokes)) return;
+    const visibleStrokes = strokes.filter((s) => s.visible !== false);
+    if (visibleStrokes.length === 0) return;
+    if (hasBoundVariable(node, "strokes")) return;
+    if ("strokeStyleId" in node) {
+      const styleId = node.strokeStyleId;
+      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
+    }
+    for (const stroke of visibleStrokes) {
+      const value = determineFill(stroke);
+      const weight = "strokeWeight" in node ? ` (${node.strokeWeight}px)` : "";
+      errors.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        nodeType: node.type,
+        errorType: "stroke",
+        message: `Missing stroke style: ${value}${weight}`,
+        value: value + weight,
+        path
+      });
+    }
+  }
+  function checkEffects(node, errors, path) {
+    if (!("effects" in node)) return;
+    const effects = node.effects;
+    if (!Array.isArray(effects) || effects.length === 0) return;
+    const visibleEffects = effects.filter((e) => e.visible !== false);
+    if (visibleEffects.length === 0) return;
+    if ("effectStyleId" in node) {
+      const styleId = node.effectStyleId;
+      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
+    }
+    const descriptions = visibleEffects.map((e) => {
+      const parts = [e.type.replace(/_/g, " ").toLowerCase()];
+      if ("radius" in e) parts.push(`r:${e.radius}`);
+      if ("color" in e && e.color) {
+        const c = e.color;
+        parts.push(rgbToHex(c.r, c.g, c.b));
+      }
+      return parts.join(" ");
+    });
+    errors.push({
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      errorType: "effect",
+      message: `Missing effect style: ${descriptions.join(", ")}`,
+      value: descriptions.join(", "),
+      path
+    });
+  }
+  function checkTextStyle(node, errors, path) {
+    if ("textStyleId" in node) {
+      const styleId = node.textStyleId;
+      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
+    }
+    const fontName = node.fontName !== figma.mixed ? node.fontName : null;
+    const fontSize = node.fontSize !== figma.mixed ? node.fontSize : null;
+    const parts = [];
+    if (fontName) parts.push(`${fontName.family} ${fontName.style}`);
+    if (fontSize) parts.push(`${fontSize}px`);
+    const value = parts.join(" / ") || "unknown text style";
+    errors.push({
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      errorType: "text",
+      message: `Missing text style: ${value}`,
+      value,
+      path
+    });
+  }
+  function checkRadius(node, errors, path, allowedRadii) {
+    if (!("cornerRadius" in node)) return;
+    if (hasBoundVariable(node, "topLeftRadius") || hasBoundVariable(node, "cornerRadius")) return;
+    const cr = node.cornerRadius;
+    if (cr === figma.mixed) {
+      const corners = [
+        node.topLeftRadius,
+        node.topRightRadius,
+        node.bottomLeftRadius,
+        node.bottomRightRadius
+      ].filter((v) => v !== void 0 && v !== null);
+      for (const c of corners) {
+        if (!allowedRadii.includes(c)) {
+          errors.push({
+            nodeId: node.id,
+            nodeName: node.name,
+            nodeType: node.type,
+            errorType: "radius",
+            message: `Non-standard border radius: ${c}px (allowed: ${allowedRadii.join(", ")})`,
+            value: `${c}px`,
+            path
+          });
+          break;
+        }
+      }
+      return;
+    }
+    if (typeof cr === "number" && cr > 0 && !allowedRadii.includes(cr)) {
+      errors.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        nodeType: node.type,
+        errorType: "radius",
+        message: `Non-standard border radius: ${cr}px (allowed: ${allowedRadii.join(", ")})`,
+        value: `${cr}px`,
+        path
+      });
+    }
+  }
+  function lintNode(node, settings, errors, path) {
+    if (node.type === "GROUP" || node.type === "SLICE" || node.type === "CONNECTOR") return;
+    if (node.type === "COMPONENT_SET") return;
+    switch (node.type) {
+      case "TEXT":
+        if (settings.checkTextStyles) checkTextStyle(node, errors, path);
+        if (settings.checkFills) checkFills(node, errors, path);
+        break;
+      case "FRAME":
+      case "SECTION":
+        if (settings.checkFills) checkFills(node, errors, path);
+        if (settings.checkStrokes) checkStrokes(node, errors, path);
+        if (settings.checkEffects) checkEffects(node, errors, path);
+        if (settings.checkRadius) checkRadius(node, errors, path, settings.allowedRadii);
+        break;
+      case "RECTANGLE":
+      case "COMPONENT":
+      case "INSTANCE":
+        if (settings.checkFills) checkFills(node, errors, path);
+        if (settings.checkStrokes) checkStrokes(node, errors, path);
+        if (settings.checkEffects) checkEffects(node, errors, path);
+        if (settings.checkRadius) checkRadius(node, errors, path, settings.allowedRadii);
+        break;
+      case "ELLIPSE":
+      case "POLYGON":
+      case "STAR":
+      case "VECTOR":
+      case "LINE":
+      case "BOOLEAN_OPERATION":
+        if (settings.checkFills) checkFills(node, errors, path);
+        if (settings.checkStrokes) checkStrokes(node, errors, path);
+        if (settings.checkEffects) checkEffects(node, errors, path);
+        break;
+    }
+  }
+  function traverseAndLint(node, settings, errors, parentPath, parentLocked) {
+    let count = 0;
+    const isLocked = parentLocked || "locked" in node && node.locked;
+    const isHidden = "visible" in node && !node.visible;
+    if (settings.skipLockedLayers && isLocked) return 0;
+    if (settings.skipHiddenLayers && isHidden) return 0;
+    const path = parentPath ? `${parentPath} > ${node.name}` : node.name;
+    count++;
+    if (!ignoredNodeIds.has(node.id)) {
+      const preLen = errors.length;
+      lintNode(node, settings, errors, path);
+      for (let i = errors.length - 1; i >= preLen; i--) {
+        if (ignoredErrorKeys.has(errorKey(errors[i].nodeId, errors[i].errorType))) {
+          errors.splice(i, 1);
+        }
+      }
+    }
+    if ("children" in node) {
+      for (const child of node.children) {
+        count += traverseAndLint(child, settings, errors, path, isLocked);
+      }
+    }
+    return count;
+  }
+  function runDesignLint(nodes, settings = DEFAULT_LINT_SETTINGS) {
+    const errors = [];
+    let totalNodes = 0;
+    for (const node of nodes) {
+      totalNodes += traverseAndLint(node, settings, errors, "", false);
+    }
+    const nodesWithErrors = new Set(errors.map((e) => e.nodeId)).size;
+    const byType = { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0 };
+    for (const err of errors) {
+      byType[err.errorType]++;
+    }
+    const summary = {
+      totalErrors: errors.length,
+      byType,
+      totalNodes,
+      nodesWithErrors
+    };
+    return {
+      errors,
+      ignoredNodeIds: Array.from(ignoredNodeIds),
+      ignoredErrorKeys: Array.from(ignoredErrorKeys),
+      summary
+    };
+  }
+  function lintSelection(settings) {
+    const selection = figma.currentPage.selection;
+    if (selection.length === 0) {
+      return {
+        errors: [],
+        ignoredNodeIds: [],
+        ignoredErrorKeys: [],
+        summary: { totalErrors: 0, byType: { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0 }, totalNodes: 0, nodesWithErrors: 0 }
+      };
+    }
+    return runDesignLint(selection, settings);
+  }
+  function findNodesWithSameValue(rootNodes, errorType, value, settings = DEFAULT_LINT_SETTINGS) {
+    const result = runDesignLint(rootNodes, settings);
+    return result.errors.filter((e) => e.errorType === errorType && e.value === value);
+  }
+
   // src/ui/message-handler.ts
   var storedApiKey = null;
   var selectedModel = "claude-sonnet-4-5-20250929";
@@ -5650,6 +5943,34 @@ ${scoringCriteria}
           break;
         case "add-component-property":
           await handleAddComponentProperty(data);
+          break;
+        // Design Lint handlers (deterministic, no AI)
+        case "run-design-lint":
+          handleRunDesignLint(data);
+          break;
+        case "lint-ignore-node":
+          handleLintIgnoreNode(data);
+          break;
+        case "lint-ignore-error":
+          handleLintIgnoreError(data);
+          break;
+        case "lint-ignore-all-of-type":
+          handleLintIgnoreAllOfType(data);
+          break;
+        case "lint-clear-ignored":
+          handleLintClearIgnored();
+          break;
+        case "lint-select-node":
+          handleLintSelectNode(data);
+          break;
+        case "lint-select-all-with-value":
+          handleLintSelectAllWithValue(data);
+          break;
+        case "lint-save-settings":
+          handleLintSaveSettings(data);
+          break;
+        case "lint-load-settings":
+          handleLintLoadSettings();
           break;
         default:
           console.warn("Unknown message type:", type);
@@ -6197,6 +6518,72 @@ ${currentComponentContext}${knowledgeContext}**Instructions:**
 ${hasComponentContext ? "Since you have context about their current component, prioritize advice that directly applies to what they're working on." : "If the user wants component-specific advice, suggest they select and analyze a component in Figma first."}
 
 Respond naturally and helpfully to the user's question.`;
+  }
+  var currentLintSettings = __spreadValues({}, DEFAULT_LINT_SETTINGS);
+  function handleRunDesignLint(data) {
+    const settings = (data == null ? void 0 : data.settings) || currentLintSettings;
+    const result = lintSelection(settings);
+    sendMessageToUI("design-lint-result", result);
+  }
+  function handleLintIgnoreNode(data) {
+    ignoreNode(data.nodeId);
+    handleRunDesignLint();
+  }
+  function handleLintIgnoreError(data) {
+    ignoreError(data.nodeId, data.errorType);
+    handleRunDesignLint();
+  }
+  function handleLintIgnoreAllOfType(data) {
+    const result = lintSelection(currentLintSettings);
+    ignoreAllOfType(result.errors, data.errorType);
+    handleRunDesignLint();
+  }
+  function handleLintClearIgnored() {
+    clearIgnored();
+    handleRunDesignLint();
+  }
+  function handleLintSelectNode(data) {
+    try {
+      const node = figma.getNodeById(data.nodeId);
+      if (node && node.type !== "DOCUMENT" && node.type !== "PAGE") {
+        figma.currentPage.selection = [node];
+        figma.viewport.scrollAndZoomIntoView([node]);
+      }
+    } catch (error) {
+      console.warn("Could not select node:", data.nodeId, error);
+    }
+  }
+  function handleLintSelectAllWithValue(data) {
+    const selection = figma.currentPage.selection;
+    if (selection.length === 0) return;
+    const matching = findNodesWithSameValue(selection, data.errorType, data.value, currentLintSettings);
+    const nodeIds = [...new Set(matching.map((e) => e.nodeId))];
+    const nodes = nodeIds.map((id) => figma.getNodeById(id)).filter((n) => n !== null && n.type !== "DOCUMENT" && n.type !== "PAGE");
+    if (nodes.length > 0) {
+      figma.currentPage.selection = nodes;
+      figma.viewport.scrollAndZoomIntoView(nodes);
+      sendMessageToUI("lint-selected-nodes", { count: nodes.length, value: data.value });
+    }
+  }
+  async function handleLintSaveSettings(data) {
+    currentLintSettings = data.settings;
+    try {
+      await figma.clientStorage.setAsync("design-lint-settings", data.settings);
+    } catch (error) {
+      console.warn("Could not save lint settings:", error);
+    }
+  }
+  async function handleLintLoadSettings() {
+    try {
+      const saved = await figma.clientStorage.getAsync("design-lint-settings");
+      if (saved) {
+        currentLintSettings = __spreadValues(__spreadValues({}, DEFAULT_LINT_SETTINGS), saved);
+      }
+      sendMessageToUI("lint-settings-loaded", currentLintSettings);
+    } catch (error) {
+      console.warn("Could not load lint settings:", error);
+      sendMessageToUI("lint-settings-loaded", DEFAULT_LINT_SETTINGS);
+    }
   }
   async function initializePlugin() {
     try {

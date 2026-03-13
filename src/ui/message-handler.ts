@@ -38,7 +38,16 @@ import {
   NamingStrategy,
   RenamePreview,
 } from '../fixes/naming-fixer';
-import { FixRequest, FixPreviewRequest, BatchFixRequest } from '../types';
+import { FixRequest, FixPreviewRequest, BatchFixRequest, LintSettings } from '../types';
+import {
+  lintSelection,
+  ignoreNode,
+  ignoreError,
+  ignoreAllOfType,
+  clearIgnored,
+  findNodesWithSameValue,
+  DEFAULT_LINT_SETTINGS,
+} from '../core/design-lint';
 
 // Plugin state
 let storedApiKey: string | null = null;
@@ -126,6 +135,34 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         break;
       case 'add-component-property':
         await handleAddComponentProperty(data);
+        break;
+      // Design Lint handlers (deterministic, no AI)
+      case 'run-design-lint':
+        handleRunDesignLint(data);
+        break;
+      case 'lint-ignore-node':
+        handleLintIgnoreNode(data);
+        break;
+      case 'lint-ignore-error':
+        handleLintIgnoreError(data);
+        break;
+      case 'lint-ignore-all-of-type':
+        handleLintIgnoreAllOfType(data);
+        break;
+      case 'lint-clear-ignored':
+        handleLintClearIgnored();
+        break;
+      case 'lint-select-node':
+        handleLintSelectNode(data);
+        break;
+      case 'lint-select-all-with-value':
+        handleLintSelectAllWithValue(data);
+        break;
+      case 'lint-save-settings':
+        handleLintSaveSettings(data);
+        break;
+      case 'lint-load-settings':
+        handleLintLoadSettings();
         break;
       default:
         console.warn('Unknown message type:', type);
@@ -897,6 +934,92 @@ ${hasComponentContext ?
   'If the user wants component-specific advice, suggest they select and analyze a component in Figma first.'}
 
 Respond naturally and helpfully to the user's question.`;
+}
+
+// ──────────────────────────────────────────────
+// Design Lint Handlers (deterministic, no AI)
+// ──────────────────────────────────────────────
+
+let currentLintSettings: LintSettings = { ...DEFAULT_LINT_SETTINGS };
+
+function handleRunDesignLint(data?: any): void {
+  const settings = data?.settings || currentLintSettings;
+  const result = lintSelection(settings);
+  sendMessageToUI('design-lint-result', result);
+}
+
+function handleLintIgnoreNode(data: { nodeId: string }): void {
+  ignoreNode(data.nodeId);
+  // Re-run lint to update results
+  handleRunDesignLint();
+}
+
+function handleLintIgnoreError(data: { nodeId: string; errorType: string }): void {
+  ignoreError(data.nodeId, data.errorType as any);
+  handleRunDesignLint();
+}
+
+function handleLintIgnoreAllOfType(data: { errorType: string }): void {
+  // Get current results first, then ignore all matching
+  const result = lintSelection(currentLintSettings);
+  ignoreAllOfType(result.errors, data.errorType as any);
+  handleRunDesignLint();
+}
+
+function handleLintClearIgnored(): void {
+  clearIgnored();
+  handleRunDesignLint();
+}
+
+function handleLintSelectNode(data: { nodeId: string }): void {
+  try {
+    const node = figma.getNodeById(data.nodeId);
+    if (node && node.type !== 'DOCUMENT' && node.type !== 'PAGE') {
+      figma.currentPage.selection = [node as SceneNode];
+      figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+    }
+  } catch (error) {
+    console.warn('Could not select node:', data.nodeId, error);
+  }
+}
+
+function handleLintSelectAllWithValue(data: { errorType: string; value: string }): void {
+  const selection = figma.currentPage.selection;
+  if (selection.length === 0) return;
+
+  const matching = findNodesWithSameValue(selection, data.errorType as any, data.value, currentLintSettings);
+  const nodeIds = [...new Set(matching.map(e => e.nodeId))];
+  const nodes = nodeIds
+    .map(id => figma.getNodeById(id))
+    .filter((n): n is SceneNode => n !== null && n.type !== 'DOCUMENT' && n.type !== 'PAGE');
+
+  if (nodes.length > 0) {
+    figma.currentPage.selection = nodes;
+    figma.viewport.scrollAndZoomIntoView(nodes);
+    sendMessageToUI('lint-selected-nodes', { count: nodes.length, value: data.value });
+  }
+}
+
+async function handleLintSaveSettings(data: { settings: LintSettings }): Promise<void> {
+  currentLintSettings = data.settings;
+  try {
+    await figma.clientStorage.setAsync('design-lint-settings', data.settings);
+  } catch (error) {
+    console.warn('Could not save lint settings:', error);
+  }
+}
+
+async function handleLintLoadSettings(): Promise<void> {
+  try {
+    const saved = await figma.clientStorage.getAsync('design-lint-settings');
+    if (saved) {
+      currentLintSettings = { ...DEFAULT_LINT_SETTINGS, ...saved };
+    }
+    sendMessageToUI('lint-settings-loaded', currentLintSettings);
+  } catch (error) {
+    console.warn('Could not load lint settings:', error);
+    sendMessageToUI('lint-settings-loaded', DEFAULT_LINT_SETTINGS);
+  }
 }
 
 /**

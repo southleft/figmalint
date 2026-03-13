@@ -196,7 +196,17 @@ export type UIMessageType =
   | 'apply-naming-fix'
   | 'apply-batch-fix'
   | 'update-description'
-  | 'add-component-property';
+  | 'add-component-property'
+  // Design Lint message types (deterministic, no AI)
+  | 'run-design-lint'
+  | 'lint-ignore-node'
+  | 'lint-ignore-error'
+  | 'lint-ignore-all-of-type'
+  | 'lint-clear-ignored'
+  | 'lint-select-node'
+  | 'lint-select-all-with-value'
+  | 'lint-save-settings'
+  | 'lint-load-settings';
 
 // Auto-fix Types
 export interface FixRequest {
@@ -312,6 +322,47 @@ export interface BatchAnalysisResult {
 // Export utility types
 export type ValidNodeType = 'FRAME' | 'COMPONENT' | 'COMPONENT_SET' | 'INSTANCE' | 'GROUP';
 export type TokenCategory = 'colors' | 'spacing' | 'typography' | 'effects' | 'borders';
+
+// ──────────────────────────────────────────────
+// Design Lint Types (deterministic, non-AI rules)
+// ──────────────────────────────────────────────
+
+export type LintErrorType = 'fill' | 'stroke' | 'effect' | 'text' | 'radius';
+
+export interface LintError {
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  errorType: LintErrorType;
+  message: string;
+  value: string;
+  path: string;
+}
+
+export interface LintResult {
+  errors: LintError[];
+  ignoredNodeIds: string[];
+  ignoredErrorKeys: string[];
+  summary: LintSummary;
+}
+
+export interface LintSummary {
+  totalErrors: number;
+  byType: Record<LintErrorType, number>;
+  totalNodes: number;
+  nodesWithErrors: number;
+}
+
+export interface LintSettings {
+  checkFills: boolean;
+  checkStrokes: boolean;
+  checkEffects: boolean;
+  checkTextStyles: boolean;
+  checkRadius: boolean;
+  allowedRadii: number[];
+  skipLockedLayers: boolean;
+  skipHiddenLayers: boolean;
+}
 
 // Chat Types
 export interface ChatMessage {
