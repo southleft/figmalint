@@ -2642,6 +2642,299 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     return str.replace(/([a-z])([A-Z])/g, "$1-$2").replace(/[\s_]+/g, "-").replace(/[^a-zA-Z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
   }
 
+  // src/core/design-lint.ts
+  var DEFAULT_LINT_SETTINGS = {
+    checkFills: true,
+    checkStrokes: true,
+    checkEffects: true,
+    checkTextStyles: true,
+    checkRadius: true,
+    allowedRadii: [0, 2, 4, 8, 12, 16, 24, 32],
+    skipLockedLayers: true,
+    skipHiddenLayers: true
+  };
+  var ignoredNodeIds = /* @__PURE__ */ new Set();
+  var ignoredErrorKeys = /* @__PURE__ */ new Set();
+  function errorKey(nodeId, errorType) {
+    return `${nodeId}::${errorType}`;
+  }
+  function ignoreNode(nodeId) {
+    ignoredNodeIds.add(nodeId);
+  }
+  function ignoreError(nodeId, errorType) {
+    ignoredErrorKeys.add(errorKey(nodeId, errorType));
+  }
+  function ignoreAllOfType(errors, errorType) {
+    for (const err of errors) {
+      if (err.errorType === errorType) {
+        ignoredErrorKeys.add(errorKey(err.nodeId, err.errorType));
+      }
+    }
+  }
+  function clearIgnored() {
+    ignoredNodeIds.clear();
+    ignoredErrorKeys.clear();
+  }
+  function determineFill(paint) {
+    if (paint.type === "SOLID") {
+      const { r, g, b } = paint.color;
+      const hex = rgbToHex(r, g, b);
+      const opacity = paint.opacity !== void 0 && paint.opacity < 1 ? ` (${Math.round(paint.opacity * 100)}%)` : "";
+      return hex + opacity;
+    }
+    if (paint.type === "IMAGE") return "Image fill";
+    if (paint.type === "VIDEO") return "Video fill";
+    if (paint.type.includes("GRADIENT")) return `${paint.type.replace("GRADIENT_", "").toLowerCase()} gradient`;
+    return paint.type;
+  }
+  function hasBoundVariable(node, property) {
+    try {
+      if ("boundVariables" in node) {
+        const bound = node.boundVariables;
+        if (bound && bound[property]) return true;
+      }
+    } catch (e) {
+    }
+    return false;
+  }
+  function checkFills(node, errors, path) {
+    if (!("fills" in node)) return;
+    const fills = node.fills;
+    if (fills === figma.mixed || !Array.isArray(fills)) return;
+    const visibleFills = fills.filter((f) => f.visible !== false);
+    if (visibleFills.length === 0) return;
+    if (hasBoundVariable(node, "fills")) return;
+    if ("fillStyleId" in node) {
+      const styleId = node.fillStyleId;
+      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
+    }
+    for (const fill of visibleFills) {
+      const value = determineFill(fill);
+      errors.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        nodeType: node.type,
+        errorType: "fill",
+        message: `Missing fill style: ${value}`,
+        value,
+        path
+      });
+    }
+  }
+  function checkStrokes(node, errors, path) {
+    if (!("strokes" in node)) return;
+    const strokes = node.strokes;
+    if (!Array.isArray(strokes)) return;
+    const visibleStrokes = strokes.filter((s) => s.visible !== false);
+    if (visibleStrokes.length === 0) return;
+    if (hasBoundVariable(node, "strokes")) return;
+    if ("strokeStyleId" in node) {
+      const styleId = node.strokeStyleId;
+      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
+    }
+    for (const stroke of visibleStrokes) {
+      const value = determineFill(stroke);
+      const weight = "strokeWeight" in node ? ` (${node.strokeWeight}px)` : "";
+      errors.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        nodeType: node.type,
+        errorType: "stroke",
+        message: `Missing stroke style: ${value}${weight}`,
+        value: value + weight,
+        path
+      });
+    }
+  }
+  function checkEffects(node, errors, path) {
+    if (!("effects" in node)) return;
+    const effects = node.effects;
+    if (!Array.isArray(effects) || effects.length === 0) return;
+    const visibleEffects = effects.filter((e) => e.visible !== false);
+    if (visibleEffects.length === 0) return;
+    if ("effectStyleId" in node) {
+      const styleId = node.effectStyleId;
+      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
+    }
+    const descriptions = visibleEffects.map((e) => {
+      const parts = [e.type.replace(/_/g, " ").toLowerCase()];
+      if ("radius" in e) parts.push(`r:${e.radius}`);
+      if ("color" in e && e.color) {
+        const c = e.color;
+        parts.push(rgbToHex(c.r, c.g, c.b));
+      }
+      return parts.join(" ");
+    });
+    errors.push({
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      errorType: "effect",
+      message: `Missing effect style: ${descriptions.join(", ")}`,
+      value: descriptions.join(", "),
+      path
+    });
+  }
+  function checkTextStyle(node, errors, path) {
+    if ("textStyleId" in node) {
+      const styleId = node.textStyleId;
+      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
+    }
+    const fontName = node.fontName !== figma.mixed ? node.fontName : null;
+    const fontSize = node.fontSize !== figma.mixed ? node.fontSize : null;
+    const parts = [];
+    if (fontName) parts.push(`${fontName.family} ${fontName.style}`);
+    if (fontSize) parts.push(`${fontSize}px`);
+    const value = parts.join(" / ") || "unknown text style";
+    errors.push({
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      errorType: "text",
+      message: `Missing text style: ${value}`,
+      value,
+      path
+    });
+  }
+  function checkRadius(node, errors, path, allowedRadii) {
+    if (!("cornerRadius" in node)) return;
+    if (hasBoundVariable(node, "topLeftRadius") || hasBoundVariable(node, "cornerRadius")) return;
+    const cr = node.cornerRadius;
+    if (cr === figma.mixed) {
+      const corners = [
+        node.topLeftRadius,
+        node.topRightRadius,
+        node.bottomLeftRadius,
+        node.bottomRightRadius
+      ].filter((v) => v !== void 0 && v !== null);
+      for (const c of corners) {
+        if (!allowedRadii.includes(c)) {
+          errors.push({
+            nodeId: node.id,
+            nodeName: node.name,
+            nodeType: node.type,
+            errorType: "radius",
+            message: `Non-standard border radius: ${c}px (allowed: ${allowedRadii.join(", ")})`,
+            value: `${c}px`,
+            path
+          });
+          break;
+        }
+      }
+      return;
+    }
+    if (typeof cr === "number" && cr > 0 && !allowedRadii.includes(cr)) {
+      errors.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        nodeType: node.type,
+        errorType: "radius",
+        message: `Non-standard border radius: ${cr}px (allowed: ${allowedRadii.join(", ")})`,
+        value: `${cr}px`,
+        path
+      });
+    }
+  }
+  function lintNode(node, settings, errors, path) {
+    if (node.type === "GROUP" || node.type === "SLICE" || node.type === "CONNECTOR") return;
+    if (node.type === "COMPONENT_SET") return;
+    switch (node.type) {
+      case "TEXT":
+        if (settings.checkTextStyles) checkTextStyle(node, errors, path);
+        if (settings.checkFills) checkFills(node, errors, path);
+        break;
+      case "FRAME":
+      case "SECTION":
+        if (settings.checkFills) checkFills(node, errors, path);
+        if (settings.checkStrokes) checkStrokes(node, errors, path);
+        if (settings.checkEffects) checkEffects(node, errors, path);
+        if (settings.checkRadius) checkRadius(node, errors, path, settings.allowedRadii);
+        break;
+      case "RECTANGLE":
+      case "COMPONENT":
+      case "INSTANCE":
+        if (settings.checkFills) checkFills(node, errors, path);
+        if (settings.checkStrokes) checkStrokes(node, errors, path);
+        if (settings.checkEffects) checkEffects(node, errors, path);
+        if (settings.checkRadius) checkRadius(node, errors, path, settings.allowedRadii);
+        break;
+      case "ELLIPSE":
+      case "POLYGON":
+      case "STAR":
+      case "VECTOR":
+      case "LINE":
+      case "BOOLEAN_OPERATION":
+        if (settings.checkFills) checkFills(node, errors, path);
+        if (settings.checkStrokes) checkStrokes(node, errors, path);
+        if (settings.checkEffects) checkEffects(node, errors, path);
+        break;
+    }
+  }
+  function traverseAndLint(node, settings, errors, parentPath, parentLocked) {
+    let count = 0;
+    const isLocked = parentLocked || "locked" in node && node.locked;
+    const isHidden = "visible" in node && !node.visible;
+    if (settings.skipLockedLayers && isLocked) return 0;
+    if (settings.skipHiddenLayers && isHidden) return 0;
+    const path = parentPath ? `${parentPath} > ${node.name}` : node.name;
+    count++;
+    if (!ignoredNodeIds.has(node.id)) {
+      const preLen = errors.length;
+      lintNode(node, settings, errors, path);
+      for (let i = errors.length - 1; i >= preLen; i--) {
+        if (ignoredErrorKeys.has(errorKey(errors[i].nodeId, errors[i].errorType))) {
+          errors.splice(i, 1);
+        }
+      }
+    }
+    if ("children" in node) {
+      for (const child of node.children) {
+        count += traverseAndLint(child, settings, errors, path, isLocked);
+      }
+    }
+    return count;
+  }
+  function runDesignLint(nodes, settings = DEFAULT_LINT_SETTINGS) {
+    const errors = [];
+    let totalNodes = 0;
+    for (const node of nodes) {
+      totalNodes += traverseAndLint(node, settings, errors, "", false);
+    }
+    const nodesWithErrors = new Set(errors.map((e) => e.nodeId)).size;
+    const byType = { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0 };
+    for (const err of errors) {
+      byType[err.errorType]++;
+    }
+    const summary = {
+      totalErrors: errors.length,
+      byType,
+      totalNodes,
+      nodesWithErrors
+    };
+    return {
+      errors,
+      ignoredNodeIds: Array.from(ignoredNodeIds),
+      ignoredErrorKeys: Array.from(ignoredErrorKeys),
+      summary
+    };
+  }
+  function lintSelection(settings) {
+    const selection = figma.currentPage.selection;
+    if (selection.length === 0) {
+      return {
+        errors: [],
+        ignoredNodeIds: [],
+        ignoredErrorKeys: [],
+        summary: { totalErrors: 0, byType: { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0 }, totalNodes: 0, nodesWithErrors: 0 }
+      };
+    }
+    return runDesignLint(selection, settings);
+  }
+  function findNodesWithSameValue(rootNodes, errorType, value, settings = DEFAULT_LINT_SETTINGS) {
+    const result = runDesignLint(rootNodes, settings);
+    return result.errors.filter((e) => e.errorType === errorType && e.value === value);
+  }
+
   // src/core/component-analyzer.ts
   async function extractComponentContext(node) {
     const hierarchy = extractLayerHierarchy(node);
@@ -3689,6 +3982,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       }
     }
     context.existingDescription = componentDescription;
+    const lintResult = runDesignLint([node], DEFAULT_LINT_SETTINGS);
+    console.log(`\u{1F50D} [LINT] Deterministic lint: ${lintResult.summary.totalErrors} issues in ${lintResult.summary.nodesWithErrors} nodes`);
     console.log(`\u{1F4CA} [ANALYSIS] Extracted from Figma API:`);
     console.log(`  Properties: ${actualProperties.length}`);
     console.log(`  States: ${actualStates.length}`);
@@ -3699,7 +3994,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     let analysisResult;
     if (useMCP) {
       console.log(`\u{1F504} Using hybrid LLM + MCP approach (${providerId})...`);
-      const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
+      const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription, lintResult);
       const llmResponse = await callProvider(providerId, apiKey, {
         prompt: llmPrompt,
         model,
@@ -3740,12 +4035,33 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       }
     }
     const filteredData = filterDevelopmentRecommendations(analysisResult);
-    return await processAnalysisResult(filteredData, context, options);
+    return await processAnalysisResult(filteredData, context, options, lintResult, apiKey, model, providerId);
   }
-  function createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription) {
+  function createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription, lintResult) {
     var _a;
     const componentFamily = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
     const nestedInstances = extractInstanceNames(context.hierarchy);
+    let lintSection = "";
+    if (lintResult && lintResult.summary.totalErrors > 0) {
+      const byType = lintResult.summary.byType;
+      const topErrors = lintResult.errors.slice(0, 15).map(
+        (e) => `  - [${e.errorType.toUpperCase()}] ${e.nodeName}: ${e.message}`
+      ).join("\n");
+      lintSection = `
+**Design Lint Findings (${lintResult.summary.totalErrors} issues):**
+- Missing fill styles: ${byType.fill || 0}
+- Missing stroke styles: ${byType.stroke || 0}
+- Missing effect styles: ${byType.effect || 0}
+- Missing text styles: ${byType.text || 0}
+- Non-standard border radius: ${byType.radius || 0}
+Top issues:
+${topErrors}
+`;
+    } else {
+      lintSection = `
+**Design Lint Findings:** All layers use proper design styles. No issues found.
+`;
+    }
     return `Analyze this Figma component and extract its structure and patterns.
 
 **Component Details:**
@@ -3766,7 +4082,7 @@ ${actualProperties.length > 10 ? `... and ${actualProperties.length - 10} more p
 - Actual tokens used: ${tokens.summary.actualTokens}
 - Hard-coded values: ${tokens.summary.hardCodedValues}
 - AI suggestions: ${tokens.summary.aiSuggestions}
-
+${lintSection}
 **Component Structure:**
 ${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
 
@@ -3990,7 +4306,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     }
     return cheatSheet.slice(0, 5);
   }
-  async function processAnalysisResult(filteredData, context, options) {
+  async function processAnalysisResult(filteredData, context, options, lintResult, apiKey, model, providerId) {
     var _a;
     try {
       console.log("\u{1F504} Processing analysis result...");
@@ -4094,6 +4410,31 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       console.log(`\u{1F4A1} AI-generated property recommendations: ${recommendations.length}`);
       const namingIssues = analyzeNamingIssues(node, 5);
       console.log(`\u{1F4DB} Found ${namingIssues.length} naming issues`);
+      if (lintResult && lintResult.errors.length > 0) {
+        audit.designLint = lintErrorsToAuditChecks(lintResult);
+      }
+      let designReview;
+      if (apiKey && model && providerId) {
+        try {
+          designReview = await generateDesignReview(
+            context,
+            lintResult,
+            audit,
+            tokens,
+            namingIssues,
+            recommendations,
+            apiKey,
+            model,
+            providerId
+          );
+          console.log(`\u{1F4CB} Design review generated: ${designReview.verdict} \u2014 ${designReview.findings.length} findings`);
+        } catch (reviewError) {
+          console.warn("\u26A0\uFE0F Design review generation failed, continuing without it:", reviewError);
+          designReview = generateDeterministicReview(lintResult, audit, tokens, namingIssues);
+        }
+      } else {
+        designReview = generateDeterministicReview(lintResult, audit, tokens, namingIssues);
+      }
       console.log("\u2705 Analysis result processed successfully");
       return {
         metadata,
@@ -4102,12 +4443,232 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         properties: actualProperties,
         recommendations,
         namingIssues,
-        existingDescription: componentDescription
+        existingDescription: componentDescription,
+        lintResult,
+        designReview
       };
     } catch (error) {
       console.error("Error processing analysis result:", error);
       throw error;
     }
+  }
+  function lintErrorsToAuditChecks(lintResult) {
+    const checks = [];
+    const byType = lintResult.summary.byType;
+    if (byType.fill > 0) {
+      checks.push({
+        check: `Fill styles (${byType.fill} missing)`,
+        status: "fail",
+        suggestion: `${byType.fill} layer${byType.fill > 1 ? "s use" : " uses"} hard-coded fills instead of design styles`
+      });
+    } else {
+      checks.push({ check: "Fill styles", status: "pass", suggestion: "All fills use design styles" });
+    }
+    if (byType.stroke > 0) {
+      checks.push({
+        check: `Stroke styles (${byType.stroke} missing)`,
+        status: "fail",
+        suggestion: `${byType.stroke} layer${byType.stroke > 1 ? "s use" : " uses"} hard-coded strokes instead of design styles`
+      });
+    } else {
+      checks.push({ check: "Stroke styles", status: "pass", suggestion: "All strokes use design styles" });
+    }
+    if (byType.effect > 0) {
+      checks.push({
+        check: `Effect styles (${byType.effect} missing)`,
+        status: "fail",
+        suggestion: `${byType.effect} layer${byType.effect > 1 ? "s use" : " uses"} hard-coded effects instead of design styles`
+      });
+    } else {
+      checks.push({ check: "Effect styles", status: "pass", suggestion: "All effects use design styles" });
+    }
+    if (byType.text > 0) {
+      checks.push({
+        check: `Text styles (${byType.text} missing)`,
+        status: "fail",
+        suggestion: `${byType.text} text layer${byType.text > 1 ? "s lack" : " lacks"} applied text styles`
+      });
+    } else {
+      checks.push({ check: "Text styles", status: "pass", suggestion: "All text uses design styles" });
+    }
+    if (byType.radius > 0) {
+      checks.push({
+        check: `Border radius (${byType.radius} non-standard)`,
+        status: "warning",
+        suggestion: `${byType.radius} layer${byType.radius > 1 ? "s use" : " uses"} non-standard border radius values`
+      });
+    } else {
+      checks.push({ check: "Border radius", status: "pass", suggestion: "All radii match design system standards" });
+    }
+    return checks;
+  }
+  function generateDeterministicReview(lintResult, audit, tokens, namingIssues) {
+    const findings = [];
+    if (lintResult) {
+      for (const err of lintResult.errors) {
+        findings.push({
+          severity: err.errorType === "radius" ? "warning" : "critical",
+          category: "Style Consistency",
+          title: err.message,
+          description: `Layer "${err.nodeName}" (${err.nodeType}) at ${err.path}`,
+          nodeId: err.nodeId,
+          nodeName: err.nodeName,
+          autoFixable: false
+        });
+      }
+    }
+    const hardCoded = tokens.summary.hardCodedValues;
+    if (hardCoded > 0) {
+      findings.push({
+        severity: "warning",
+        category: "Design Tokens",
+        title: `${hardCoded} hard-coded value${hardCoded > 1 ? "s" : ""} found`,
+        description: "These values should be replaced with design tokens for consistency across the design system.",
+        autoFixable: true
+      });
+    }
+    for (const check of audit.accessibility || []) {
+      if (check.status === "fail") {
+        findings.push({
+          severity: "critical",
+          category: "Accessibility",
+          title: check.check,
+          description: check.suggestion,
+          autoFixable: false
+        });
+      } else if (check.status === "warning") {
+        findings.push({
+          severity: "warning",
+          category: "Accessibility",
+          title: check.check,
+          description: check.suggestion,
+          autoFixable: false
+        });
+      }
+    }
+    for (const issue of namingIssues.slice(0, 10)) {
+      findings.push({
+        severity: issue.severity === "error" ? "warning" : "info",
+        category: "Naming",
+        title: `"${issue.currentName}" should be "${issue.suggestedName}"`,
+        description: issue.reason,
+        nodeId: issue.nodeId,
+        nodeName: issue.currentName,
+        autoFixable: true
+      });
+    }
+    for (const check of audit.componentReadiness || []) {
+      if (check.status === "fail") {
+        findings.push({
+          severity: "suggestion",
+          category: "Component Readiness",
+          title: check.check,
+          description: check.suggestion,
+          autoFixable: false
+        });
+      }
+    }
+    const missingStates = (audit.states || []).filter((s) => !s.found);
+    if (missingStates.length > 0) {
+      findings.push({
+        severity: "suggestion",
+        category: "Interactive States",
+        title: `${missingStates.length} state${missingStates.length > 1 ? "s" : ""} not detected`,
+        description: `Missing: ${missingStates.map((s) => s.name).join(", ")}`,
+        autoFixable: false
+      });
+    }
+    const criticalCount = findings.filter((f) => f.severity === "critical").length;
+    const warningCount = findings.filter((f) => f.severity === "warning").length;
+    const verdict = criticalCount > 0 ? "fail" : warningCount > 3 ? "warn" : "pass";
+    let headline;
+    if (verdict === "pass") {
+      headline = "Component follows design system conventions well.";
+    } else if (verdict === "warn") {
+      headline = `${warningCount} issues need attention before this component is production-ready.`;
+    } else {
+      headline = `${criticalCount} critical issue${criticalCount > 1 ? "s" : ""} found \u2014 missing design styles affect consistency.`;
+    }
+    const nextSteps = [];
+    if (lintResult && lintResult.summary.byType.fill > 0) nextSteps.push("Apply fill styles to layers using hard-coded colors");
+    if (lintResult && lintResult.summary.byType.text > 0) nextSteps.push("Apply text styles to text layers");
+    if (lintResult && lintResult.summary.byType.stroke > 0) nextSteps.push("Apply stroke styles to layers with hard-coded strokes");
+    if (hardCoded > 0) nextSteps.push("Replace hard-coded values with design tokens");
+    if (namingIssues.length > 0) nextSteps.push("Rename generic layers to semantic names");
+    if (missingStates.length > 0) nextSteps.push(`Add missing states: ${missingStates.map((s) => s.name).join(", ")}`);
+    if (nextSteps.length === 0) nextSteps.push("Component looks great \u2014 consider documenting it for the team");
+    return { verdict, headline, findings, nextSteps };
+  }
+  async function generateDesignReview(context, lintResult, audit, tokens, namingIssues, recommendations, apiKey, model, providerId) {
+    var _a;
+    const lintSummary = lintResult ? `${lintResult.summary.totalErrors} lint issues (${lintResult.summary.byType.fill} fills, ${lintResult.summary.byType.stroke} strokes, ${lintResult.summary.byType.effect} effects, ${lintResult.summary.byType.text} text, ${lintResult.summary.byType.radius} radius)` : "0 lint issues";
+    const accessFails = (audit.accessibility || []).filter((c) => c.status === "fail").length;
+    const readinessFails = (audit.componentReadiness || []).filter((c) => c.status === "fail").length;
+    const missingStates = (audit.states || []).filter((s) => !s.found);
+    const topLintErrors = lintResult ? lintResult.errors.slice(0, 8).map((e) => `- [${e.errorType}] ${e.nodeName}: ${e.message}`).join("\n") : "None";
+    const reviewPrompt = `You are a design system reviewer (like CodeRabbit but for Figma designs). Review this component and produce a structured JSON design review.
+
+**Component:** ${context.name} (${context.type}, family: ${((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic"})
+
+**Deterministic Lint Results:** ${lintSummary}
+${topLintErrors !== "None" ? `Top issues:
+${topLintErrors}` : ""}
+
+**Token Usage:** ${tokens.summary.actualTokens} tokens used, ${tokens.summary.hardCodedValues} hard-coded values
+**Accessibility Failures:** ${accessFails}
+**Component Readiness Failures:** ${readinessFails}
+**Missing States:** ${missingStates.map((s) => s.name).join(", ") || "None"}
+**Naming Issues:** ${namingIssues.length}
+**AI Recommendations:** ${recommendations.length} property suggestions
+
+Return JSON:
+{
+  "verdict": "pass" | "warn" | "fail",
+  "headline": "One concise sentence summarizing the overall design quality",
+  "findings": [
+    {
+      "severity": "critical" | "warning" | "info" | "suggestion",
+      "category": "Style Consistency" | "Design Tokens" | "Accessibility" | "Naming" | "Component Readiness" | "Interactive States",
+      "title": "Short finding title",
+      "description": "Actionable description of what to fix and why",
+      "autoFixable": true/false
+    }
+  ],
+  "nextSteps": ["Step 1", "Step 2", "Step 3"]
+}
+
+Rules:
+- verdict = "fail" if ANY critical issues exist (missing styles, accessibility failures)
+- verdict = "warn" if warnings > 3 and no critical
+- verdict = "pass" otherwise
+- Group similar lint errors (e.g. "5 layers missing fill styles" not 5 separate findings)
+- Max 10 findings, prioritized by severity
+- nextSteps: max 5, ordered by impact
+- Be specific and actionable, not generic`;
+    const response = await callProvider(providerId, apiKey, {
+      prompt: reviewPrompt,
+      model,
+      maxTokens: 1024,
+      temperature: 0.1
+    });
+    const parsed = extractJSONFromResponse(response.content);
+    if (!parsed) {
+      return generateDeterministicReview(lintResult, audit, tokens, namingIssues);
+    }
+    return {
+      verdict: parsed.verdict || "warn",
+      headline: parsed.headline || "Review completed",
+      findings: (parsed.findings || []).map((f) => ({
+        severity: f.severity || "info",
+        category: f.category || "General",
+        title: f.title || "",
+        description: f.description || "",
+        nodeId: f.nodeId,
+        nodeName: f.nodeName,
+        autoFixable: f.autoFixable || false
+      })),
+      nextSteps: parsed.nextSteps || []
+    };
   }
   async function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription) {
     var _a;
@@ -5574,299 +6135,6 @@ ${scoringCriteria}
     const distance = Math.sqrt(dr * dr + dg * dg + db * db);
     const maxDistance = Math.sqrt(3);
     return 1 - distance / maxDistance;
-  }
-
-  // src/core/design-lint.ts
-  var DEFAULT_LINT_SETTINGS = {
-    checkFills: true,
-    checkStrokes: true,
-    checkEffects: true,
-    checkTextStyles: true,
-    checkRadius: true,
-    allowedRadii: [0, 2, 4, 8, 12, 16, 24, 32],
-    skipLockedLayers: true,
-    skipHiddenLayers: true
-  };
-  var ignoredNodeIds = /* @__PURE__ */ new Set();
-  var ignoredErrorKeys = /* @__PURE__ */ new Set();
-  function errorKey(nodeId, errorType) {
-    return `${nodeId}::${errorType}`;
-  }
-  function ignoreNode(nodeId) {
-    ignoredNodeIds.add(nodeId);
-  }
-  function ignoreError(nodeId, errorType) {
-    ignoredErrorKeys.add(errorKey(nodeId, errorType));
-  }
-  function ignoreAllOfType(errors, errorType) {
-    for (const err of errors) {
-      if (err.errorType === errorType) {
-        ignoredErrorKeys.add(errorKey(err.nodeId, err.errorType));
-      }
-    }
-  }
-  function clearIgnored() {
-    ignoredNodeIds.clear();
-    ignoredErrorKeys.clear();
-  }
-  function determineFill(paint) {
-    if (paint.type === "SOLID") {
-      const { r, g, b } = paint.color;
-      const hex = rgbToHex(r, g, b);
-      const opacity = paint.opacity !== void 0 && paint.opacity < 1 ? ` (${Math.round(paint.opacity * 100)}%)` : "";
-      return hex + opacity;
-    }
-    if (paint.type === "IMAGE") return "Image fill";
-    if (paint.type === "VIDEO") return "Video fill";
-    if (paint.type.includes("GRADIENT")) return `${paint.type.replace("GRADIENT_", "").toLowerCase()} gradient`;
-    return paint.type;
-  }
-  function hasBoundVariable(node, property) {
-    try {
-      if ("boundVariables" in node) {
-        const bound = node.boundVariables;
-        if (bound && bound[property]) return true;
-      }
-    } catch (e) {
-    }
-    return false;
-  }
-  function checkFills(node, errors, path) {
-    if (!("fills" in node)) return;
-    const fills = node.fills;
-    if (fills === figma.mixed || !Array.isArray(fills)) return;
-    const visibleFills = fills.filter((f) => f.visible !== false);
-    if (visibleFills.length === 0) return;
-    if (hasBoundVariable(node, "fills")) return;
-    if ("fillStyleId" in node) {
-      const styleId = node.fillStyleId;
-      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
-    }
-    for (const fill of visibleFills) {
-      const value = determineFill(fill);
-      errors.push({
-        nodeId: node.id,
-        nodeName: node.name,
-        nodeType: node.type,
-        errorType: "fill",
-        message: `Missing fill style: ${value}`,
-        value,
-        path
-      });
-    }
-  }
-  function checkStrokes(node, errors, path) {
-    if (!("strokes" in node)) return;
-    const strokes = node.strokes;
-    if (!Array.isArray(strokes)) return;
-    const visibleStrokes = strokes.filter((s) => s.visible !== false);
-    if (visibleStrokes.length === 0) return;
-    if (hasBoundVariable(node, "strokes")) return;
-    if ("strokeStyleId" in node) {
-      const styleId = node.strokeStyleId;
-      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
-    }
-    for (const stroke of visibleStrokes) {
-      const value = determineFill(stroke);
-      const weight = "strokeWeight" in node ? ` (${node.strokeWeight}px)` : "";
-      errors.push({
-        nodeId: node.id,
-        nodeName: node.name,
-        nodeType: node.type,
-        errorType: "stroke",
-        message: `Missing stroke style: ${value}${weight}`,
-        value: value + weight,
-        path
-      });
-    }
-  }
-  function checkEffects(node, errors, path) {
-    if (!("effects" in node)) return;
-    const effects = node.effects;
-    if (!Array.isArray(effects) || effects.length === 0) return;
-    const visibleEffects = effects.filter((e) => e.visible !== false);
-    if (visibleEffects.length === 0) return;
-    if ("effectStyleId" in node) {
-      const styleId = node.effectStyleId;
-      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
-    }
-    const descriptions = visibleEffects.map((e) => {
-      const parts = [e.type.replace(/_/g, " ").toLowerCase()];
-      if ("radius" in e) parts.push(`r:${e.radius}`);
-      if ("color" in e && e.color) {
-        const c = e.color;
-        parts.push(rgbToHex(c.r, c.g, c.b));
-      }
-      return parts.join(" ");
-    });
-    errors.push({
-      nodeId: node.id,
-      nodeName: node.name,
-      nodeType: node.type,
-      errorType: "effect",
-      message: `Missing effect style: ${descriptions.join(", ")}`,
-      value: descriptions.join(", "),
-      path
-    });
-  }
-  function checkTextStyle(node, errors, path) {
-    if ("textStyleId" in node) {
-      const styleId = node.textStyleId;
-      if (styleId && styleId !== "" && styleId !== figma.mixed) return;
-    }
-    const fontName = node.fontName !== figma.mixed ? node.fontName : null;
-    const fontSize = node.fontSize !== figma.mixed ? node.fontSize : null;
-    const parts = [];
-    if (fontName) parts.push(`${fontName.family} ${fontName.style}`);
-    if (fontSize) parts.push(`${fontSize}px`);
-    const value = parts.join(" / ") || "unknown text style";
-    errors.push({
-      nodeId: node.id,
-      nodeName: node.name,
-      nodeType: node.type,
-      errorType: "text",
-      message: `Missing text style: ${value}`,
-      value,
-      path
-    });
-  }
-  function checkRadius(node, errors, path, allowedRadii) {
-    if (!("cornerRadius" in node)) return;
-    if (hasBoundVariable(node, "topLeftRadius") || hasBoundVariable(node, "cornerRadius")) return;
-    const cr = node.cornerRadius;
-    if (cr === figma.mixed) {
-      const corners = [
-        node.topLeftRadius,
-        node.topRightRadius,
-        node.bottomLeftRadius,
-        node.bottomRightRadius
-      ].filter((v) => v !== void 0 && v !== null);
-      for (const c of corners) {
-        if (!allowedRadii.includes(c)) {
-          errors.push({
-            nodeId: node.id,
-            nodeName: node.name,
-            nodeType: node.type,
-            errorType: "radius",
-            message: `Non-standard border radius: ${c}px (allowed: ${allowedRadii.join(", ")})`,
-            value: `${c}px`,
-            path
-          });
-          break;
-        }
-      }
-      return;
-    }
-    if (typeof cr === "number" && cr > 0 && !allowedRadii.includes(cr)) {
-      errors.push({
-        nodeId: node.id,
-        nodeName: node.name,
-        nodeType: node.type,
-        errorType: "radius",
-        message: `Non-standard border radius: ${cr}px (allowed: ${allowedRadii.join(", ")})`,
-        value: `${cr}px`,
-        path
-      });
-    }
-  }
-  function lintNode(node, settings, errors, path) {
-    if (node.type === "GROUP" || node.type === "SLICE" || node.type === "CONNECTOR") return;
-    if (node.type === "COMPONENT_SET") return;
-    switch (node.type) {
-      case "TEXT":
-        if (settings.checkTextStyles) checkTextStyle(node, errors, path);
-        if (settings.checkFills) checkFills(node, errors, path);
-        break;
-      case "FRAME":
-      case "SECTION":
-        if (settings.checkFills) checkFills(node, errors, path);
-        if (settings.checkStrokes) checkStrokes(node, errors, path);
-        if (settings.checkEffects) checkEffects(node, errors, path);
-        if (settings.checkRadius) checkRadius(node, errors, path, settings.allowedRadii);
-        break;
-      case "RECTANGLE":
-      case "COMPONENT":
-      case "INSTANCE":
-        if (settings.checkFills) checkFills(node, errors, path);
-        if (settings.checkStrokes) checkStrokes(node, errors, path);
-        if (settings.checkEffects) checkEffects(node, errors, path);
-        if (settings.checkRadius) checkRadius(node, errors, path, settings.allowedRadii);
-        break;
-      case "ELLIPSE":
-      case "POLYGON":
-      case "STAR":
-      case "VECTOR":
-      case "LINE":
-      case "BOOLEAN_OPERATION":
-        if (settings.checkFills) checkFills(node, errors, path);
-        if (settings.checkStrokes) checkStrokes(node, errors, path);
-        if (settings.checkEffects) checkEffects(node, errors, path);
-        break;
-    }
-  }
-  function traverseAndLint(node, settings, errors, parentPath, parentLocked) {
-    let count = 0;
-    const isLocked = parentLocked || "locked" in node && node.locked;
-    const isHidden = "visible" in node && !node.visible;
-    if (settings.skipLockedLayers && isLocked) return 0;
-    if (settings.skipHiddenLayers && isHidden) return 0;
-    const path = parentPath ? `${parentPath} > ${node.name}` : node.name;
-    count++;
-    if (!ignoredNodeIds.has(node.id)) {
-      const preLen = errors.length;
-      lintNode(node, settings, errors, path);
-      for (let i = errors.length - 1; i >= preLen; i--) {
-        if (ignoredErrorKeys.has(errorKey(errors[i].nodeId, errors[i].errorType))) {
-          errors.splice(i, 1);
-        }
-      }
-    }
-    if ("children" in node) {
-      for (const child of node.children) {
-        count += traverseAndLint(child, settings, errors, path, isLocked);
-      }
-    }
-    return count;
-  }
-  function runDesignLint(nodes, settings = DEFAULT_LINT_SETTINGS) {
-    const errors = [];
-    let totalNodes = 0;
-    for (const node of nodes) {
-      totalNodes += traverseAndLint(node, settings, errors, "", false);
-    }
-    const nodesWithErrors = new Set(errors.map((e) => e.nodeId)).size;
-    const byType = { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0 };
-    for (const err of errors) {
-      byType[err.errorType]++;
-    }
-    const summary = {
-      totalErrors: errors.length,
-      byType,
-      totalNodes,
-      nodesWithErrors
-    };
-    return {
-      errors,
-      ignoredNodeIds: Array.from(ignoredNodeIds),
-      ignoredErrorKeys: Array.from(ignoredErrorKeys),
-      summary
-    };
-  }
-  function lintSelection(settings) {
-    const selection = figma.currentPage.selection;
-    if (selection.length === 0) {
-      return {
-        errors: [],
-        ignoredNodeIds: [],
-        ignoredErrorKeys: [],
-        summary: { totalErrors: 0, byType: { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0 }, totalNodes: 0, nodesWithErrors: 0 }
-      };
-    }
-    return runDesignLint(selection, settings);
-  }
-  function findNodesWithSameValue(rootNodes, errorType, value, settings = DEFAULT_LINT_SETTINGS) {
-    const result = runDesignLint(rootNodes, settings);
-    return result.errors.filter((e) => e.errorType === errorType && e.value === value);
   }
 
   // src/ui/message-handler.ts

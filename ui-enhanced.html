@@ -2381,6 +2381,9 @@
 
         <!-- Analysis Results -->
         <div id="analysis-results" class="hidden">
+          <!-- Design Review (CodeRabbit-style) -->
+          <div id="design-review-panel" style="display: none;"></div>
+
           <!-- Audit View -->
           <div class="collapsible">
             <div class="collapsible-header active" onclick="toggleCollapsible(this)">
@@ -4459,6 +4462,11 @@
         analysisResults.insertAdjacentHTML('afterbegin', barHtml);
       }
 
+      // Render Design Review (CodeRabbit-style summary)
+      if (data.designReview) {
+        renderDesignReview(data.designReview);
+      }
+
       // Update chat component context if we're on chat tab or switching to it
       updateChatComponentContext();
 
@@ -4742,6 +4750,46 @@
             console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = WARNING → 0 points`);
           } else {
             console.log(`[DEBUG][ACCESSIBILITY] "${item.check}" = FAIL → 0 points`);
+          }
+
+          html += `
+            <div class="audit-item">
+              <span class="audit-status ${status}">${
+                status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
+              }</span>
+              <span class="audit-label">${item.check}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+            </div>
+          `;
+        });
+        html += '</div>';
+      }
+
+      // Design Lint Audit (deterministic style checks)
+      if (audit.designLint && audit.designLint.length > 0) {
+        html += '<div class="audit-section">';
+        html += `
+          <div class="section-header">
+            <h4 class="section-title">Style Consistency</h4>
+            <div class="tooltip">
+              <div class="info-icon">i</div>
+              <span class="tooltiptext">
+                <strong>Style Consistency</strong><br>
+                Deterministic checks for missing Figma styles. Ensures all fills, strokes, effects, text, and border radii use design styles or variables instead of hard-coded values.
+              </span>
+            </div>
+          </div>
+        `;
+
+        audit.designLint.forEach(item => {
+          totalCount++;
+          const status = item.status;
+          if (status === 'pass') passCount++;
+
+          // Weight 2.5x — critical for design system consistency
+          weightedTotalScore += 2.5;
+          if (status === 'pass') {
+            weightedPassScore += 2.5;
           }
 
           html += `
@@ -6437,6 +6485,104 @@
 
       counts.total = counts.naming;
       return counts;
+    }
+
+    // Design Review Rendering (CodeRabbit-style)
+    function renderDesignReview(review) {
+      const panel = document.getElementById('design-review-panel');
+      if (!panel) return;
+      panel.style.display = 'block';
+
+      const verdictColors = {
+        pass: { bg: 'var(--success-bg)', border: 'var(--success)', text: 'var(--success-text)', label: 'PASSED' },
+        warn: { bg: 'var(--warning-bg)', border: 'var(--warning)', text: 'var(--warning-text)', label: 'NEEDS WORK' },
+        fail: { bg: 'var(--error-bg)', border: 'var(--error)', text: 'var(--error-text)', label: 'ISSUES FOUND' },
+      };
+      const v = verdictColors[review.verdict] || verdictColors.warn;
+
+      const severityMeta = {
+        critical: { icon: '!!', color: 'var(--error)', bg: 'var(--error-bg)' },
+        warning: { icon: '!', color: 'var(--warning-text)', bg: 'var(--warning-bg)' },
+        info: { icon: 'i', color: 'var(--info-text)', bg: 'var(--info-bg)' },
+        suggestion: { icon: '+', color: 'var(--interactive)', bg: 'var(--interactive-light)' },
+      };
+
+      let findingsHtml = '';
+      // Group findings by severity
+      const grouped = { critical: [], warning: [], info: [], suggestion: [] };
+      (review.findings || []).forEach(f => {
+        if (grouped[f.severity]) grouped[f.severity].push(f);
+        else grouped.info.push(f);
+      });
+
+      for (const [severity, items] of Object.entries(grouped)) {
+        if (items.length === 0) continue;
+        const meta = severityMeta[severity];
+        items.forEach(f => {
+          findingsHtml += `
+            <div style="display: flex; gap: var(--spacing-03); padding: var(--spacing-03) 0; border-bottom: 1px solid var(--border);" ${f.nodeId ? `onclick="selectFigmaNode('${f.nodeId}')" style="cursor: pointer;"` : ''}>
+              <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: ${meta.bg}; color: ${meta.color}; font-size: 10px; font-weight: 700; flex-shrink: 0; margin-top: 1px;">${meta.icon}</span>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); color: var(--text-primary);">
+                  ${escapeHtml(f.title)}
+                  ${f.autoFixable ? '<span style="font-size: 9px; padding: 1px 5px; background: var(--interactive-light); color: var(--interactive); border-radius: 8px; margin-left: 4px;">auto-fixable</span>' : ''}
+                </div>
+                <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(f.description)}</div>
+                <span style="font-size: 9px; color: var(--text-tertiary);">${escapeHtml(f.category)}</span>
+              </div>
+            </div>`;
+        });
+      }
+
+      let nextStepsHtml = '';
+      if (review.nextSteps && review.nextSteps.length > 0) {
+        nextStepsHtml = `
+          <div style="margin-top: var(--spacing-04); padding: var(--spacing-04); background: var(--interactive-light); border-radius: var(--radius-md);">
+            <div style="font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); color: var(--interactive); margin-bottom: var(--spacing-02);">Next Steps</div>
+            <ol style="margin: 0; padding-left: 18px; font-size: var(--font-size-xs); color: var(--text-primary); line-height: 1.6;">
+              ${review.nextSteps.map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+            </ol>
+          </div>`;
+      }
+
+      const totalFindings = (review.findings || []).length;
+      const criticalCount = grouped.critical.length;
+      const warningCount = grouped.warning.length;
+
+      panel.innerHTML = `
+        <div style="margin: var(--spacing-04); border: 1px solid ${v.border}; border-radius: var(--radius-lg); overflow: hidden;">
+          <div style="padding: var(--spacing-04) var(--spacing-05); background: ${v.bg}; display: flex; align-items: center; gap: var(--spacing-03); cursor: pointer;" onclick="toggleDesignReviewBody()">
+            <span style="font-size: var(--font-size-xs); font-weight: 700; color: ${v.text}; background: ${v.border}; color: white; padding: 2px 8px; border-radius: 10px;">${v.label}</span>
+            <span style="font-size: var(--font-size-sm); color: ${v.text}; flex: 1;">${escapeHtml(review.headline)}</span>
+            <span style="font-size: var(--font-size-xs); color: ${v.text};" id="design-review-toggle-icon">▼</span>
+          </div>
+          <div id="design-review-body" style="padding: 0 var(--spacing-05); background: var(--surface);">
+            ${totalFindings > 0 ? `
+              <div style="padding: var(--spacing-03) 0; font-size: var(--font-size-xs); color: var(--text-secondary); border-bottom: 1px solid var(--border);">
+                ${criticalCount > 0 ? `<span style="color: var(--error-text); margin-right: 12px;">${criticalCount} critical</span>` : ''}
+                ${warningCount > 0 ? `<span style="color: var(--warning-text); margin-right: 12px;">${warningCount} warning${warningCount > 1 ? 's' : ''}</span>` : ''}
+                ${grouped.info.length > 0 ? `<span style="color: var(--info-text); margin-right: 12px;">${grouped.info.length} info</span>` : ''}
+                ${grouped.suggestion.length > 0 ? `<span style="color: var(--interactive);">${grouped.suggestion.length} suggestion${grouped.suggestion.length > 1 ? 's' : ''}</span>` : ''}
+              </div>
+              ${findingsHtml}
+            ` : '<div style="padding: var(--spacing-04); text-align: center; color: var(--success-text); font-size: var(--font-size-xs);">No issues found — great job!</div>'}
+            ${nextStepsHtml}
+            <div style="height: var(--spacing-04);"></div>
+          </div>
+        </div>`;
+    }
+
+    function toggleDesignReviewBody() {
+      const body = document.getElementById('design-review-body');
+      const icon = document.getElementById('design-review-toggle-icon');
+      if (!body) return;
+      if (body.style.display === 'none') {
+        body.style.display = 'block';
+        if (icon) icon.textContent = '▼';
+      } else {
+        body.style.display = 'none';
+        if (icon) icon.textContent = '▶';
+      }
     }
 
     // Phase 2: Render Quick Actions bar at top of analysis results

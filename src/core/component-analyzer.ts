@@ -1,11 +1,12 @@
 /// <reference types="@figma/plugin-typings" />
 
-import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, AuditCheck, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
+import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, AuditCheck, TokenAnalysis, DesignToken, EnhancedAnalysisOptions, LintResult, DesignReviewSummary, DesignReviewFinding } from '../types';
 import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
+import { runDesignLint, DEFAULT_LINT_SETTINGS } from './design-lint';
 
 /**
  * Extract comprehensive component context for analysis
@@ -1362,6 +1363,10 @@ export async function processEnhancedAnalysis(
   // Thread existing description into context for downstream prompts
   context.existingDescription = componentDescription;
 
+  // Phase 0: Run deterministic design lint (no AI needed)
+  const lintResult = runDesignLint([node], DEFAULT_LINT_SETTINGS);
+  console.log(`🔍 [LINT] Deterministic lint: ${lintResult.summary.totalErrors} issues in ${lintResult.summary.nodesWithErrors} nodes`);
+
   // Log extracted data for debugging
   console.log(`📊 [ANALYSIS] Extracted from Figma API:`);
   console.log(`  Properties: ${actualProperties.length}`);
@@ -1379,7 +1384,7 @@ export async function processEnhancedAnalysis(
     console.log(`🔄 Using hybrid LLM + MCP approach (${providerId})...`);
 
     // Step 1: Use LLM for direct Figma data extraction and analysis
-    const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
+    const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription, lintResult);
     const llmResponse = await callProvider(providerId, apiKey, {
       prompt: llmPrompt,
       model,
@@ -1430,7 +1435,7 @@ export async function processEnhancedAnalysis(
 
   // Filter and process the result
   const filteredData = filterDevelopmentRecommendations(analysisResult);
-  return await processAnalysisResult(filteredData, context, options);
+  return await processAnalysisResult(filteredData, context, options, lintResult, apiKey, model, providerId);
 }
 
 /**
@@ -1441,10 +1446,34 @@ function createFigmaDataExtractionPrompt(
   actualProperties: Array<{ name: string; values: string[]; default: string }>,
   actualStates: string[],
   tokens: TokenAnalysis,
-  componentDescription: string
+  componentDescription: string,
+  lintResult?: LintResult
 ): string {
   const componentFamily = context.additionalContext?.componentFamily || 'generic';
   const nestedInstances = extractInstanceNames(context.hierarchy);
+
+  // Build lint findings section if available
+  let lintSection = '';
+  if (lintResult && lintResult.summary.totalErrors > 0) {
+    const byType = lintResult.summary.byType;
+    const topErrors = lintResult.errors.slice(0, 15).map(e =>
+      `  - [${e.errorType.toUpperCase()}] ${e.nodeName}: ${e.message}`
+    ).join('\n');
+    lintSection = `
+**Design Lint Findings (${lintResult.summary.totalErrors} issues):**
+- Missing fill styles: ${byType.fill || 0}
+- Missing stroke styles: ${byType.stroke || 0}
+- Missing effect styles: ${byType.effect || 0}
+- Missing text styles: ${byType.text || 0}
+- Non-standard border radius: ${byType.radius || 0}
+Top issues:
+${topErrors}
+`;
+  } else {
+    lintSection = `
+**Design Lint Findings:** All layers use proper design styles. No issues found.
+`;
+  }
 
   return `Analyze this Figma component and extract its structure and patterns.
 
@@ -1466,7 +1495,7 @@ ${actualProperties.length > 10 ? `... and ${actualProperties.length - 10} more p
 - Actual tokens used: ${tokens.summary.actualTokens}
 - Hard-coded values: ${tokens.summary.hardCodedValues}
 - AI suggestions: ${tokens.summary.aiSuggestions}
-
+${lintSection}
 **Component Structure:**
 ${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
 
@@ -1796,7 +1825,11 @@ function generatePropertyCheatSheet(
 export async function processAnalysisResult(
   filteredData: any,
   context: ComponentContext,
-  options: EnhancedAnalysisOptions
+  options: EnhancedAnalysisOptions,
+  lintResult?: LintResult,
+  apiKey?: string,
+  model?: string,
+  providerId?: ProviderId
 ): Promise<EnhancedAnalysisResult> {
   try {
     console.log('🔄 Processing analysis result...');
@@ -1938,6 +1971,29 @@ export async function processAnalysisResult(
     const namingIssues = analyzeNamingIssues(node, 5);
     console.log(`📛 Found ${namingIssues.length} naming issues`);
 
+    // Convert lint errors to audit checks and add to audit
+    if (lintResult && lintResult.errors.length > 0) {
+      audit.designLint = lintErrorsToAuditChecks(lintResult);
+    }
+
+    // Generate Design Review summary (CodeRabbit-style)
+    let designReview: DesignReviewSummary | undefined;
+    if (apiKey && model && providerId) {
+      try {
+        designReview = await generateDesignReview(
+          context, lintResult, audit, tokens, namingIssues, recommendations,
+          apiKey, model, providerId
+        );
+        console.log(`📋 Design review generated: ${designReview.verdict} — ${designReview.findings.length} findings`);
+      } catch (reviewError) {
+        console.warn('⚠️ Design review generation failed, continuing without it:', reviewError);
+        // Fallback: generate deterministic review without AI
+        designReview = generateDeterministicReview(lintResult, audit, tokens, namingIssues);
+      }
+    } else {
+      designReview = generateDeterministicReview(lintResult, audit, tokens, namingIssues);
+    }
+
     console.log('✅ Analysis result processed successfully');
 
     return {
@@ -1947,12 +2003,289 @@ export async function processAnalysisResult(
       properties: actualProperties,
       recommendations,
       namingIssues,
-      existingDescription: componentDescription
+      existingDescription: componentDescription,
+      lintResult,
+      designReview,
     };
   } catch (error) {
     console.error('Error processing analysis result:', error);
     throw error;
   }
+}
+
+/**
+ * Convert lint errors to AuditCheck format for integration into audit results
+ */
+function lintErrorsToAuditChecks(lintResult: LintResult): AuditCheck[] {
+  const checks: AuditCheck[] = [];
+  const byType = lintResult.summary.byType;
+
+  if (byType.fill > 0) {
+    checks.push({
+      check: `Fill styles (${byType.fill} missing)`,
+      status: 'fail',
+      suggestion: `${byType.fill} layer${byType.fill > 1 ? 's use' : ' uses'} hard-coded fills instead of design styles`
+    });
+  } else {
+    checks.push({ check: 'Fill styles', status: 'pass', suggestion: 'All fills use design styles' });
+  }
+
+  if (byType.stroke > 0) {
+    checks.push({
+      check: `Stroke styles (${byType.stroke} missing)`,
+      status: 'fail',
+      suggestion: `${byType.stroke} layer${byType.stroke > 1 ? 's use' : ' uses'} hard-coded strokes instead of design styles`
+    });
+  } else {
+    checks.push({ check: 'Stroke styles', status: 'pass', suggestion: 'All strokes use design styles' });
+  }
+
+  if (byType.effect > 0) {
+    checks.push({
+      check: `Effect styles (${byType.effect} missing)`,
+      status: 'fail',
+      suggestion: `${byType.effect} layer${byType.effect > 1 ? 's use' : ' uses'} hard-coded effects instead of design styles`
+    });
+  } else {
+    checks.push({ check: 'Effect styles', status: 'pass', suggestion: 'All effects use design styles' });
+  }
+
+  if (byType.text > 0) {
+    checks.push({
+      check: `Text styles (${byType.text} missing)`,
+      status: 'fail',
+      suggestion: `${byType.text} text layer${byType.text > 1 ? 's lack' : ' lacks'} applied text styles`
+    });
+  } else {
+    checks.push({ check: 'Text styles', status: 'pass', suggestion: 'All text uses design styles' });
+  }
+
+  if (byType.radius > 0) {
+    checks.push({
+      check: `Border radius (${byType.radius} non-standard)`,
+      status: 'warning',
+      suggestion: `${byType.radius} layer${byType.radius > 1 ? 's use' : ' uses'} non-standard border radius values`
+    });
+  } else {
+    checks.push({ check: 'Border radius', status: 'pass', suggestion: 'All radii match design system standards' });
+  }
+
+  return checks;
+}
+
+/**
+ * Generate a deterministic design review without AI (fallback)
+ */
+function generateDeterministicReview(
+  lintResult: LintResult | undefined,
+  audit: DetailedAuditResults,
+  tokens: TokenAnalysis,
+  namingIssues: any[]
+): DesignReviewSummary {
+  const findings: DesignReviewFinding[] = [];
+
+  // Lint findings
+  if (lintResult) {
+    for (const err of lintResult.errors) {
+      findings.push({
+        severity: err.errorType === 'radius' ? 'warning' : 'critical',
+        category: 'Style Consistency',
+        title: err.message,
+        description: `Layer "${err.nodeName}" (${err.nodeType}) at ${err.path}`,
+        nodeId: err.nodeId,
+        nodeName: err.nodeName,
+        autoFixable: false,
+      });
+    }
+  }
+
+  // Token findings
+  const hardCoded = tokens.summary.hardCodedValues;
+  if (hardCoded > 0) {
+    findings.push({
+      severity: 'warning',
+      category: 'Design Tokens',
+      title: `${hardCoded} hard-coded value${hardCoded > 1 ? 's' : ''} found`,
+      description: 'These values should be replaced with design tokens for consistency across the design system.',
+      autoFixable: true,
+    });
+  }
+
+  // Accessibility findings from audit
+  for (const check of (audit.accessibility || [])) {
+    if (check.status === 'fail') {
+      findings.push({
+        severity: 'critical',
+        category: 'Accessibility',
+        title: check.check,
+        description: check.suggestion,
+        autoFixable: false,
+      });
+    } else if (check.status === 'warning') {
+      findings.push({
+        severity: 'warning',
+        category: 'Accessibility',
+        title: check.check,
+        description: check.suggestion,
+        autoFixable: false,
+      });
+    }
+  }
+
+  // Naming findings
+  for (const issue of namingIssues.slice(0, 10)) {
+    findings.push({
+      severity: issue.severity === 'error' ? 'warning' : 'info',
+      category: 'Naming',
+      title: `"${issue.currentName}" should be "${issue.suggestedName}"`,
+      description: issue.reason,
+      nodeId: issue.nodeId,
+      nodeName: issue.currentName,
+      autoFixable: true,
+    });
+  }
+
+  // Component readiness
+  for (const check of (audit.componentReadiness || [])) {
+    if (check.status === 'fail') {
+      findings.push({
+        severity: 'suggestion',
+        category: 'Component Readiness',
+        title: check.check,
+        description: check.suggestion,
+        autoFixable: false,
+      });
+    }
+  }
+
+  // States
+  const missingStates = (audit.states || []).filter(s => !s.found);
+  if (missingStates.length > 0) {
+    findings.push({
+      severity: 'suggestion',
+      category: 'Interactive States',
+      title: `${missingStates.length} state${missingStates.length > 1 ? 's' : ''} not detected`,
+      description: `Missing: ${missingStates.map(s => s.name).join(', ')}`,
+      autoFixable: false,
+    });
+  }
+
+  // Determine verdict
+  const criticalCount = findings.filter(f => f.severity === 'critical').length;
+  const warningCount = findings.filter(f => f.severity === 'warning').length;
+  const verdict = criticalCount > 0 ? 'fail' : warningCount > 3 ? 'warn' : 'pass';
+
+  // Generate headline
+  let headline: string;
+  if (verdict === 'pass') {
+    headline = 'Component follows design system conventions well.';
+  } else if (verdict === 'warn') {
+    headline = `${warningCount} issues need attention before this component is production-ready.`;
+  } else {
+    headline = `${criticalCount} critical issue${criticalCount > 1 ? 's' : ''} found — missing design styles affect consistency.`;
+  }
+
+  // Generate next steps
+  const nextSteps: string[] = [];
+  if (lintResult && lintResult.summary.byType.fill > 0) nextSteps.push('Apply fill styles to layers using hard-coded colors');
+  if (lintResult && lintResult.summary.byType.text > 0) nextSteps.push('Apply text styles to text layers');
+  if (lintResult && lintResult.summary.byType.stroke > 0) nextSteps.push('Apply stroke styles to layers with hard-coded strokes');
+  if (hardCoded > 0) nextSteps.push('Replace hard-coded values with design tokens');
+  if (namingIssues.length > 0) nextSteps.push('Rename generic layers to semantic names');
+  if (missingStates.length > 0) nextSteps.push(`Add missing states: ${missingStates.map(s => s.name).join(', ')}`);
+  if (nextSteps.length === 0) nextSteps.push('Component looks great — consider documenting it for the team');
+
+  return { verdict, headline, findings, nextSteps };
+}
+
+/**
+ * Generate AI-powered design review (CodeRabbit-style)
+ */
+async function generateDesignReview(
+  context: ComponentContext,
+  lintResult: LintResult | undefined,
+  audit: DetailedAuditResults,
+  tokens: TokenAnalysis,
+  namingIssues: any[],
+  recommendations: any[],
+  apiKey: string,
+  model: string,
+  providerId: ProviderId
+): Promise<DesignReviewSummary> {
+  // Build context for AI review
+  const lintSummary = lintResult ? `${lintResult.summary.totalErrors} lint issues (${lintResult.summary.byType.fill} fills, ${lintResult.summary.byType.stroke} strokes, ${lintResult.summary.byType.effect} effects, ${lintResult.summary.byType.text} text, ${lintResult.summary.byType.radius} radius)` : '0 lint issues';
+  const accessFails = (audit.accessibility || []).filter(c => c.status === 'fail').length;
+  const readinessFails = (audit.componentReadiness || []).filter(c => c.status === 'fail').length;
+  const missingStates = (audit.states || []).filter(s => !s.found);
+  const topLintErrors = lintResult ? lintResult.errors.slice(0, 8).map(e => `- [${e.errorType}] ${e.nodeName}: ${e.message}`).join('\n') : 'None';
+
+  const reviewPrompt = `You are a design system reviewer (like CodeRabbit but for Figma designs). Review this component and produce a structured JSON design review.
+
+**Component:** ${context.name} (${context.type}, family: ${context.additionalContext?.componentFamily || 'generic'})
+
+**Deterministic Lint Results:** ${lintSummary}
+${topLintErrors !== 'None' ? `Top issues:\n${topLintErrors}` : ''}
+
+**Token Usage:** ${tokens.summary.actualTokens} tokens used, ${tokens.summary.hardCodedValues} hard-coded values
+**Accessibility Failures:** ${accessFails}
+**Component Readiness Failures:** ${readinessFails}
+**Missing States:** ${missingStates.map(s => s.name).join(', ') || 'None'}
+**Naming Issues:** ${namingIssues.length}
+**AI Recommendations:** ${recommendations.length} property suggestions
+
+Return JSON:
+{
+  "verdict": "pass" | "warn" | "fail",
+  "headline": "One concise sentence summarizing the overall design quality",
+  "findings": [
+    {
+      "severity": "critical" | "warning" | "info" | "suggestion",
+      "category": "Style Consistency" | "Design Tokens" | "Accessibility" | "Naming" | "Component Readiness" | "Interactive States",
+      "title": "Short finding title",
+      "description": "Actionable description of what to fix and why",
+      "autoFixable": true/false
+    }
+  ],
+  "nextSteps": ["Step 1", "Step 2", "Step 3"]
+}
+
+Rules:
+- verdict = "fail" if ANY critical issues exist (missing styles, accessibility failures)
+- verdict = "warn" if warnings > 3 and no critical
+- verdict = "pass" otherwise
+- Group similar lint errors (e.g. "5 layers missing fill styles" not 5 separate findings)
+- Max 10 findings, prioritized by severity
+- nextSteps: max 5, ordered by impact
+- Be specific and actionable, not generic`;
+
+  const response = await callProvider(providerId, apiKey, {
+    prompt: reviewPrompt,
+    model,
+    maxTokens: 1024,
+    temperature: 0.1,
+  });
+
+  const parsed = extractJSONFromResponse(response.content);
+  if (!parsed) {
+    // Fallback to deterministic review
+    return generateDeterministicReview(lintResult, audit, tokens, namingIssues);
+  }
+
+  // Ensure proper types
+  return {
+    verdict: parsed.verdict || 'warn',
+    headline: parsed.headline || 'Review completed',
+    findings: (parsed.findings || []).map((f: any) => ({
+      severity: f.severity || 'info',
+      category: f.category || 'General',
+      title: f.title || '',
+      description: f.description || '',
+      nodeId: f.nodeId,
+      nodeName: f.nodeName,
+      autoFixable: f.autoFixable || false,
+    })),
+    nextSteps: parsed.nextSteps || [],
+  };
 }
 
 /**

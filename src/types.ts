@@ -252,6 +252,8 @@ export interface DetailedAuditResults {
   componentReadiness: AuditCheck[];
   /** Real WCAG-informed accessibility checks (contrast, touch targets, focus state, font size) */
   accessibility: AuditCheck[];
+  /** Deterministic lint findings (fills, strokes, effects, text, radius) */
+  designLint?: AuditCheck[];
 }
 
 export interface EnhancedAnalysisResult {
@@ -262,6 +264,33 @@ export interface EnhancedAnalysisResult {
   recommendations?: Array<{ name: string; type: string; description: string; examples: string[] }>;
   namingIssues?: NamingIssue[];
   existingDescription?: string;
+  /** Lint errors from deterministic analysis, grouped by type */
+  lintResult?: LintResult;
+  /** AI-generated review summary based on combined lint + analysis (CodeRabbit-style) */
+  designReview?: DesignReviewSummary;
+}
+
+export interface DesignReviewSummary {
+  /** Overall verdict: pass, warn, fail */
+  verdict: 'pass' | 'warn' | 'fail';
+  /** One-line summary */
+  headline: string;
+  /** Grouped findings by severity */
+  findings: DesignReviewFinding[];
+  /** AI-generated actionable next steps */
+  nextSteps: string[];
+}
+
+export type DesignReviewSeverity = 'critical' | 'warning' | 'info' | 'suggestion';
+
+export interface DesignReviewFinding {
+  severity: DesignReviewSeverity;
+  category: string;
+  title: string;
+  description: string;
+  nodeId?: string;
+  nodeName?: string;
+  autoFixable: boolean;
 }
 
 // Re-export NamingIssue shape for use in UI messages
