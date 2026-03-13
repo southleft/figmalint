@@ -2,8 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import ChatContainer from './components/chat/ChatContainer';
 import { useChat } from './hooks/useChat';
 import { usePluginMessages, usePostToPlugin } from './hooks/usePluginMessages';
-import type { PluginEvent, LintResult, LintError } from './lib/messages';
-import { analyzeComponent, streamChat, checkHealth, setBackendUrl } from './lib/api';
+import type { PluginEvent, LintResult, LintError, AiReviewData, ReferoComparisonData } from './lib/messages';
+import { analyzeComponent, streamChat, checkHealth, setBackendUrl, fetchReferoData } from './lib/api';
 
 export default function App() {
   const chat = useChat();
@@ -11,7 +11,9 @@ export default function App() {
   const [componentName, setComponentName] = useState<string | undefined>();
   const [hasApiKey, setHasApiKey] = useState(false);
   const [backendAvailable, setBackendAvailable] = useState(false);
+  const [analysisMode, setAnalysisMode] = useState<'quick' | 'deep'>('quick');
   const walkthroughIndex = useRef(0);
+  const referoPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingLintResult = useRef<LintResult | null>(null);
   const pendingScreenshot = useRef<{ screenshot: string; nodeId: string; nodeName: string; width: number; height: number } | null>(null);
 
@@ -43,7 +45,7 @@ export default function App() {
           },
         },
         sessionId: chat.sessionId || undefined,
-        mode: 'quick',
+        mode: analysisMode,
       });
 
       chat.handleAiReview({
@@ -52,13 +54,48 @@ export default function App() {
         combinedScore: result.combinedScore,
         referoComparison: result.referoComparison,
       });
+
+      // In quick mode, Refero runs in background — poll for results
+      if (analysisMode === 'quick' && !result.referoComparison) {
+        startReferoPolling(result.sessionId);
+      }
     } catch (error) {
       chat.addMessage({
         kind: 'ai-text',
         content: `AI analysis unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     }
-  }, [backendAvailable, chat, componentName]);
+  }, [backendAvailable, chat, componentName, analysisMode]);
+
+  // Poll for async Refero data (quick mode background fetch)
+  const startReferoPolling = useCallback((sessionId: string) => {
+    // Clear any existing poll
+    if (referoPollingRef.current) clearInterval(referoPollingRef.current);
+
+    let attempts = 0;
+    referoPollingRef.current = setInterval(async () => {
+      attempts++;
+      if (attempts > 12) { // max ~1 minute of polling
+        if (referoPollingRef.current) clearInterval(referoPollingRef.current);
+        referoPollingRef.current = null;
+        return;
+      }
+      try {
+        const result = await fetchReferoData(sessionId);
+        if (result.ready && result.data) {
+          if (referoPollingRef.current) clearInterval(referoPollingRef.current);
+          referoPollingRef.current = null;
+          chat.addMessage({ kind: 'refero-gallery', data: result.data });
+          if (result.data.suggestions?.length > 0) {
+            const sugText = result.data.suggestions
+              .map((s: { title: string; description: string; evidence: string }) => `- **${s.title}:** ${s.description} _(${s.evidence})_`)
+              .join('\n');
+            chat.addMessage({ kind: 'ai-text', content: `**Refero-based suggestions:**\n${sugText}` });
+          }
+        }
+      } catch { /* polling failed, will retry */ }
+    }, 5000);
+  }, [chat]);
 
   // Listen for messages from the plugin main thread
   usePluginMessages(
@@ -259,12 +296,12 @@ export default function App() {
         case 'export': {
           const result = chat.lintResult;
           if (result) {
-            const md = buildMarkdownExport(result, componentName, chat.issuesFixed);
+            const md = buildFullReport(result, componentName, chat.issuesFixed, chat.aiReview, chat.combinedScore);
             navigator.clipboard.writeText(md).then(
               () => {
                 chat.addMessage({
                   kind: 'ai-text',
-                  content: 'Lint report copied to clipboard!',
+                  content: 'Full report copied to clipboard!',
                 });
               },
               () => {
@@ -277,9 +314,19 @@ export default function App() {
           }
           break;
         }
+
+        case 'toggle-mode': {
+          const next = analysisMode === 'quick' ? 'deep' : 'quick';
+          setAnalysisMode(next);
+          chat.addMessage({
+            kind: 'ai-text',
+            content: `Analysis mode: **${next}**. ${next === 'deep' ? 'Refero comparison will be included in the initial response.' : 'Refero data loads in the background.'}`,
+          });
+          break;
+        }
       }
     },
-    [chat, post, componentName]
+    [chat, post, componentName, analysisMode]
   );
 
   const handleJumpToNode = useCallback(
@@ -306,6 +353,7 @@ export default function App() {
       <ChatContainer
         state={chat}
         componentName={componentName}
+        analysisMode={analysisMode}
         onAnalyze={handleAnalyze}
         onSendMessage={handleSendMessage}
         onAction={handleAction}
@@ -330,17 +378,31 @@ function extractSpacingProperty(message: string): string {
   return 'itemSpacing'; // fallback
 }
 
-function buildMarkdownExport(result: LintResult, componentName?: string, issuesFixed?: number): string {
+function buildFullReport(
+  result: LintResult,
+  componentName?: string,
+  issuesFixed?: number,
+  aiReview?: AiReviewData | null,
+  combinedScore?: number | null,
+): string {
   const lines = [
-    `# Design Lint Report: ${componentName || 'Component'}`,
-    '',
-    `Total issues: ${result.summary.totalErrors} across ${result.summary.nodesWithErrors} layers`,
-    ...(issuesFixed ? [`Fixed: ${issuesFixed}`] : []),
-    '',
-    '## Issues by Type',
+    `# Design Review Report: ${componentName || 'Component'}`,
     '',
   ];
 
+  // Combined score header
+  if (combinedScore != null) {
+    lines.push(`**Combined Score: ${combinedScore}/100**`, '');
+  }
+
+  lines.push(
+    `Total lint issues: ${result.summary.totalErrors} across ${result.summary.nodesWithErrors} layers`,
+    ...(issuesFixed ? [`Fixed: ${issuesFixed}`] : []),
+    '',
+  );
+
+  // Lint breakdown
+  lines.push('## Lint Issues', '');
   const byType = result.summary.byType;
   if (byType.fill > 0) lines.push(`- **Fill styles:** ${byType.fill} missing`);
   if (byType.stroke > 0) lines.push(`- **Stroke styles:** ${byType.stroke} missing`);
@@ -350,9 +412,38 @@ function buildMarkdownExport(result: LintResult, componentName?: string, issuesF
   if (byType.spacing > 0) lines.push(`- **Spacing:** ${byType.spacing} off-grid`);
   if (byType.autoLayout > 0) lines.push(`- **Auto Layout:** ${byType.autoLayout} missing`);
 
-  lines.push('', '## All Issues', '');
-  for (const err of result.errors) {
-    lines.push(`- **[${err.errorType.toUpperCase()}]** ${err.nodeName}: ${err.message}`);
+  // AI Review section
+  if (aiReview) {
+    lines.push('', '## AI Visual Review', '');
+    lines.push(`**Overall AI Score: ${aiReview.overallScore}/100**`, '');
+    lines.push(`| Category | Score | Notes |`);
+    lines.push(`|----------|-------|-------|`);
+    lines.push(`| Visual Hierarchy | ${aiReview.visualHierarchy.score}/10 | ${aiReview.visualHierarchy.notes} |`);
+    lines.push(`| Spacing & Rhythm | ${aiReview.spacingRhythm.score}/10 | ${aiReview.spacingRhythm.notes} |`);
+    lines.push(`| Color Harmony | ${aiReview.colorHarmony.score}/10 | ${aiReview.colorHarmony.notes} |`);
+
+    if (aiReview.missingStates.length > 0) {
+      lines.push('', `**Missing states:** ${aiReview.missingStates.join(', ')}`);
+    }
+
+    if (aiReview.recommendations.length > 0) {
+      lines.push('', '### Recommendations', '');
+      for (const rec of aiReview.recommendations) {
+        lines.push(`- **[${rec.severity.toUpperCase()}]** ${rec.title}: ${rec.description}`);
+      }
+    }
+
+    if (aiReview.summary) {
+      lines.push('', `> ${aiReview.summary}`);
+    }
+  }
+
+  // All issues detail
+  if (result.errors.length > 0) {
+    lines.push('', '## All Issues', '');
+    for (const err of result.errors) {
+      lines.push(`- **[${err.errorType.toUpperCase()}]** ${err.nodeName}: ${err.message}`);
+    }
   }
 
   return lines.join('\n');

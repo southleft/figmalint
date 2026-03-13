@@ -1,10 +1,11 @@
 interface QuickActionsProps {
   onAnalyze: () => void;
   hasFixable: boolean;
+  analysisMode?: 'quick' | 'deep';
   onAction: (action: string, params?: Record<string, unknown>) => void;
 }
 
-export default function QuickActions({ onAnalyze, hasFixable, onAction }: QuickActionsProps) {
+export default function QuickActions({ onAnalyze, hasFixable, analysisMode = 'quick', onAction }: QuickActionsProps) {
   return (
     <div className="flex items-center gap-1.5 px-3 py-1 border-t border-border overflow-x-auto">
       {hasFixable && (
@@ -26,6 +27,13 @@ export default function QuickActions({ onAnalyze, hasFixable, onAction }: QuickA
         onClick={() => onAction('export')}
       >
         Export
+      </button>
+      <button
+        className="shrink-0 px-2 py-1 text-11 text-fg-tertiary hover:bg-bg-hover rounded-md transition-colors"
+        onClick={() => onAction('toggle-mode')}
+        title={analysisMode === 'quick' ? 'Switch to deep analysis (includes Refero)' : 'Switch to quick analysis'}
+      >
+        {analysisMode === 'quick' ? 'Quick' : 'Deep'}
       </button>
     </div>
   );

@@ -8,6 +8,7 @@ import type { ChatState } from '../../hooks/useChat';
 interface ChatContainerProps {
   state: ChatState;
   componentName?: string;
+  analysisMode?: 'quick' | 'deep';
   onAnalyze: () => void;
   onSendMessage: (text: string) => void;
   onAction: (action: string, params?: Record<string, unknown>) => void;
@@ -17,6 +18,7 @@ interface ChatContainerProps {
 export default function ChatContainer({
   state,
   componentName,
+  analysisMode,
   onAnalyze,
   onSendMessage,
   onAction,
@@ -65,6 +67,7 @@ export default function ChatContainer({
           <QuickActions
             onAnalyze={onAnalyze}
             hasFixable={(lintResult?.errors.filter(e => e.errorType === 'spacing').length || 0) > 0}
+            analysisMode={analysisMode}
             onAction={handleAction}
           />
         )}

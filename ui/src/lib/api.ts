@@ -168,6 +168,22 @@ export async function streamChat(
 /**
  * GET /api/health — check backend availability.
  */
+/**
+ * GET /api/session/:id/refero — poll for async Refero data.
+ */
+export async function fetchReferoData(sessionId: string): Promise<{ ready: boolean; data?: any }> {
+  try {
+    const resp = await fetch(`${backendUrl}/api/session/${sessionId}/refero`, { method: 'GET' });
+    if (!resp.ok) return { ready: false };
+    return resp.json();
+  } catch {
+    return { ready: false };
+  }
+}
+
+/**
+ * GET /api/health — check backend availability.
+ */
 export async function checkHealth(): Promise<boolean> {
   try {
     const resp = await fetch(`${backendUrl}/api/health`, { method: 'GET' });
