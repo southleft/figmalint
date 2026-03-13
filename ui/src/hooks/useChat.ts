@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ChatMessage, ChatMessageType, LintResult, LintError, ScoreBreakdown } from '../lib/messages';
+import type { ChatMessage, ChatMessageType, LintResult, LintError, ScoreBreakdown, AiReviewData } from '../lib/messages';
 
 let messageIdCounter = 0;
 function nextId(): string {
@@ -44,6 +44,10 @@ export interface ChatState {
   score: ScoreBreakdown | null;
   isAnalyzing: boolean;
   issuesFixed: number;
+  sessionId: string | null;
+  aiReview: AiReviewData | null;
+  combinedScore: number | null;
+  isStreaming: boolean;
 }
 
 export function useChat() {
@@ -53,6 +57,10 @@ export function useChat() {
     score: null,
     isAnalyzing: false,
     issuesFixed: 0,
+    sessionId: null,
+    aiReview: null,
+    combinedScore: null,
+    isStreaming: false,
   });
 
   const addMessage = useCallback((msg: ChatMessageType) => {
@@ -210,6 +218,110 @@ export function useChat() {
     }));
   }, [state.score]);
 
+  const handleAiReview = useCallback((data: {
+    sessionId: string;
+    aiReview: AiReviewData;
+    combinedScore: number;
+  }) => {
+    const messages: ChatMessage[] = [];
+
+    // AI review card
+    messages.push(createMessage({
+      kind: 'ai-review',
+      data: data.aiReview,
+    }));
+
+    // Combined score
+    messages.push(createMessage({
+      kind: 'combined-score',
+      data: {
+        lintScore: state.score?.overall || 0,
+        aiScore: data.aiReview.overallScore,
+        combined: data.combinedScore,
+      },
+    }));
+
+    // Summary text
+    messages.push(createMessage({
+      kind: 'ai-text',
+      content: data.aiReview.summary,
+    }));
+
+    // Recommendations
+    if (data.aiReview.recommendations.length > 0) {
+      const recText = data.aiReview.recommendations
+        .map(r => `- **[${r.severity}]** ${r.title}: ${r.description}`)
+        .join('\n');
+      messages.push(createMessage({
+        kind: 'ai-text',
+        content: `**AI Recommendations:**\n${recText}`,
+      }));
+    }
+
+    // Missing states
+    if (data.aiReview.missingStates.length > 0) {
+      messages.push(createMessage({
+        kind: 'ai-text',
+        content: `**Missing states:** ${data.aiReview.missingStates.join(', ')}`,
+      }));
+    }
+
+    // Quick actions after AI review
+    messages.push(createMessage({
+      kind: 'action-buttons',
+      buttons: [
+        { id: 'walkthrough', label: 'Walk through issues', variant: 'secondary', action: 'walkthrough' },
+        { id: 'rescan', label: 'Re-scan', variant: 'ghost', action: 'rescan' },
+        { id: 'export', label: 'Export report', variant: 'ghost', action: 'export' },
+      ],
+    }));
+
+    setState(prev => ({
+      ...prev,
+      isAnalyzing: false,
+      sessionId: data.sessionId,
+      aiReview: data.aiReview,
+      combinedScore: data.combinedScore,
+      messages: [...prev.messages, ...messages],
+    }));
+  }, [state.score]);
+
+  const setSessionId = useCallback((id: string) => {
+    setState(prev => ({ ...prev, sessionId: id }));
+  }, []);
+
+  const appendStreamChunk = useCallback((text: string) => {
+    setState(prev => {
+      const msgs = [...prev.messages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.message.kind === 'ai-text' && last.message.streaming) {
+        // Append to existing streaming message
+        msgs[msgs.length - 1] = {
+          ...last,
+          message: { kind: 'ai-text', content: last.message.content + text, streaming: true },
+        };
+        return { ...prev, messages: msgs, isStreaming: true };
+      }
+      // Start new streaming message
+      return {
+        ...prev,
+        isStreaming: true,
+        messages: [...msgs, createMessage({ kind: 'ai-text', content: text, streaming: true })],
+      };
+    });
+  }, []);
+
+  const finishStream = useCallback(() => {
+    setState(prev => {
+      const msgs = prev.messages.map(m =>
+        m.message.kind === 'ai-text' && m.message.streaming
+          ? { ...m, message: { ...m.message, streaming: false } as ChatMessageType }
+          : m
+      );
+      return { ...prev, isStreaming: false, messages: msgs };
+    });
+  }, []);
+
   const clearMessages = useCallback(() => {
     setState({
       messages: [],
@@ -217,6 +329,10 @@ export function useChat() {
       score: null,
       isAnalyzing: false,
       issuesFixed: 0,
+      sessionId: null,
+      aiReview: null,
+      combinedScore: null,
+      isStreaming: false,
     });
   }, []);
 
@@ -228,6 +344,10 @@ export function useChat() {
     handleFixApplied,
     handleBatchFixResult,
     handleRescan,
+    handleAiReview,
+    setSessionId,
+    appendStreamChunk,
+    finishStream,
     clearMessages,
   };
 }

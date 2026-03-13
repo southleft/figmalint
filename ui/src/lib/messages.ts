@@ -105,7 +105,19 @@ export type ChatMessageType =
   | { kind: 'fix-result'; data: { nodeId: string; nodeName: string; applied: boolean; oldValue?: string; newValue?: string; property?: string } }
   | { kind: 'action-buttons'; buttons: ActionButton[] }
   | { kind: 'batch-summary'; data: { total: number; applied: number; failed: number } }
-  | { kind: 'score-update'; data: { oldScore: number; newScore: number; issuesRemaining: number } };
+  | { kind: 'score-update'; data: { oldScore: number; newScore: number; issuesRemaining: number } }
+  | { kind: 'ai-review'; data: AiReviewData }
+  | { kind: 'combined-score'; data: { lintScore: number; aiScore: number; combined: number } };
+
+export interface AiReviewData {
+  visualHierarchy: { score: number; notes: string };
+  spacingRhythm: { score: number; notes: string };
+  colorHarmony: { score: number; notes: string };
+  missingStates: string[];
+  recommendations: Array<{ title: string; description: string; severity: string }>;
+  overallScore: number;
+  summary: string;
+}
 
 export interface ScoreBreakdown {
   overall: number;

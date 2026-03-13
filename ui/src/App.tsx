@@ -3,13 +3,61 @@ import ChatContainer from './components/chat/ChatContainer';
 import { useChat } from './hooks/useChat';
 import { usePluginMessages, usePostToPlugin } from './hooks/usePluginMessages';
 import type { PluginEvent, LintResult, LintError } from './lib/messages';
+import { analyzeComponent, streamChat, checkHealth, setBackendUrl } from './lib/api';
 
 export default function App() {
   const chat = useChat();
   const post = usePostToPlugin();
   const [componentName, setComponentName] = useState<string | undefined>();
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [backendAvailable, setBackendAvailable] = useState(false);
   const walkthroughIndex = useRef(0);
+  const pendingLintResult = useRef<LintResult | null>(null);
+  const pendingScreenshot = useRef<{ screenshot: string; nodeId: string; nodeName: string; width: number; height: number } | null>(null);
+
+  // Try to send lint + screenshot to backend for AI analysis
+  const tryBackendAnalysis = useCallback(async (
+    lintResult: LintResult,
+    screenshot: { screenshot: string; nodeId: string; nodeName: string; width: number; height: number }
+  ) => {
+    if (!backendAvailable) return;
+
+    chat.addMessage({
+      kind: 'ai-text',
+      content: 'Running AI visual analysis...',
+    });
+
+    try {
+      const result = await analyzeComponent({
+        screenshot: screenshot.screenshot,
+        lintResult,
+        extractedData: {
+          componentName: componentName || screenshot.nodeName || 'Component',
+          metadata: {
+            nodeId: screenshot.nodeId,
+            nodeType: 'FRAME',
+            width: screenshot.width,
+            height: screenshot.height,
+            hasAutoLayout: false,
+            childCount: 0,
+          },
+        },
+        sessionId: chat.sessionId || undefined,
+        mode: 'quick',
+      });
+
+      chat.handleAiReview({
+        sessionId: result.sessionId,
+        aiReview: result.aiReview,
+        combinedScore: result.combinedScore,
+      });
+    } catch (error) {
+      chat.addMessage({
+        kind: 'ai-text',
+        content: `AI analysis unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
+  }, [backendAvailable, chat, componentName]);
 
   // Listen for messages from the plugin main thread
   usePluginMessages(
@@ -22,6 +70,9 @@ export default function App() {
               chat.handleRescan(event.data as LintResult);
             } else {
               chat.handleLintResult(event.data as LintResult);
+              // Store lint result and request screenshot for AI analysis
+              pendingLintResult.current = event.data as LintResult;
+              post('export-screenshot');
             }
             break;
           case 'enhanced-analysis-result': {
@@ -55,18 +106,34 @@ export default function App() {
           case 'rescan-complete':
             // Rescan lint result will arrive via 'design-lint-result' — handled there
             break;
+          case 'screenshot-result': {
+            const ssData = event.data as { nodeId: string; nodeName: string; screenshot: string; width: number; height: number };
+            pendingScreenshot.current = ssData;
+            // If we have both lint result and screenshot, trigger backend analysis
+            if (pendingLintResult.current && pendingScreenshot.current) {
+              tryBackendAnalysis(pendingLintResult.current, pendingScreenshot.current);
+              pendingLintResult.current = null;
+              pendingScreenshot.current = null;
+            }
+            break;
+          }
+          case 'screenshot-error':
+            // Screenshot failed — clear pending lint so we don't hang
+            pendingLintResult.current = null;
+            break;
           case 'api-key-status':
             setHasApiKey((event.data as any)?.hasKey || false);
             break;
         }
       },
-      [chat]
+      [chat, post, tryBackendAnalysis]
     )
   );
 
-  // Check API key on mount
+  // Check API key and backend health on mount
   useEffect(() => {
     post('check-api-key');
+    checkHealth().then(ok => setBackendAvailable(ok));
   }, [post]);
 
   const handleAnalyze = useCallback(() => {
@@ -78,9 +145,25 @@ export default function App() {
   const handleSendMessage = useCallback(
     (text: string) => {
       chat.addMessage({ kind: 'user-text', content: text });
-      post('chat-message', { message: text });
+
+      // If we have a backend session, use streaming chat
+      if (chat.sessionId && backendAvailable) {
+        streamChat(
+          chat.sessionId,
+          text,
+          (chunk) => chat.appendStreamChunk(chunk),
+          () => chat.finishStream(),
+          (error) => {
+            chat.finishStream();
+            chat.addMessage({ kind: 'ai-text', content: `Error: ${error}` });
+          }
+        );
+      } else {
+        // Fallback to plugin main thread chat
+        post('chat-message', { message: text });
+      }
     },
-    [chat, post]
+    [chat, post, backendAvailable]
   );
 
   const handleAction = useCallback(

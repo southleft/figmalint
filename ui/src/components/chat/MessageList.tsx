@@ -4,6 +4,7 @@ import AiMessage from '../messages/AiMessage';
 import ScoreCard from '../messages/ScoreCard';
 import IssuesList from '../messages/IssuesList';
 import FixResult from '../messages/FixResult';
+import AiReviewCard from '../messages/AiReviewCard';
 import ActionButtons from '../shared/ActionButtons';
 
 interface MessageListProps {
@@ -72,6 +73,26 @@ export default function MessageList({ messages, onAction, onJumpToNode }: Messag
                 </div>
               </div>
             );
+          case 'ai-review':
+            return <AiReviewCard key={msg.id} data={m.data} />;
+          case 'combined-score': {
+            const lintPct = Math.round(m.data.lintScore);
+            const aiPct = Math.round(m.data.aiScore);
+            return (
+              <div key={msg.id} className="bg-bg-secondary rounded-xl px-3 py-2 text-12 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Combined Score</span>
+                  <span className={`text-[18px] font-bold tabular-nums ${m.data.combined >= 80 ? 'text-fg-success' : m.data.combined >= 50 ? 'text-fg-warning' : 'text-fg-danger'}`}>
+                    {Math.round(m.data.combined)}
+                  </span>
+                </div>
+                <div className="flex gap-3 text-11 text-fg-secondary">
+                  <span>Lint: {lintPct}</span>
+                  <span>AI: {aiPct}</span>
+                </div>
+              </div>
+            );
+          }
           case 'score-update': {
             const diff = m.data.newScore - m.data.oldScore;
             const arrow = diff > 0 ? '\u2191' : diff < 0 ? '\u2193' : '\u2192';
