@@ -4761,8 +4761,8 @@
               <span class="audit-status ${status}">${
                 status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
               }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+              <span class="audit-label">${escapeHtml(item.check)}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${escapeHtml(item.suggestion)}</span></div>` : ''}
             </div>
           `;
         });
@@ -4801,8 +4801,8 @@
               <span class="audit-status ${status}">${
                 status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
               }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+              <span class="audit-label">${escapeHtml(item.check)}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${escapeHtml(item.suggestion)}</span></div>` : ''}
             </div>
           `;
         });
@@ -7270,7 +7270,7 @@
     }
 
     function escapeAttr(str) {
-      return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
     }
 
     function lintSelectNode(nodeId) {

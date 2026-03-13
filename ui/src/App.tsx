@@ -227,13 +227,15 @@ export default function App() {
             });
 
             // Build batch fix actions
-            const fixes = spacingErrors.map(err => ({
-              type: 'fixSpacingToNearest' as const,
-              params: {
-                nodeId: err.nodeId,
-                property: err.property || extractSpacingProperty(err.message),
-              },
-            }));
+            const fixes = spacingErrors
+              .filter(err => err.property)
+              .map(err => ({
+                type: 'fixSpacingToNearest' as const,
+                params: {
+                  nodeId: err.nodeId,
+                  property: err.property!,
+                },
+              }));
 
             post('batch-fix-v2', { fixes });
           }
@@ -264,13 +266,13 @@ export default function App() {
 
           // Show fix actions for this issue
           const buttons = [];
-          if (issue.errorType === 'spacing') {
+          if (issue.errorType === 'spacing' && issue.property) {
             buttons.push({
               id: `fix-${issue.nodeId}`,
               label: 'Fix to nearest',
               variant: 'primary' as const,
               action: 'fix-single-spacing',
-              params: { nodeId: issue.nodeId, property: issue.property || extractSpacingProperty(issue.message) },
+              params: { nodeId: issue.nodeId, property: issue.property },
             });
           }
           buttons.push({
@@ -420,20 +422,6 @@ export default function App() {
   );
 }
 
-/**
- * Extract spacing property name from lint error message.
- * Messages look like: "Gap is 13px — not in spacing scale"
- */
-function extractSpacingProperty(message: string): string {
-  const lower = message.toLowerCase();
-  if (lower.includes('gap') && !lower.includes('counter')) return 'itemSpacing';
-  if (lower.includes('counter')) return 'counterAxisSpacing';
-  if (lower.includes('padding top')) return 'paddingTop';
-  if (lower.includes('padding bottom')) return 'paddingBottom';
-  if (lower.includes('padding left')) return 'paddingLeft';
-  if (lower.includes('padding right')) return 'paddingRight';
-  return 'itemSpacing'; // fallback
-}
 
 function buildFullReport(
   result: LintResult,

@@ -6,14 +6,21 @@ interface IssuesListProps {
   onJumpToNode: (nodeId: string) => void;
 }
 
-const SEVERITY_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  fill: { label: 'Critical', color: 'text-fg-danger', bg: 'bg-bg-danger' },
-  stroke: { label: 'Critical', color: 'text-fg-danger', bg: 'bg-bg-danger' },
-  effect: { label: 'Critical', color: 'text-fg-danger', bg: 'bg-bg-danger' },
-  text: { label: 'Critical', color: 'text-fg-danger', bg: 'bg-bg-danger' },
-  radius: { label: 'Warning', color: 'text-fg-warning', bg: 'bg-bg-warning' },
-  spacing: { label: 'Warning', color: 'text-fg-warning', bg: 'bg-bg-warning' },
-  autoLayout: { label: 'Warning', color: 'text-fg-warning', bg: 'bg-bg-warning' },
+const SEVERITY_STYLES: Record<string, { label: string; color: string; bg: string }> = {
+  critical: { label: 'Critical', color: 'text-fg-danger', bg: 'bg-bg-danger' },
+  warning: { label: 'Warning', color: 'text-fg-warning', bg: 'bg-bg-warning' },
+  info: { label: 'Info', color: 'text-fg-secondary', bg: 'bg-bg-tertiary' },
+};
+
+const TYPE_SEVERITY_MAP: Record<string, { label: string; color: string; bg: string }> = {
+  fill: SEVERITY_STYLES.critical,
+  stroke: SEVERITY_STYLES.critical,
+  effect: SEVERITY_STYLES.critical,
+  text: SEVERITY_STYLES.critical,
+  radius: SEVERITY_STYLES.warning,
+  spacing: SEVERITY_STYLES.warning,
+  autoLayout: SEVERITY_STYLES.warning,
+  accessibility: SEVERITY_STYLES.critical,
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -24,6 +31,7 @@ const TYPE_LABELS: Record<string, string> = {
   radius: 'Radius',
   spacing: 'Spacing',
   autoLayout: 'Auto Layout',
+  accessibility: 'A11y',
 };
 
 export default function IssuesList({ errors, onJumpToNode }: IssuesListProps) {
@@ -39,7 +47,7 @@ export default function IssuesList({ errors, onJumpToNode }: IssuesListProps) {
 
       <div className="divide-y divide-border">
         {displayErrors.map((err, i) => {
-          const severity = SEVERITY_MAP[err.errorType] || SEVERITY_MAP.radius;
+          const severity = (err.severity && SEVERITY_STYLES[err.severity]) || TYPE_SEVERITY_MAP[err.errorType] || SEVERITY_STYLES.warning;
           return (
             <div key={`${err.nodeId}-${err.errorType}-${i}`} className="px-3 py-2 hover:bg-bg-hover transition-colors">
               <div className="flex items-start gap-2">

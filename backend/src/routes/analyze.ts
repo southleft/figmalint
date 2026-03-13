@@ -33,7 +33,8 @@ app.post('/analyze', async (c) => {
   } catch (error) {
     console.error('Analysis error:', error);
     const message = error instanceof Error ? error.message : 'Analysis failed';
-    return c.json({ error: message }, 500);
+    const status = message.includes('Session not found') ? 404 : 500;
+    return c.json({ error: message }, status);
   }
 });
 

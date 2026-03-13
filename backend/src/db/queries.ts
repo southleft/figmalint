@@ -65,6 +65,7 @@ export function updateSession(id: string, updates: Partial<Record<string, unknow
   const sets = keys.map(k => `${k} = ?`).join(', ');
   const values = keys.map(k => {
     const v = updates[k];
+    if (v === null || v === undefined) return null;
     return typeof v === 'object' ? JSON.stringify(v) : v;
   });
   db.prepare(`UPDATE sessions SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values, id);
@@ -75,7 +76,13 @@ export function appendConversation(id: string, role: string, content: string): v
   const session = getSession(id);
   if (!session) return;
 
-  const conversation = JSON.parse(session.conversation || '[]');
+  let conversation: Array<{ role: string; content: string; timestamp: number }> = [];
+  try {
+    const parsed = JSON.parse(session.conversation || '[]');
+    conversation = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    conversation = [];
+  }
   conversation.push({ role, content, timestamp: Date.now() });
   db.prepare('UPDATE sessions SET conversation = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
     .run(JSON.stringify(conversation), id);

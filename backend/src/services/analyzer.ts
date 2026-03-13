@@ -95,10 +95,24 @@ export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> 
   ].filter(Boolean).join('\n');
 
   // Phase 1: Run page type detection and AI review in parallel
-  const [pageType, aiReview] = await Promise.all([
+  // Use allSettled so a single AI failure doesn't discard the lint results
+  const [pageTypeResult, aiReviewResult] = await Promise.allSettled([
     detectPageType(req.screenshot),
     generateReview(req.screenshot, lintSummary, componentInfo),
   ]);
+
+  const pageType = pageTypeResult.status === 'fulfilled' ? pageTypeResult.value : 'unknown';
+  const aiReview = aiReviewResult.status === 'fulfilled'
+    ? aiReviewResult.value
+    : {
+        visualHierarchy: { score: 0, notes: 'AI review unavailable' },
+        spacingRhythm: { score: 0, notes: 'AI review unavailable' },
+        colorHarmony: { score: 0, notes: 'AI review unavailable' },
+        missingStates: [] as string[],
+        recommendations: [] as Array<{ title: string; description: string; severity: string }>,
+        overallScore: 0,
+        summary: 'AI review was unavailable for this analysis.',
+      };
 
   // Phase 2: Run Refero comparison (depends on pageType, non-blocking)
   // In 'deep' mode or when Refero is available, fetch comparisons
