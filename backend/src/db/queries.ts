@@ -50,9 +50,17 @@ export function getSession(id: string): SessionRow | undefined {
   return db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as SessionRow | undefined;
 }
 
+const ALLOWED_COLUMNS = new Set([
+  'page_type', 'score_initial', 'score_current', 'lint_result',
+  'ai_review', 'issues_found', 'issues_fixed', 'issues_skipped',
+  'conversation', 'duration_seconds', 'node_id', 'node_name',
+]);
+
 export function updateSession(id: string, updates: Partial<Record<string, unknown>>): void {
   const db = getDb();
-  const keys = Object.keys(updates);
+  const keys = Object.keys(updates).filter(k => ALLOWED_COLUMNS.has(k));
+  if (keys.length === 0) return;
+
   const sets = keys.map(k => `${k} = ?`).join(', ');
   const values = keys.map(k => {
     const v = updates[k];

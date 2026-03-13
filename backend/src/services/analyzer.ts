@@ -1,5 +1,5 @@
 import { detectPageType, generateReview } from './claude.js';
-import { startSession, saveAnalysisResult } from './session.js';
+import { startSession, loadSession, saveAnalysisResult } from './session.js';
 
 export interface AnalyzeRequest {
   screenshot: string;
@@ -56,14 +56,24 @@ export interface AnalysisResult {
  * Run full analysis: page type detection + AI review in parallel.
  */
 export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> {
-  const sessionId = req.sessionId || startSession(
-    req.extractedData.metadata?.nodeId,
-    req.extractedData.componentName
-  );
+  let sessionId: string;
+  if (req.sessionId) {
+    // Validate that the provided session actually exists
+    const existing = loadSession(req.sessionId);
+    if (!existing) {
+      throw new Error(`Session not found: ${req.sessionId}`);
+    }
+    sessionId = req.sessionId;
+  } else {
+    sessionId = startSession(
+      req.extractedData.metadata?.nodeId,
+      req.extractedData.componentName
+    );
+  }
 
-  // Build lint summary text
-  const bt = req.lintResult.summary.byType;
-  const lintSummary = `${req.lintResult.summary.totalErrors} issues: ${bt.fill || 0} fills, ${bt.stroke || 0} strokes, ${bt.effect || 0} effects, ${bt.text || 0} text, ${bt.radius || 0} radius, ${bt.spacing || 0} spacing, ${bt.autoLayout || 0} auto-layout`;
+  // Build lint summary text — safely access byType keys with fallback to 0
+  const bt = req.lintResult.summary.byType || {};
+  const lintSummary = `${req.lintResult.summary.totalErrors} issues: ${bt.fill ?? 0} fills, ${bt.stroke ?? 0} strokes, ${bt.effect ?? 0} effects, ${bt.text ?? 0} text, ${bt.radius ?? 0} radius, ${bt.spacing ?? 0} spacing, ${bt.autoLayout ?? 0} auto-layout`;
 
   // Build component info
   const meta = req.extractedData.metadata;

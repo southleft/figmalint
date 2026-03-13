@@ -23,7 +23,12 @@ app.use('*', logger());
 app.use(
   '*',
   cors({
-    origin: '*', // Figma plugin iframes send origin: null
+    // Figma plugin iframes send origin: null; also allow the plugin's backend domain
+    origin: (origin) => {
+      if (!origin || origin === 'null') return 'null'; // Figma sandboxed iframe
+      const allowed = ['https://api.figmalint.labpics.com', 'http://localhost:3000'];
+      return allowed.includes(origin) ? origin : 'null';
+    },
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Content-Type'],
   })

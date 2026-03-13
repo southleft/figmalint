@@ -13,10 +13,16 @@ const app = new Hono();
  */
 app.post('/stream/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId');
-  const body = await c.req.json<{ message: string }>();
 
-  if (!body.message) {
-    return c.json({ error: 'message is required' }, 400);
+  let body: { message: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  if (!body.message || typeof body.message !== 'string' || !body.message.trim()) {
+    return c.json({ error: 'message is required and must be a non-empty string' }, 400);
   }
 
   const session = loadSession(sessionId);

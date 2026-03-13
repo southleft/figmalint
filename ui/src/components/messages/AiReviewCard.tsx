@@ -11,16 +11,17 @@ function getScoreColor(score: number): string {
 }
 
 function ScoreRow({ label, score, notes }: { label: string; score: number; notes: string }) {
+  const clamped = Math.max(0, Math.min(100, score));
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between">
         <span className="text-11 text-fg-secondary">{label}</span>
-        <span className={`text-12 font-medium tabular-nums ${getScoreColor(score)}`}>{score}/100</span>
+        <span className={`text-12 font-medium tabular-nums ${getScoreColor(clamped)}`}>{clamped}/100</span>
       </div>
       <div className="h-1 bg-bg-tertiary rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full ${score >= 80 ? 'bg-fg-success' : score >= 50 ? 'bg-fg-warning' : 'bg-fg-danger'}`}
-          style={{ width: `${score}%` }}
+          className={`h-full rounded-full ${clamped >= 80 ? 'bg-fg-success' : clamped >= 50 ? 'bg-fg-warning' : 'bg-fg-danger'}`}
+          style={{ width: `${clamped}%` }}
         />
       </div>
       {notes && <p className="text-11 text-fg-tertiary">{notes}</p>}

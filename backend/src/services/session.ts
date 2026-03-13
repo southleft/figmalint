@@ -18,14 +18,19 @@ export function saveAnalysisResult(
   lintResult: unknown,
   initialScore: number
 ): void {
-  updateSession(sessionId, {
+  const existing = getSession(sessionId);
+  const updates: Record<string, unknown> = {
     page_type: pageType,
     ai_review: aiReview,
     lint_result: lintResult,
-    score_initial: initialScore,
     score_current: initialScore,
     issues_found: (lintResult as any)?.summary?.totalErrors || 0,
-  });
+  };
+  // Only set score_initial on the first analysis — never overwrite it
+  if (!existing || existing.score_initial === null || existing.score_initial === undefined) {
+    updates.score_initial = initialScore;
+  }
+  updateSession(sessionId, updates);
 }
 
 export function addMessage(sessionId: string, role: string, content: string): void {

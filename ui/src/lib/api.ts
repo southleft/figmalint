@@ -115,6 +115,7 @@ export async function streamChat(
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let currentEvent = '';
 
     while (true) {
       const { done, value } = await reader.read();
@@ -127,21 +128,25 @@ export async function streamChat(
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        if (line.startsWith('data:')) {
+        if (line.startsWith('event:')) {
+          currentEvent = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
           const data = line.slice(5).trim();
           try {
             const parsed = JSON.parse(data);
+            if (currentEvent === 'error') {
+              onError(parsed.error || 'Stream error');
+              return;
+            }
+            if (currentEvent === 'done') {
+              onDone();
+              return;
+            }
             if (parsed.text) onChunk(parsed.text);
           } catch {
             // Not JSON, skip
           }
-        }
-        if (line.startsWith('event: done')) {
-          onDone();
-          return;
-        }
-        if (line.startsWith('event: error')) {
-          // Next data line has the error
+          currentEvent = '';
         }
       }
     }

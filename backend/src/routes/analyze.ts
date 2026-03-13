@@ -5,16 +5,27 @@ const app = new Hono();
 
 app.post('/analyze', async (c) => {
   try {
-    const body = await c.req.json<AnalyzeRequest>();
-
-    if (!body.screenshot) {
-      return c.json({ error: 'screenshot is required' }, 400);
+    let body: AnalyzeRequest;
+    try {
+      body = await c.req.json<AnalyzeRequest>();
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
     }
-    if (!body.lintResult) {
+
+    if (!body || typeof body !== 'object') {
+      return c.json({ error: 'Request body must be a JSON object' }, 400);
+    }
+    if (!body.screenshot || typeof body.screenshot !== 'string') {
+      return c.json({ error: 'screenshot is required and must be a string' }, 400);
+    }
+    if (!body.lintResult || typeof body.lintResult !== 'object') {
       return c.json({ error: 'lintResult is required' }, 400);
     }
-    if (!body.extractedData) {
+    if (!body.extractedData || typeof body.extractedData !== 'object') {
       return c.json({ error: 'extractedData is required' }, 400);
+    }
+    if (!body.extractedData.componentName || typeof body.extractedData.componentName !== 'string') {
+      return c.json({ error: 'extractedData.componentName is required' }, 400);
     }
 
     const result = await runAnalysis(body);

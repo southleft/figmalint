@@ -37,8 +37,10 @@ export async function detectPageType(screenshotBase64: string): Promise<string> 
     ],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : 'other';
-  return text.trim().toLowerCase();
+  if (!response.content.length || response.content[0].type !== 'text') {
+    return 'other';
+  }
+  return response.content[0].text.trim().toLowerCase();
 }
 
 /**
@@ -78,12 +80,25 @@ export async function generateReview(
     ],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '{}';
+  if (!response.content.length || response.content[0].type !== 'text') {
+    throw new Error('Empty response from AI review');
+  }
+  const text = response.content[0].text;
   // Extract JSON from the response
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('No JSON in review response');
 
-  return JSON.parse(jsonMatch[0]);
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  // Validate required fields in parsed review
+  if (typeof parsed.overallScore !== 'number') {
+    throw new Error('AI review missing overallScore');
+  }
+  if (!parsed.visualHierarchy || !parsed.spacingRhythm || !parsed.colorHarmony) {
+    throw new Error('AI review missing required score categories');
+  }
+
+  return parsed;
 }
 
 /**

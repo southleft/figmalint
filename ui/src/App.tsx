@@ -259,12 +259,20 @@ export default function App() {
           const result = chat.lintResult;
           if (result) {
             const md = buildMarkdownExport(result, componentName, chat.issuesFixed);
-            navigator.clipboard.writeText(md).then(() => {
-              chat.addMessage({
-                kind: 'ai-text',
-                content: 'Lint report copied to clipboard!',
-              });
-            });
+            navigator.clipboard.writeText(md).then(
+              () => {
+                chat.addMessage({
+                  kind: 'ai-text',
+                  content: 'Lint report copied to clipboard!',
+                });
+              },
+              () => {
+                chat.addMessage({
+                  kind: 'ai-text',
+                  content: 'Failed to copy report to clipboard.',
+                });
+              }
+            );
           }
           break;
         }
