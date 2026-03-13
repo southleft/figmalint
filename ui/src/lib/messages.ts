@@ -2,7 +2,7 @@
 // Message type definitions for Plugin ↔ UI communication
 // ──────────────────────────────────────────────
 
-export type LintErrorType = 'fill' | 'stroke' | 'effect' | 'text' | 'radius' | 'spacing' | 'autoLayout';
+export type LintErrorType = 'fill' | 'stroke' | 'effect' | 'text' | 'radius' | 'spacing' | 'autoLayout' | 'accessibility';
 
 export interface LintError {
   nodeId: string;
@@ -14,6 +14,8 @@ export interface LintError {
   path: string;
   /** Spacing property name (for spacing errors) */
   property?: string;
+  /** Severity level for weighted scoring */
+  severity?: 'critical' | 'warning' | 'info';
 }
 
 export interface LintSummary {
@@ -142,15 +144,19 @@ export interface ReferoComparisonData {
   screenshots: ReferoScreen[];
 }
 
+export interface CategoryScore {
+  score: number;
+  passed: number;
+  failed: number;
+}
+
 export interface ScoreBreakdown {
   overall: number;
-  fills: { passed: number; failed: number };
-  strokes: { passed: number; failed: number };
-  effects: { passed: number; failed: number };
-  textStyles: { passed: number; failed: number };
-  radius: { passed: number; failed: number };
-  spacing: { passed: number; failed: number };
-  autoLayout: { passed: number; failed: number };
+  tokens: CategoryScore;
+  spacing: CategoryScore;
+  layout: CategoryScore;
+  accessibility: CategoryScore;
+  aiReview: { score: number };
 }
 
 export interface ActionButton {

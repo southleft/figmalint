@@ -214,6 +214,7 @@ export type UIMessageType =
   | 'fix-all-spacing'
   | 'apply-style-fix'
   | 'rename-layer-fix'
+  | 'fix-radius-to-nearest'
   | 'batch-fix-v2'
   | 'rescan-lint'
   | 'export-screenshot';
@@ -368,7 +369,7 @@ export type TokenCategory = 'colors' | 'spacing' | 'typography' | 'effects' | 'b
 // Design Lint Types (deterministic, non-AI rules)
 // ──────────────────────────────────────────────
 
-export type LintErrorType = 'fill' | 'stroke' | 'effect' | 'text' | 'radius' | 'spacing' | 'autoLayout';
+export type LintErrorType = 'fill' | 'stroke' | 'effect' | 'text' | 'radius' | 'spacing' | 'autoLayout' | 'accessibility';
 
 export interface LintError {
   nodeId: string;
@@ -380,6 +381,8 @@ export interface LintError {
   path: string;
   /** Spacing property name (for spacing errors), enables direct fix without parsing message text */
   property?: string;
+  /** Severity level for weighted scoring */
+  severity?: 'critical' | 'warning' | 'info';
 }
 
 export interface LintResult {
@@ -404,6 +407,7 @@ export interface LintSettings {
   checkRadius: boolean;
   checkSpacing: boolean;
   checkAutoLayout: boolean;
+  checkAccessibility: boolean;
   allowedRadii: number[];
   skipLockedLayers: boolean;
   skipHiddenLayers: boolean;

@@ -121,9 +121,18 @@ export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> 
       .catch(() => { /* Refero failure is non-critical */ });
   }
 
-  // Compute combined score: lint 40% + AI 60% (Refero doesn't affect score)
-  const lintScore = Math.max(0, 100 - req.lintResult.summary.totalErrors * 5);
-  const combinedScore = Math.round(lintScore * 0.4 + aiReview.overallScore * 0.6);
+  // Compute combined score: 5-category weighted model
+  const byType = req.lintResult.summary.byType || {};
+  const total = Math.max(req.lintResult.summary.totalNodes, 1);
+  const tokenFailed = (byType.fill ?? 0) + (byType.stroke ?? 0) + (byType.effect ?? 0) + (byType.text ?? 0);
+  const tokensScore = Math.max(0, Math.round((1 - tokenFailed / (total * 4)) * 100));
+  const spacingScore = Math.max(0, Math.round((1 - (byType.spacing ?? 0) / total) * 100));
+  const layoutScore = Math.max(0, Math.round((1 - (byType.autoLayout ?? 0) / total) * 100));
+  const a11yFailed = byType.accessibility ?? 0;
+  const a11yScore = Math.max(0, Math.round((1 - a11yFailed / Math.max(total, a11yFailed)) * 100));
+  const combinedScore = Math.round(
+    tokensScore * 0.25 + spacingScore * 0.15 + layoutScore * 0.10 + a11yScore * 0.25 + aiReview.overallScore * 0.25
+  );
 
   // Save to session
   saveAnalysisResult(sessionId, pageType, aiReview, req.lintResult, combinedScore, referoComparison);

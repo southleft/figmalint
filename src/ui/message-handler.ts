@@ -41,6 +41,7 @@ import {
 import { FixRequest, FixPreviewRequest, BatchFixRequest, LintSettings, LintResult } from '../types';
 import { exportScreenshot } from '../extract/screenshot';
 import { fixSpacing as fixSpacingValue, fixSpacingToNearest, fixAllSpacingOnNode } from '../fix/fix-spacing';
+import { fixRadiusToNearest } from '../fix/fix-radius';
 import { renameLayerById } from '../fix/rename-layer';
 import { executeBatchFix, type BatchFixAction } from '../fix/batch';
 import {
@@ -186,6 +187,9 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         break;
       case 'rename-layer-fix':
         handleRenameLayerFix(data);
+        break;
+      case 'fix-radius-to-nearest':
+        handleFixRadiusToNearest(data);
         break;
       case 'batch-fix-v2':
         await handleBatchFixV2(data);
@@ -1151,6 +1155,24 @@ function handleFixSpacingToNearest(data: { nodeId: string; property: string }): 
     });
   } catch (error) {
     sendMessageToUI('fix-error', { error: 'Failed to auto-fix spacing' });
+  }
+}
+
+function handleFixRadiusToNearest(data: { nodeId: string; allowedRadii?: number[] }): void {
+  try {
+    const allowedRadii = data.allowedRadii || [0, 2, 4, 8, 12, 16, 20, 24, 32];
+    const result = fixRadiusToNearest(data.nodeId, allowedRadii);
+    sendMessageToUI('fix-applied', {
+      type: 'radius',
+      nodeId: result.nodeId,
+      nodeName: result.nodeName,
+      oldValue: result.oldValue,
+      newValue: result.newValue,
+      success: result.success,
+      error: result.error,
+    });
+  } catch (error) {
+    sendMessageToUI('fix-error', { error: 'Failed to auto-fix radius' });
   }
 }
 

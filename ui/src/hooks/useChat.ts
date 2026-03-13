@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ChatMessage, ChatMessageType, LintResult, LintError, ScoreBreakdown, AiReviewData, ReferoComparisonData } from '../lib/messages';
+import type { ChatMessage, ChatMessageType, LintResult, LintError, ScoreBreakdown, CategoryScore, AiReviewData, ReferoComparisonData } from '../lib/messages';
 
 let messageIdCounter = 0;
 function nextId(): string {
@@ -11,32 +11,62 @@ function createMessage(message: ChatMessageType): ChatMessage {
 }
 
 /**
- * Compute a score breakdown from a LintResult.
+ * Compute a category score from passed/failed counts.
  */
-function computeScoreBreakdown(result: LintResult): ScoreBreakdown {
+function catScore(passed: number, failed: number): CategoryScore {
+  const total = passed + failed;
+  const score = total > 0 ? Math.round((passed / total) * 100) : 100;
+  return { score, passed, failed };
+}
+
+/**
+ * Compute a 5-category score breakdown from a LintResult.
+ * Categories: Tokens (25%), Spacing (15%), Layout (10%), Accessibility (25%), AI Review (25%).
+ * AI Review score is set to 0 initially and updated when AI results arrive.
+ */
+function computeScoreBreakdown(result: LintResult, aiScore?: number): ScoreBreakdown {
   const s = result.summary;
   const total = s.totalNodes || 1;
+  const bt = s.byType as Record<string, number>;
 
-  function category(type: string): { passed: number; failed: number } {
-    const failed = (s.byType as Record<string, number>)[type] || 0;
-    // `failed` is the issue count (not node count); clamp `passed` to avoid misleading negatives
-    return { passed: Math.max(0, total - failed), failed };
-  }
+  // Tokens = fill + stroke + effect + text
+  const tokenFailed = (bt.fill || 0) + (bt.stroke || 0) + (bt.effect || 0) + (bt.text || 0);
+  const tokens = catScore(Math.max(0, total * 4 - tokenFailed), tokenFailed);
 
-  const fills = category('fill');
-  const strokes = category('stroke');
-  const effects = category('effect');
-  const textStyles = category('text');
-  const radius = category('radius');
-  const spacing = category('spacing');
-  const autoLayout = category('autoLayout');
+  // Spacing
+  const spacingFailed = bt.spacing || 0;
+  const spacing = catScore(Math.max(0, total - spacingFailed), spacingFailed);
 
-  // Weighted score (lower is worse)
-  const totalIssues = s.totalErrors;
-  const maxIssues = total * 7; // 7 check types
-  const overall = Math.max(0, Math.min(100, Math.round((1 - totalIssues / Math.max(maxIssues, 1)) * 100)));
+  // Layout (auto-layout)
+  const layoutFailed = bt.autoLayout || 0;
+  const layout = catScore(Math.max(0, total - layoutFailed), layoutFailed);
 
-  return { overall, fills, strokes, effects, textStyles, radius, spacing, autoLayout };
+  // Accessibility — weight critical errors double
+  const a11yErrors = result.errors.filter(e => e.errorType === 'accessibility');
+  const a11yWeighted = a11yErrors.reduce((sum, e) => sum + (e.severity === 'critical' ? 2 : 1), 0);
+  const a11yCheckable = Math.max(total, a11yWeighted);
+  const a11yPassed = Math.max(0, a11yCheckable - a11yWeighted);
+  const accessibility = catScore(a11yPassed, a11yErrors.length);
+
+  // AI Review (default 0, updated later)
+  const ai = aiScore ?? 0;
+  const aiReview = { score: ai };
+
+  // Weighted average (AI gets 25% only when available)
+  const weights = [
+    { score: tokens.score, weight: 0.25 },
+    { score: spacing.score, weight: 0.15 },
+    { score: layout.score, weight: 0.10 },
+    { score: accessibility.score, weight: 0.25 },
+    { score: ai, weight: 0.25 },
+  ];
+
+  // If AI hasn't scored yet, redistribute its weight proportionally
+  const activeWeights = ai > 0 ? weights : weights.filter(w => w.weight !== 0.25 || w.score !== ai);
+  const totalWeight = activeWeights.reduce((sum, w) => sum + w.weight, 0);
+  const overall = Math.round(activeWeights.reduce((sum, w) => sum + (w.score * w.weight / totalWeight), 0));
+
+  return { overall, tokens, spacing, layout, accessibility, aiReview };
 }
 
 export interface ChatState {
@@ -84,7 +114,7 @@ export function useChat() {
 
   const handleLintResult = useCallback((result: LintResult) => {
     const score = computeScoreBreakdown(result);
-    const fixableCount = result.errors.filter(e => e.errorType === 'spacing').length;
+    const fixableCount = result.errors.filter(e => e.errorType === 'spacing' || e.errorType === 'radius').length;
 
     const messages: ChatMessage[] = [
       createMessage({ kind: 'score-card', data: score }),
@@ -203,7 +233,7 @@ export function useChat() {
     messages.push(createMessage({ kind: 'score-card', data: newScore }));
 
     if (result.errors.length > 0) {
-      const fixableCount = result.errors.filter(e => e.errorType === 'spacing').length;
+      const fixableCount = result.errors.filter(e => e.errorType === 'spacing' || e.errorType === 'radius').length;
       messages.push(createMessage({
         kind: 'issues-list',
         data: result.errors,
@@ -387,8 +417,9 @@ function buildLintSummaryText(result: LintResult, score: ScoreBreakdown): string
   if (byType.radius > 0) parts.push(`${byType.radius} non-standard radii`);
   if (byType.spacing > 0) parts.push(`${byType.spacing} off-grid spacing`);
   if (byType.autoLayout > 0) parts.push(`${byType.autoLayout} missing auto-layout`);
+  if (byType.accessibility > 0) parts.push(`${byType.accessibility} accessibility issues`);
 
-  const fixable = result.errors.filter(e => e.errorType === 'spacing').length;
+  const fixable = result.errors.filter(e => e.errorType === 'spacing' || e.errorType === 'radius').length;
 
   return `Found **${totalErrors} issues** (score: ${score.overall}/100):\n${parts.join(', ')}.\n${fixable > 0 ? `\n${fixable} can be auto-fixed.` : ''}`;
 }

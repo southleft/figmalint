@@ -16,7 +16,8 @@ export type LintIssueType =
   | 'radius'
   | 'spacing'
   | 'autoLayout'
-  | 'naming';
+  | 'naming'
+  | 'accessibility';
 
 export type LintSeverity = 'critical' | 'warning' | 'info';
 

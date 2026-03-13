@@ -4,6 +4,7 @@ import { LintError, LintErrorType, LintResult, LintSettings, LintSummary } from 
 import { rgbToHex } from '../utils/figma-helpers';
 import { checkSpacing } from '../lint/spacing';
 import { checkAutoLayout } from '../lint/auto-layout';
+import { checkAccessibility } from '../lint/accessibility';
 
 // ──────────────────────────────────────────────
 // Default lint settings
@@ -17,6 +18,7 @@ export const DEFAULT_LINT_SETTINGS: LintSettings = {
   checkRadius: true,
   checkSpacing: true,
   checkAutoLayout: true,
+  checkAccessibility: true,
   allowedRadii: [0, 2, 4, 8, 12, 16, 24, 32],
   skipLockedLayers: true,
   skipHiddenLayers: true,
@@ -434,11 +436,47 @@ export function runDesignLint(
     }
   }
 
+  if (settings.checkAccessibility) {
+    const a11yResult = checkAccessibility(nodes, skipOpts);
+    for (const issue of a11yResult.issues) {
+      if (ignoredNodeIds.has(issue.nodeId)) continue;
+      if (ignoredErrorKeys.has(errorKey(issue.nodeId, 'accessibility'))) continue;
+
+      errors.push({
+        nodeId: issue.nodeId,
+        nodeName: issue.nodeName,
+        nodeType: 'FRAME',
+        errorType: 'accessibility',
+        message: issue.message,
+        value: issue.currentValue || '',
+        path: issue.nodeName,
+        severity: issue.severity,
+      });
+    }
+  }
+
+  // Assign severity to all errors that don't have one yet
+  for (const err of errors) {
+    if (!err.severity) {
+      switch (err.errorType) {
+        case 'fill': case 'stroke': case 'effect': case 'text': case 'spacing':
+          err.severity = 'warning';
+          break;
+        case 'radius': case 'autoLayout':
+          err.severity = 'info';
+          break;
+        case 'accessibility':
+          err.severity = 'critical';
+          break;
+      }
+    }
+  }
+
   // Count unique nodes with errors
   const nodesWithErrors = new Set(errors.map(e => e.nodeId)).size;
 
   // Build summary
-  const byType: Record<LintErrorType, number> = { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0, spacing: 0, autoLayout: 0 };
+  const byType: Record<LintErrorType, number> = { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0, spacing: 0, autoLayout: 0, accessibility: 0 };
   for (const err of errors) {
     byType[err.errorType]++;
   }
@@ -468,7 +506,7 @@ export function lintSelection(settings?: LintSettings): LintResult {
       errors: [],
       ignoredNodeIds: [],
       ignoredErrorKeys: [],
-      summary: { totalErrors: 0, byType: { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0, spacing: 0, autoLayout: 0 }, totalNodes: 0, nodesWithErrors: 0 },
+      summary: { totalErrors: 0, byType: { fill: 0, stroke: 0, effect: 0, text: 0, radius: 0, spacing: 0, autoLayout: 0, accessibility: 0 }, totalNodes: 0, nodesWithErrors: 0 },
     };
   }
   return runDesignLint(selection, settings);

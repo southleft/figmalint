@@ -98,6 +98,11 @@ export async function generateReview(
     throw new Error('AI review missing required score categories');
   }
 
+  // Merge statesCoverage.missing into missingStates for backward compat
+  if (parsed.statesCoverage?.missing && (!parsed.missingStates || parsed.missingStates.length === 0)) {
+    parsed.missingStates = parsed.statesCoverage.missing;
+  }
+
   return parsed;
 }
 

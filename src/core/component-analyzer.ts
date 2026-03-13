@@ -1,7 +1,7 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, AuditCheck, TokenAnalysis, DesignToken, EnhancedAnalysisOptions, LintResult, DesignReviewSummary, DesignReviewFinding } from '../types';
-import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
+import { extractTextContent, getAllChildNodes, getLuminance, getContrastRatio, findBackgroundColor } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
@@ -2402,48 +2402,7 @@ function isInteractiveComponent(node: SceneNode, states: string[]): boolean {
   return false;
 }
 
-/**
- * Get the luminance of an RGB color (0-1 range) for contrast calculation
- */
-function getLuminance(r: number, g: number, b: number): number {
-  const [rs, gs, bs] = [r, g, b].map(c => {
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  });
-  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
-}
-
-/**
- * Calculate WCAG contrast ratio between two luminance values
- */
-function getContrastRatio(l1: number, l2: number): number {
-  const lighter = Math.max(l1, l2);
-  const darker = Math.min(l1, l2);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-/**
- * Find the nearest background color by walking up the parent chain
- */
-function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number } | null {
-  let current: BaseNode | null = node.parent;
-  while (current && 'type' in current) {
-    const sceneNode = current as SceneNode;
-    if ('fills' in sceneNode) {
-      const fills = (sceneNode as any).fills;
-      if (Array.isArray(fills)) {
-        for (const fill of fills) {
-          if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
-            // Skip if bound to a variable — we can't resolve the actual value reliably
-            if (fill.boundVariables && fill.boundVariables.color) continue;
-            return fill.color;
-          }
-        }
-      }
-    }
-    current = current.parent;
-  }
-  return null;
-}
+// getLuminance, getContrastRatio, findBackgroundColor imported from ../utils/figma-helpers
 
 /**
  * Run real accessibility checks on a component node

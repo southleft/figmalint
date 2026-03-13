@@ -2,13 +2,14 @@
 
 import { applyFillStyle, applyStrokeStyle, applyTextStyle, applyEffectStyle, type StyleFixResult } from './apply-style';
 import { fixSpacing, fixSpacingToNearest, type SpacingFixResult } from './fix-spacing';
+import { fixRadiusToNearest, type RadiusFixResult } from './fix-radius';
 import { renameLayerById, type RenameResult } from './rename-layer';
 
 // ──────────────────────────────────────────────
 // Batch Fix Types
 // ──────────────────────────────────────────────
 
-export type FixActionType = 'applyStyle' | 'fixSpacing' | 'renameLayer' | 'fixSpacingToNearest';
+export type FixActionType = 'applyStyle' | 'fixSpacing' | 'renameLayer' | 'fixSpacingToNearest' | 'fixRadiusToNearest';
 
 export interface BatchFixAction {
   type: FixActionType;
@@ -156,6 +157,26 @@ async function executeSingleFix(fix: BatchFixAction): Promise<Omit<BatchFixItemR
         nodeName: result.nodeName,
         message: result.success
           ? `${result.property}: ${result.oldValue}px → ${result.newValue}px`
+          : (result.error || 'Failed'),
+        oldValue: `${result.oldValue}px`,
+        newValue: `${result.newValue}px`,
+        error: result.error,
+      };
+    }
+
+    case 'fixRadiusToNearest': {
+      const nodeId = params.nodeId as string;
+      const allowedRadii = params.allowedRadii as number[];
+
+      const result: RadiusFixResult = fixRadiusToNearest(nodeId, allowedRadii);
+
+      return {
+        type,
+        success: result.success,
+        nodeId: result.nodeId,
+        nodeName: result.nodeName,
+        message: result.success
+          ? `radius: ${result.oldValue}px → ${result.newValue}px`
           : (result.error || 'Failed'),
         oldValue: `${result.oldValue}px`,
         newValue: `${result.newValue}px`,
