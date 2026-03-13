@@ -5,10 +5,10 @@
   "main": "dist/code.js",
   "scripts": {
     "build": "npm run bundle && npm run build:ui && npm run copy-assets",
-    "bundle": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --global-name='' --loader:.ts=ts",
+    "bundle": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --loader:.ts=ts",
     "build:ui": "npm --prefix ui run build",
     "dev": "npm run bundle -- --watch",
-    "copy-assets": "cp ui/dist/ui.html dist/ && cp manifest.json dist/",
+    "copy-assets": "cp manifest.json dist/",
     "clean": "rm -rf dist",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "tsc --noEmit",

@@ -3,7 +3,7 @@
 import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, AuditCheck, TokenAnalysis, DesignToken, EnhancedAnalysisOptions, LintResult, DesignReviewSummary, DesignReviewFinding } from '../types';
 import { extractTextContent, getAllChildNodes, getLuminance, getContrastRatio, findBackgroundColor } from '../utils/figma-helpers';
 import { extractDesignTokensFromNode } from './token-analyzer';
-import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
+import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
 import { runDesignLint, DEFAULT_LINT_SETTINGS } from './design-lint';
@@ -1774,7 +1774,7 @@ function generateMCPReadinessFromBestPractices(
  */
 function generatePropertyCheatSheet(
   properties: Array<{ name: string; values: string[]; default: string }>,
-  componentName: string
+  _componentName: string
 ): string[] {
   const cheatSheet: string[] = [];
 
@@ -2316,12 +2316,12 @@ Rules:
  * Create audit results from Claude analysis data
  */
 async function createAuditResults(
-  filteredData: any,
-  context: ComponentContext,
+  _filteredData: any,
+  _context: ComponentContext,
   node: SceneNode,
   actualProperties: Array<{ name: string; values: string[]; default: string }>,
   actualStates: string[],
-  tokens: TokenAnalysis,
+  _tokens: TokenAnalysis,
   componentDescription?: string
 ): Promise<DetailedAuditResults> {
   // Check parent component set description for context-aware description check
@@ -2838,7 +2838,8 @@ function generateImplementationNotes(
 /**
  * Enhance MCP readiness data from Claude with fallback content
  */
-function enhanceMCPReadinessWithFallback(mcpData: any, data: {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function _enhanceMCPReadinessWithFallback(mcpData: any, data: {
   node: SceneNode;
   context: any;
   actualProperties: Array<{ name: string; values: string[]; default: string }>;

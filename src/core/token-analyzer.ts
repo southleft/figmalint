@@ -66,7 +66,7 @@ function hasDefaultVariantFrameStyles(node: SceneNode): boolean {
   if (hasAllDefaults) {
     console.log(`🎯 [FILTER] Detected default variant frame styles in ${node.name} - filtering out`);
     console.log(`   Type: ${node.type}, Parent: ${node.parent?.type}`);
-    console.log(`   Radius: ${node.cornerRadius}, Weight: ${node.strokeWeight}, Color: ${strokes.length > 0 ? rgbToHex(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b) : 'none'}`);
+    console.log(`   Radius: ${String(node.cornerRadius)}, Weight: ${String(node.strokeWeight)}, Color: ${strokes.length > 0 && strokes[0].type === 'SOLID' ? rgbToHex(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b) : 'none'}`);
     console.log(`   Padding: L=${node.paddingLeft}, R=${node.paddingRight}, T=${node.paddingTop}, B=${node.paddingBottom}`);
   }
   

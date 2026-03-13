@@ -19,7 +19,6 @@ import {
   LLMResponse,
   LLMError,
   LLMErrorCode,
-  getModelsForProvider,
   detectProviderFromKey,
   DEFAULT_MODELS,
 } from './types';

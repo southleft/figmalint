@@ -74,10 +74,11 @@ function normalizeCategory(raw: any): AiReviewCategory {
 export async function generateReview(
   screenshotBase64: string,
   lintSummary: string,
-  componentInfo: string
+  componentInfo: string,
+  designKnowledge?: string,
 ): Promise<AiReviewResult> {
   const anthropic = getClient();
-  const prompt = buildReviewPrompt(lintSummary, componentInfo);
+  const prompt = buildReviewPrompt(lintSummary, componentInfo, designKnowledge);
 
   const response = await anthropic.messages.create({
     model: MODEL,

@@ -490,8 +490,6 @@ function reconstructTruncatedJson(response: string, startIndex: number): any | n
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      let shouldIncludeLine = true;
-
       // Check if this line would make the JSON invalid
       for (let i = 0; i < line.length; i++) {
         const char = line[i];

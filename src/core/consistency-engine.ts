@@ -1,6 +1,6 @@
 /// <reference types="@figma/plugin-typings" />
 
-import { ComponentContext, ComponentMetadata, EnhancedAnalysisResult, DesignToken } from '../types';
+import { ComponentContext, EnhancedAnalysisResult, DesignToken } from '../types';
 import { ComponentAnalysisCache, DesignSystemsKnowledge, ConsistencyConfig } from './types/consistency';
 
 /**
@@ -16,8 +16,8 @@ export class ComponentConsistencyEngine {
   constructor(config: ConsistencyConfig = {}) {
     this.config = {
       enableCaching: true,
-      enableMCPIntegration: true,
-      mcpServerUrl: 'https://design-systems-mcp.southleft-llc.workers.dev/mcp',
+      enableMCPIntegration: false, // MCP handled by backend
+      // mcpServerUrl removed: MCP handled by backend (Thesis #4)
       consistencyThreshold: 0.95,
       ...config
     };
@@ -83,187 +83,25 @@ export class ComponentConsistencyEngine {
     /**
    * Load design systems knowledge from MCP server
    */
+  /**
+   * Inject design systems knowledge received from the backend.
+   */
+  setDesignSystemsKnowledge(knowledge: DesignSystemsKnowledge): void {
+    this.designSystemsKnowledge = knowledge;
+  }
+
   async loadDesignSystemsKnowledge(): Promise<void> {
-    if (!this.config.enableMCPIntegration) {
-      console.log('📚 MCP integration disabled, using fallback knowledge');
-      this.loadFallbackKnowledge();
-      return;
-    }
-
-    try {
-      console.log('🔄 Loading design systems knowledge from MCP...');
-
-      // Test MCP server connectivity first
-      const connectivityTest = await this.testMCPConnectivity();
-      if (!connectivityTest) {
-        console.warn('⚠️ MCP server not accessible, using fallback knowledge');
-        this.loadFallbackKnowledge();
-        return;
-      }
-
-      // Fetch knowledge in parallel for better performance
-      const [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge] = await Promise.allSettled([
-        this.queryMCP('component analysis best practices'),
-        this.queryMCP('design token naming conventions and patterns'),
-        this.queryMCP('design system accessibility requirements'),
-        this.queryMCP('design system component scoring methodology')
-      ]);
-
-      this.designSystemsKnowledge = {
-        version: '1.0.0',
-        components: this.processComponentKnowledge(
-          componentKnowledge.status === 'fulfilled' ? componentKnowledge.value : null
-        ),
-        tokens: this.processKnowledgeContent(
-          tokenKnowledge.status === 'fulfilled' ? tokenKnowledge.value : null
-        ),
-        accessibility: this.processKnowledgeContent(
-          accessibilityKnowledge.status === 'fulfilled' ? accessibilityKnowledge.value : null
-        ),
-        scoring: this.processKnowledgeContent(
-          scoringKnowledge.status === 'fulfilled' ? scoringKnowledge.value : null
-        ),
-        lastUpdated: Date.now()
-      };
-
-      // Check if we got any successful results
-      const successfulQueries = [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge]
-        .filter(result => result.status === 'fulfilled').length;
-
-      if (successfulQueries > 0) {
-        console.log(`✅ Design systems knowledge loaded successfully (${successfulQueries}/4 queries successful)`);
-      } else {
-        console.warn('⚠️ All MCP queries failed, using fallback knowledge');
-        this.loadFallbackKnowledge();
-      }
-    } catch (error) {
-      console.warn('⚠️ Failed to load design systems knowledge:', error);
-      // Fallback to built-in knowledge
-      this.loadFallbackKnowledge();
-    }
+    // All MCP queries happen in the backend (Thesis #4)
+    this.loadFallbackKnowledge();
   }
 
     /**
    * Test MCP server connectivity using MCP initialization instead of health endpoint
    */
-  private async testMCPConnectivity(): Promise<boolean> {
-    try {
-      console.log('🔗 Testing MCP server connectivity...');
-
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Connectivity test timeout')), 5000)
-      );
-
-      // Use MCP initialization call instead of health endpoint to avoid CORS preflight
-      const initPayload = {
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: {
-          protocolVersion: "2024-11-05",
-          capabilities: { roots: { listChanged: true } },
-          clientInfo: { name: "figmalint", version: "2.0.0" }
-        }
-      };
-
-      if (!this.config.mcpServerUrl) {
-        throw new Error('MCP server URL not configured');
-      }
-
-      const fetchPromise = fetch(this.config.mcpServerUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(initPayload)
-      });
-
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.result?.serverInfo?.name) {
-          console.log(`✅ MCP server accessible: ${data.result.serverInfo.name}`);
-          return true;
-        }
-      }
-
-      console.warn(`⚠️ MCP server returned ${response.status}`);
-      return false;
-    } catch (error) {
-      console.warn('⚠️ MCP server connectivity test failed:', error);
-      return false;
-    }
-  }
-
-  /**
+    /**
    * Query the design systems MCP server using proper JSON-RPC protocol
    */
-  private async queryMCP(query: string): Promise<any> {
-    try {
-      console.log(`🔍 Querying MCP for: "${query}"`);
-
-      // Create a timeout promise that rejects after 5 seconds
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('MCP query timeout')), 5000)
-      );
-
-      if (!this.config.mcpServerUrl) {
-        throw new Error('MCP server URL not configured');
-      }
-
-      // Use proper MCP JSON-RPC protocol for search
-      const searchPayload = {
-        jsonrpc: "2.0",
-        id: Math.floor(Math.random() * 1000) + 2, // Random ID > 1 (1 is used for init)
-        method: "tools/call",
-        params: {
-          name: "search_design_knowledge",
-          arguments: {
-            query,
-            limit: 5,
-            category: 'components'
-          }
-        }
-      };
-
-      const fetchPromise = fetch(this.config.mcpServerUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(searchPayload)
-      });
-
-      // Race between fetch and timeout
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
-
-      if (!response.ok) {
-        throw new Error(`MCP query failed: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log(`✅ MCP query successful for: "${query}"`);
-
-      // Extract content from MCP response format
-      if (result.result && result.result.content) {
-        return {
-          results: result.result.content.map((item: any) => ({
-            title: item.title || 'Design System Knowledge',
-            content: item.content || item.description || 'Knowledge content',
-            category: 'design-systems'
-          }))
-        };
-      }
-
-      return { results: [] };
-    } catch (error) {
-      console.warn(`⚠️ MCP query failed for "${query}":`, error);
-      return this.getFallbackKnowledgeForQuery(query);
-    }
-  }
-
-  /**
+    /**
    * Create deterministic analysis prompt with MCP knowledge
    */
   createDeterministicPrompt(context: ComponentContext): string {
@@ -430,7 +268,7 @@ ${scoringCriteria}
     return guidance || this.getFallbackGuidance(context);
   }
 
-  private getScoringCriteria(context: ComponentContext): string {
+  private getScoringCriteria(_context: ComponentContext): string {
     if (!this.designSystemsKnowledge?.scoring) {
       return this.getFallbackScoringCriteria();
     }
@@ -438,89 +276,7 @@ ${scoringCriteria}
     return this.designSystemsKnowledge.scoring;
   }
 
-  private processComponentKnowledge(knowledge: any): Record<string, string> {
-    if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
-      console.log('📝 No component knowledge available, using defaults');
-      return this.getDefaultComponentKnowledge();
-    }
-
-    const processed: Record<string, string> = {};
-    knowledge.results.forEach((result: any) => {
-      if (result.title && result.content) {
-        // Extract component type from title
-        const componentType = this.extractComponentType(result.title);
-        processed[componentType] = result.content;
-      }
-    });
-
-    // Ensure we have at least basic knowledge for common component types
-    const defaults = this.getDefaultComponentKnowledge();
-    return { ...defaults, ...processed };
-  }
-
-  private extractComponentType(title: string): string {
-    const titleLower = title.toLowerCase();
-    if (titleLower.includes('button')) return 'button';
-    if (titleLower.includes('avatar')) return 'avatar';
-    if (titleLower.includes('input') || titleLower.includes('field')) return 'input';
-    if (titleLower.includes('card')) return 'card';
-    if (titleLower.includes('badge') || titleLower.includes('tag')) return 'badge';
-    return 'generic';
-  }
-
-  private processKnowledgeContent(knowledge: any): string {
-    if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
-      return '';
-    }
-
-    return knowledge.results
-      .map((result: any) => result.content)
-      .filter((content: any) => content) // Filter out empty content
-      .join('\n\n');
-  }
-
-  private getDefaultComponentKnowledge(): Record<string, string> {
-    return {
-      button: 'Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).',
-      avatar: 'Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).',
-      card: 'Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).',
-      badge: 'Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).',
-      input: 'Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).',
-      icon: 'Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).',
-      generic: 'Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%).'
-    };
-  }
-
-  private getFallbackKnowledgeForQuery(query: string): any {
-    // Return structured fallback knowledge based on query
-    return {
-      results: [
-        {
-          title: `Fallback guidance for ${query}`,
-          content: this.getFallbackContentForQuery(query),
-          category: 'fallback'
-        }
-      ]
-    };
-  }
-
-  private getFallbackContentForQuery(query: string): string {
-    if (query.includes('component analysis')) {
-      return 'Components should follow consistent naming, use design tokens, implement proper states, and maintain accessibility standards.';
-    }
-    if (query.includes('token')) {
-      return 'Design tokens should use semantic naming patterns like semantic-color-primary, spacing-md-16px, and text-size-lg-18px.';
-    }
-    if (query.includes('accessibility')) {
-      return 'Ensure WCAG 2.1 AA compliance with proper ARIA labels, keyboard support, and color contrast.';
-    }
-    if (query.includes('scoring')) {
-      return 'Score components based on structure (25%), token usage (25%), accessibility (25%), and consistency (25%).';
-    }
-    return 'Follow established design system best practices for consistency and scalability.';
-  }
-
-  private getFallbackGuidance(context: ComponentContext): string {
+              private getFallbackGuidance(context: ComponentContext): string {
     const family = context.additionalContext?.componentFamily || 'generic';
 
     const guidanceMap: Record<string, string> = {
@@ -653,7 +409,7 @@ ${scoringCriteria}
     return corrected;
   }
 
-  private ensureConsistentScoring(mcpReadiness: any, context: ComponentContext): any {
+  private ensureConsistentScoring(mcpReadiness: any, _context: ComponentContext): any {
     // Return the actual calculated score without arbitrary baselines
     return {
       ...mcpReadiness,

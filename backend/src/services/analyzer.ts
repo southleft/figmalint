@@ -1,3 +1,5 @@
+import { fetchDesignSystemContext, type SourceReference } from './design-knowledge.js';
+import { buildDesignKnowledgeSection } from '../prompts/design-knowledge.js';
 import { detectPageType, generateReview } from './claude.js';
 import { runReferoComparison, type ReferoComparison } from './refero.js';
 import { startSession, loadSession, saveAnalysisResult, saveReferoResult } from './session.js';
@@ -68,6 +70,8 @@ export interface AnalysisResult {
   aiReview: AiReviewResult;
   referoComparison?: ReferoComparison;
   designHealthScore: number;
+  /** Authoritative sources used to ground the AI review (Thesis #50) */
+  designSystemSources?: SourceReference[];
 }
 
 /**
@@ -101,18 +105,31 @@ export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> 
     req.extractedData.states?.length ? `States: ${req.extractedData.states.join(', ')}` : '',
   ].filter(Boolean).join('\n');
 
-  // Phase 1: Run page type detection and AI review in parallel
-  // Use allSettled so a single AI failure doesn't discard the lint results
-  const [pageTypeResult, aiReviewResult] = await Promise.allSettled([
+  // Phase 1a: page type + design knowledge in parallel (both fast)
+  const componentFamily = inferComponentFamily(req.extractedData.componentName);
+
+  const [pageTypeResult, designKnowledgeResult] = await Promise.allSettled([
     detectPageType(req.screenshot),
-    generateReview(req.screenshot, lintSummary, componentInfo),
+    fetchDesignSystemContext(req.extractedData.componentName, componentFamily),
   ]);
 
   const pageType = pageTypeResult.status === 'fulfilled' ? pageTypeResult.value : 'unknown';
+  const designKnowledge = designKnowledgeResult.status === 'fulfilled'
+    ? designKnowledgeResult.value
+    : null;
+
+  // Phase 1b: AI review with design knowledge context
+  const designKnowledgeText = designKnowledge
+    ? buildDesignKnowledgeSection(designKnowledge)
+    : undefined;
+
+  const [aiReviewSettled] = await Promise.allSettled([
+    generateReview(req.screenshot, lintSummary, componentInfo, designKnowledgeText),
+  ]);
 
   const defaultCategory: AiReviewCategory = { rating: 'fail', evidence: ['AI review unavailable'], recommendation: null };
-  const aiReview: AiReviewResult = aiReviewResult.status === 'fulfilled'
-    ? aiReviewResult.value
+  const aiReview: AiReviewResult = aiReviewSettled.status === 'fulfilled'
+    ? aiReviewSettled.value
     : {
         visualHierarchy: { ...defaultCategory },
         statesCoverage: { ...defaultCategory, missingStates: [] },
@@ -186,6 +203,34 @@ export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> 
     aiReview,
     ...(referoComparison && { referoComparison }),
     designHealthScore,
+    ...(designKnowledge && { designSystemSources: designKnowledge.sources }),
   };
+}
+
+/** Infer component family from name for targeted MCP queries. */
+function inferComponentFamily(name: string): string | undefined {
+  const lower = name.toLowerCase();
+  const families: Array<[RegExp, string]> = [
+    [/button/i, "button"],
+    [/avatar/i, "avatar"],
+    [/card/i, "card"],
+    [/badge|tag|chip/i, "badge"],
+    [/input|field|text.?area|search/i, "input"],
+    [/modal|dialog|drawer|sheet/i, "modal"],
+    [/nav|menu|sidebar|tab/i, "navigation"],
+    [/table|list|grid/i, "data-display"],
+    [/icon/i, "icon"],
+    [/toggle|switch|checkbox|radio/i, "toggle"],
+    [/select|dropdown|picker|combo/i, "select"],
+    [/toast|alert|notification|banner/i, "feedback"],
+    [/tooltip|popover/i, "overlay"],
+    [/skeleton|spinner|loader/i, "loading"],
+  ];
+
+  for (const [re, family] of families) {
+    if (re.test(lower)) return family;
+  }
+
+  return undefined;
 }
 

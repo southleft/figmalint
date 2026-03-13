@@ -1,4 +1,12 @@
-export function buildReviewPrompt(lintSummary: string, componentInfo: string): string {
+export function buildReviewPrompt(
+  lintSummary: string,
+  componentInfo: string,
+  designKnowledge?: string,
+): string {
+  const knowledgeBlock = designKnowledge
+    ? '\n' + designKnowledge + '\n'
+    : '';
+
   return `Analyze this UI component screenshot. Do NOT evaluate spacing or accessibility — those are already covered by automated lint.
 
 Context:
@@ -6,7 +14,7 @@ ${componentInfo}
 
 Lint results (for reference only — do not re-evaluate these):
 ${lintSummary}
-
+${knowledgeBlock}
 Evaluate ONLY these 4 categories using the rubric below. Each category must have a rating (pass/needs_improvement/fail), 2-3 specific evidence items from the screenshot, and a recommendation (null if pass).
 
 ## Category 1: Visual Hierarchy

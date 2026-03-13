@@ -1,4 +1,5 @@
-import { getReferoClient } from './client.js';
+import { getReferoClient } from "./client.js";
+import { parseToolResult } from './parse-tool-result.js';
 
 /**
  * A screen result from Refero search.
@@ -24,23 +25,6 @@ export interface DesignGuidance {
   examples: ReferoScreen[];
 }
 
-/**
- * Parse raw MCP tool result content into structured data.
- */
-function parseToolResult(result: unknown): unknown {
-  if (!result || typeof result !== 'object') return null;
-  const r = result as { content?: Array<{ type: string; text?: string }> };
-  if (!r.content?.length) return null;
-
-  const textBlock = r.content.find(c => c.type === 'text');
-  if (!textBlock?.text) return null;
-
-  try {
-    return JSON.parse(textBlock.text);
-  } catch {
-    return textBlock.text;
-  }
-}
 
 /**
  * Search for screens matching a query.

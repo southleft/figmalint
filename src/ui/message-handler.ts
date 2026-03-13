@@ -4,7 +4,7 @@ import { PluginMessage, UIMessageType, EnhancedAnalysisOptions, ChatMessage, Cha
 import { sendMessageToUI, isValidNodeForAnalysis } from '../utils/figma-helpers';
 import { processEnhancedAnalysis, processAnalysisResult, extractComponentContext } from '../core/component-analyzer';
 import { extractDesignTokensFromNode } from '../core/token-analyzer';
-import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations } from '../api/claude';
+import { extractJSONFromResponse, filterDevelopmentRecommendations } from '../api/claude';
 import ComponentConsistencyEngine from '../core/consistency-engine';
 import {
   ProviderId,
@@ -13,8 +13,6 @@ import {
   loadProviderConfig,
   saveProviderConfig,
   clearProviderKey,
-  STORAGE_KEYS,
-  DEFAULTS,
   migrateLegacyStorage,
 } from '../api/providers';
 import {
@@ -22,25 +20,19 @@ import {
   applyColorFix,
   applySpacingFix,
   findMatchingColorVariable,
-  findMatchingSpacingVariable,
   findBestMatchingVariable,
-  suggestSemanticTokenName,
   FixPreview,
   FixResult,
 } from '../fixes/token-fixer';
 import {
   previewRename,
   renameLayer,
-  batchRename,
   suggestLayerName,
-  analyzeNamingIssues,
-  getNamingIssueSummary,
-  NamingStrategy,
   RenamePreview,
 } from '../fixes/naming-fixer';
-import { FixRequest, FixPreviewRequest, BatchFixRequest, LintSettings, LintResult } from '../types';
+import { FixRequest, FixPreviewRequest, BatchFixRequest, LintSettings } from '../types';
 import { exportScreenshot } from '../extract/screenshot';
-import { fixSpacing as fixSpacingValue, fixSpacingToNearest, fixAllSpacingOnNode } from '../fix/fix-spacing';
+import { fixSpacingToNearest, fixAllSpacingOnNode } from '../fix/fix-spacing';
 import { fixRadiusToNearest } from '../fix/fix-radius';
 import { renameLayerById } from '../fix/rename-layer';
 import { executeBatchFix, type BatchFixAction } from '../fix/batch';
@@ -338,8 +330,6 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
 
     // Single component analysis
     let selectedNode = selection[0];
-    const originalSelectedNode = selectedNode; // Keep track of the original selection
-
     // Handle instances
     if (selectedNode.type === 'INSTANCE') {
       const instance = selectedNode as InstanceNode;
@@ -707,7 +697,6 @@ function isNodeOnCurrentPage(node: BaseNode): boolean {
 
     // For component instances and other special cases,
     // check if any page contains this node
-    const allPages = figma.root.children.filter(child => child.type === 'PAGE');
     const currentPage = figma.currentPage;
 
     // If this is a component or component set, it might be in the current page
@@ -983,12 +972,10 @@ Respond naturally and helpfully to the user's question.`;
 // ──────────────────────────────────────────────
 
 let currentLintSettings: LintSettings = { ...DEFAULT_LINT_SETTINGS };
-let lastLintResult: LintResult | null = null;
 
 function handleRunDesignLint(data?: any): void {
   const settings = data?.settings || currentLintSettings;
   const result = lintSelection(settings);
-  lastLintResult = result;
   sendMessageToUI('design-lint-result', result);
 }
 
@@ -1716,7 +1703,6 @@ async function handleApplyBatchFix(data: BatchFixRequest): Promise<void> {
             message: success
               ? `Renamed "${oldName}" to "${newName}"`
               : 'Failed to rename layer',
-            newName: success ? newName : oldName
           });
 
           if (success) {
