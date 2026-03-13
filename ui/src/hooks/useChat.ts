@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ChatMessage, ChatMessageType, LintResult, LintError, ScoreBreakdown, AiReviewData } from '../lib/messages';
+import type { ChatMessage, ChatMessageType, LintResult, LintError, ScoreBreakdown, AiReviewData, ReferoComparisonData } from '../lib/messages';
 
 let messageIdCounter = 0;
 function nextId(): string {
@@ -223,6 +223,7 @@ export function useChat() {
     sessionId: string;
     aiReview: AiReviewData;
     combinedScore: number;
+    referoComparison?: ReferoComparisonData;
   }) => {
     const messages: ChatMessage[] = [];
 
@@ -267,15 +268,32 @@ export function useChat() {
       }));
     }
 
+    // Refero comparison gallery (if available)
+    if (data.referoComparison) {
+      messages.push(createMessage({
+        kind: 'refero-gallery',
+        data: data.referoComparison,
+      }));
+
+      // Refero suggestions as AI text
+      if (data.referoComparison.suggestions.length > 0) {
+        const sugText = data.referoComparison.suggestions
+          .map(s => `- **${s.title}:** ${s.description} _(${s.evidence})_`)
+          .join('\n');
+        messages.push(createMessage({
+          kind: 'ai-text',
+          content: `**Refero-based suggestions:**\n${sugText}`,
+        }));
+      }
+    }
+
     // Quick actions after AI review
-    messages.push(createMessage({
-      kind: 'action-buttons',
-      buttons: [
-        { id: 'walkthrough', label: 'Walk through issues', variant: 'secondary', action: 'walkthrough' },
-        { id: 'rescan', label: 'Re-scan', variant: 'ghost', action: 'rescan' },
-        { id: 'export', label: 'Export report', variant: 'ghost', action: 'export' },
-      ],
-    }));
+    const buttons = [
+      { id: 'walkthrough', label: 'Walk through issues', variant: 'secondary' as const, action: 'walkthrough' },
+      { id: 'rescan', label: 'Re-scan', variant: 'ghost' as const, action: 'rescan' },
+      { id: 'export', label: 'Export report', variant: 'ghost' as const, action: 'export' },
+    ];
+    messages.push(createMessage({ kind: 'action-buttons', buttons }));
 
     setState(prev => ({
       ...prev,

@@ -11,6 +11,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@hono/node-server": "^1.13.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^11.7.0",
     "hono": "^4.6.0",
     "nanoid": "^5.0.9"

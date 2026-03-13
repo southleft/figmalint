@@ -50,6 +50,7 @@ export default function App() {
         sessionId: result.sessionId,
         aiReview: result.aiReview,
         combinedScore: result.combinedScore,
+        referoComparison: result.referoComparison,
       });
     } catch (error) {
       chat.addMessage({

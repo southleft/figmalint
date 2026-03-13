@@ -16,7 +16,8 @@ export function saveAnalysisResult(
   pageType: string,
   aiReview: unknown,
   lintResult: unknown,
-  initialScore: number
+  initialScore: number,
+  referoData?: unknown,
 ): void {
   const existing = getSession(sessionId);
   const updates: Record<string, unknown> = {
@@ -30,7 +31,14 @@ export function saveAnalysisResult(
   if (!existing || existing.score_initial === null || existing.score_initial === undefined) {
     updates.score_initial = initialScore;
   }
+  if (referoData) {
+    updates.refero_data = referoData;
+  }
   updateSession(sessionId, updates);
+}
+
+export function saveReferoResult(sessionId: string, referoData: unknown): void {
+  updateSession(sessionId, { refero_data: referoData });
 }
 
 export function addMessage(sessionId: string, role: string, content: string): void {
@@ -61,6 +69,16 @@ export function getSessionContext(sessionId: string): string {
     try {
       const review = JSON.parse(session.ai_review);
       if (review.summary) parts.push(`Review summary: ${review.summary}`);
+    } catch { /* ignore */ }
+  }
+
+  if (session.refero_data) {
+    try {
+      const refero = JSON.parse(session.refero_data);
+      if (refero.summary) parts.push(`Refero comparison: ${refero.summary}`);
+      if (refero.screenshots?.length) {
+        parts.push(`Refero examples: ${refero.screenshots.length} screens from ${refero.screenshots.map((s: { company: string }) => s.company).filter(Boolean).join(', ')}`);
+      }
     } catch { /* ignore */ }
   }
 

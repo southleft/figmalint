@@ -49,6 +49,14 @@ export async function analyzeComponent(data: {
     overallScore: number;
     summary: string;
   };
+  referoComparison?: {
+    matchingPatterns: Array<{ pattern: string; frequency: string }>;
+    missingPatterns: Array<{ pattern: string; frequency: string; exampleCompanies: string[] }>;
+    stylePositioning: { closest: string[]; different: string[] };
+    suggestions: Array<{ title: string; description: string; evidence: string }>;
+    summary: string;
+    screenshots: Array<{ id: string; title: string; company: string; pageType: string; thumbnailUrl: string; fullUrl: string; platform: 'web' | 'ios' | 'android'; tags?: string[] }>;
+  };
   combinedScore: number;
 }> {
   const resp = await fetch(`${backendUrl}/api/analyze`, {

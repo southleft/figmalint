@@ -1,5 +1,15 @@
 import { detectPageType, generateReview } from './claude.js';
-import { startSession, loadSession, saveAnalysisResult } from './session.js';
+import { runReferoComparison, type ReferoComparison } from './refero.js';
+import { startSession, loadSession, saveAnalysisResult, saveReferoResult } from './session.js';
+import Anthropic from '@anthropic-ai/sdk';
+
+let anthropicClient: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!anthropicClient) {
+    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return anthropicClient;
+}
 
 export interface AnalyzeRequest {
   screenshot: string;
@@ -49,16 +59,16 @@ export interface AnalysisResult {
     overallScore: number;
     summary: string;
   };
+  referoComparison?: ReferoComparison;
   combinedScore: number;
 }
 
 /**
- * Run full analysis: page type detection + AI review in parallel.
+ * Run full analysis: page type detection + AI review + Refero comparison.
  */
 export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> {
   let sessionId: string;
   if (req.sessionId) {
-    // Validate that the provided session actually exists
     const existing = loadSession(req.sessionId);
     if (!existing) {
       throw new Error(`Session not found: ${req.sessionId}`);
@@ -84,24 +94,47 @@ export async function runAnalysis(req: AnalyzeRequest): Promise<AnalysisResult> 
     req.extractedData.states?.length ? `States: ${req.extractedData.states.join(', ')}` : '',
   ].filter(Boolean).join('\n');
 
-  // Run page type detection and AI review in parallel
+  // Phase 1: Run page type detection and AI review in parallel
   const [pageType, aiReview] = await Promise.all([
     detectPageType(req.screenshot),
     generateReview(req.screenshot, lintSummary, componentInfo),
   ]);
 
-  // Compute combined score: lint 40% + AI 60%
+  // Phase 2: Run Refero comparison (depends on pageType, non-blocking)
+  // In 'deep' mode or when Refero is available, fetch comparisons
+  let referoComparison: ReferoComparison | null = null;
+  if (req.mode === 'deep') {
+    referoComparison = await runReferoComparison(
+      pageType,
+      componentInfo,
+      req.screenshot,
+      getAnthropicClient(),
+    );
+  } else {
+    // In quick mode, fire Refero in background — don't block the response
+    runReferoComparison(pageType, componentInfo, req.screenshot, getAnthropicClient())
+      .then(result => {
+        if (result) {
+          saveReferoResult(sessionId, result);
+        }
+      })
+      .catch(() => { /* Refero failure is non-critical */ });
+  }
+
+  // Compute combined score: lint 40% + AI 60% (Refero doesn't affect score)
   const lintScore = Math.max(0, 100 - req.lintResult.summary.totalErrors * 5);
   const combinedScore = Math.round(lintScore * 0.4 + aiReview.overallScore * 0.6);
 
   // Save to session
-  saveAnalysisResult(sessionId, pageType, aiReview, req.lintResult, combinedScore);
+  saveAnalysisResult(sessionId, pageType, aiReview, req.lintResult, combinedScore, referoComparison);
 
   return {
     sessionId,
     pageType,
     lintResult: req.lintResult,
     aiReview,
+    ...(referoComparison && { referoComparison }),
     combinedScore,
   };
 }
+

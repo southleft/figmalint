@@ -109,6 +109,7 @@ export type ChatMessageType =
   | { kind: 'batch-summary'; data: { total: number; applied: number; failed: number } }
   | { kind: 'score-update'; data: { oldScore: number; newScore: number; issuesRemaining: number } }
   | { kind: 'ai-review'; data: AiReviewData }
+  | { kind: 'refero-gallery'; data: ReferoComparisonData }
   | { kind: 'combined-score'; data: { lintScore: number; aiScore: number; combined: number } };
 
 export interface AiReviewData {
@@ -119,6 +120,26 @@ export interface AiReviewData {
   recommendations: Array<{ title: string; description: string; severity: string }>;
   overallScore: number;
   summary: string;
+}
+
+export interface ReferoScreen {
+  id: string;
+  title: string;
+  company: string;
+  pageType: string;
+  thumbnailUrl: string;
+  fullUrl: string;
+  platform: 'web' | 'ios' | 'android';
+  tags?: string[];
+}
+
+export interface ReferoComparisonData {
+  matchingPatterns: Array<{ pattern: string; frequency: string }>;
+  missingPatterns: Array<{ pattern: string; frequency: string; exampleCompanies: string[] }>;
+  stylePositioning: { closest: string[]; different: string[] };
+  suggestions: Array<{ title: string; description: string; evidence: string }>;
+  summary: string;
+  screenshots: ReferoScreen[];
 }
 
 export interface ScoreBreakdown {

@@ -31,6 +31,7 @@ export interface SessionRow {
   score_current: number | null;
   lint_result: string | null;
   ai_review: string | null;
+  refero_data: string | null;
   issues_found: number;
   issues_fixed: number;
   issues_skipped: number;
@@ -52,7 +53,7 @@ export function getSession(id: string): SessionRow | undefined {
 
 const ALLOWED_COLUMNS = new Set([
   'page_type', 'score_initial', 'score_current', 'lint_result',
-  'ai_review', 'issues_found', 'issues_fixed', 'issues_skipped',
+  'ai_review', 'refero_data', 'issues_found', 'issues_fixed', 'issues_skipped',
   'conversation', 'duration_seconds', 'node_id', 'node_name',
 ]);
 

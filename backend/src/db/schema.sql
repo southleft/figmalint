@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
   lint_result JSON,
   ai_review JSON,
+  refero_data JSON,
 
   issues_found INTEGER DEFAULT 0,
   issues_fixed INTEGER DEFAULT 0,

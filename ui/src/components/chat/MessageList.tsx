@@ -5,6 +5,7 @@ import ScoreCard from '../messages/ScoreCard';
 import IssuesList from '../messages/IssuesList';
 import FixResult from '../messages/FixResult';
 import AiReviewCard from '../messages/AiReviewCard';
+import ReferoGallery from '../messages/ReferoGallery';
 import ActionButtons from '../shared/ActionButtons';
 
 interface MessageListProps {
@@ -75,6 +76,8 @@ export default function MessageList({ messages, onAction, onJumpToNode }: Messag
             );
           case 'ai-review':
             return <AiReviewCard key={msg.id} data={m.data} />;
+          case 'refero-gallery':
+            return <ReferoGallery key={msg.id} data={m.data} />;
           case 'combined-score': {
             const lintPct = Math.round(m.data.lintScore);
             const aiPct = Math.round(m.data.aiScore);
