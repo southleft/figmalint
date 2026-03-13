@@ -12,8 +12,11 @@ export function usePluginMessages(handler: EventHandler): void {
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
+      // Only accept messages from the Figma host (parent frame)
+      if (event.source !== window.parent) return;
+
       const msg = event.data?.pluginMessage;
-      if (!msg || !msg.type) return;
+      if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
       handlerRef.current(msg as PluginEvent);
     }
     window.addEventListener('message', onMessage);

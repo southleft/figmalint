@@ -1364,7 +1364,7 @@ export async function processEnhancedAnalysis(
   context.existingDescription = componentDescription;
 
   // Phase 0: Run deterministic design lint (no AI needed)
-  const lintResult = runDesignLint([node], DEFAULT_LINT_SETTINGS);
+  const lintResult = runDesignLint([node], options.lintSettings || DEFAULT_LINT_SETTINGS);
   console.log(`🔍 [LINT] Deterministic lint: ${lintResult.summary.totalErrors} issues in ${lintResult.summary.nodesWithErrors} nodes`);
 
   // Log extracted data for debugging

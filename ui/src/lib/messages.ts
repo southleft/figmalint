@@ -12,6 +12,8 @@ export interface LintError {
   message: string;
   value: string;
   path: string;
+  /** Spacing property name (for spacing errors) */
+  property?: string;
 }
 
 export interface LintSummary {

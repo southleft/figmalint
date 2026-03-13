@@ -8,9 +8,12 @@ export async function exportScreenshot(
   node: SceneNode,
   maxWidth: number = 1024
 ): Promise<string> {
+  // Guard against zero or negative width (e.g. collapsed frames)
+  const width = Math.max(1, Math.min(maxWidth, Math.round(node.width)));
+
   const bytes = await (node as any).exportAsync({
     format: 'PNG',
-    constraint: { type: 'WIDTH', value: Math.min(maxWidth, node.width) },
+    constraint: { type: 'WIDTH', value: width },
   });
 
   // Convert Uint8Array to base64

@@ -17,6 +17,8 @@ export default function StickyHeader({ componentName, score, totalIssues, issues
   if (!score) return null;
 
   const verdict = getVerdictInfo(score.overall);
+  const clampedFixed = Math.min(issuesFixed, totalIssues);
+  const remaining = Math.max(0, totalIssues - clampedFixed);
 
   return (
     <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-bg-secondary">
@@ -32,9 +34,9 @@ export default function StickyHeader({ componentName, score, totalIssues, issues
         </div>
         {totalIssues > 0 && (
           <div className="text-11 text-fg-secondary mt-0.5">
-            {issuesFixed > 0 && <span className="text-fg-success">{issuesFixed} fixed</span>}
-            {issuesFixed > 0 && totalIssues - issuesFixed > 0 && ' · '}
-            {totalIssues - issuesFixed > 0 && <span>{totalIssues - issuesFixed} remaining</span>}
+            {clampedFixed > 0 && <span className="text-fg-success">{clampedFixed} fixed</span>}
+            {clampedFixed > 0 && remaining > 0 && ' · '}
+            {remaining > 0 && <span>{remaining} remaining</span>}
           </div>
         )}
       </div>

@@ -38,7 +38,7 @@ import {
   NamingStrategy,
   RenamePreview,
 } from '../fixes/naming-fixer';
-import { FixRequest, FixPreviewRequest, BatchFixRequest, LintSettings } from '../types';
+import { FixRequest, FixPreviewRequest, BatchFixRequest, LintSettings, LintResult } from '../types';
 import { exportScreenshot } from '../extract/screenshot';
 import { fixSpacing as fixSpacingValue, fixSpacingToNearest, fixAllSpacingOnNode } from '../fix/fix-spacing';
 import { renameLayerById } from '../fix/rename-layer';
@@ -973,10 +973,12 @@ Respond naturally and helpfully to the user's question.`;
 // ──────────────────────────────────────────────
 
 let currentLintSettings: LintSettings = { ...DEFAULT_LINT_SETTINGS };
+let lastLintResult: LintResult | null = null;
 
 function handleRunDesignLint(data?: any): void {
   const settings = data?.settings || currentLintSettings;
   const result = lintSelection(settings);
+  lastLintResult = result;
   sendMessageToUI('design-lint-result', result);
 }
 
@@ -986,8 +988,8 @@ function handleLintIgnoreNode(data: { nodeId: string }): void {
   handleRunDesignLint();
 }
 
-function handleLintIgnoreError(data: { nodeId: string; errorType: string }): void {
-  ignoreError(data.nodeId, data.errorType as any);
+function handleLintIgnoreError(data: { nodeId: string; errorType: string; value?: string }): void {
+  ignoreError(data.nodeId, data.errorType as any, data.value);
   handleRunDesignLint();
 }
 
@@ -1070,8 +1072,17 @@ function handleJumpToNode(data: { nodeId: string }): void {
   }
 }
 
+const ALLOWED_SPACING_PROPERTIES = new Set([
+  'itemSpacing', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight', 'counterAxisSpacing',
+]);
+
 function handleFixSpacing(data: { nodeId: string; property: string; value: number }): void {
   try {
+    if (!ALLOWED_SPACING_PROPERTIES.has(data.property)) {
+      sendMessageToUI('fix-error', { error: `Invalid spacing property: ${data.property}` });
+      return;
+    }
+
     const node = figma.getNodeById(data.nodeId) as FrameNode;
     if (node && (node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE')) {
       const oldValue = (node as any)[data.property];

@@ -45,6 +45,10 @@ body,
 }
 
 /* Custom scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--figma-color-border-strong) transparent;
+}
 ::-webkit-scrollbar {
   width: 6px;
 }

@@ -248,6 +248,8 @@ export interface EnhancedAnalysisOptions {
   node?: SceneNode;
   mcpServerUrl?: string;
   useMCP?: boolean;
+  /** User's lint settings — if omitted, DEFAULT_LINT_SETTINGS is used */
+  lintSettings?: LintSettings;
 }
 
 export interface AuditCheck {
@@ -376,6 +378,8 @@ export interface LintError {
   message: string;
   value: string;
   path: string;
+  /** Spacing property name (for spacing errors), enables direct fix without parsing message text */
+  property?: string;
 }
 
 export interface LintResult {

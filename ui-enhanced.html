@@ -4463,8 +4463,12 @@
       }
 
       // Render Design Review (CodeRabbit-style summary)
+      const reviewPanel = document.getElementById('design-review-panel');
       if (data.designReview) {
         renderDesignReview(data.designReview);
+      } else if (reviewPanel) {
+        reviewPanel.style.display = 'none';
+        reviewPanel.innerHTML = '';
       }
 
       // Update chat component context if we're on chat tab or switching to it
@@ -7236,10 +7240,10 @@
       let html = '';
       for (const [nodeId, group] of Object.entries(grouped)) {
         html += `<div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: var(--spacing-03); overflow: hidden;">`;
-        html += `<div style="display: flex; align-items: center; padding: var(--spacing-03) var(--spacing-04); border-bottom: 1px solid var(--border); background: var(--background); cursor: pointer;" onclick="lintSelectNode('${nodeId}')">`;
-        html += `<span style="font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${group.path}">${group.nodeName}</span>`;
-        html += `<span style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-left: var(--spacing-03);">${group.nodeType}</span>`;
-        html += `<button onclick="event.stopPropagation(); lintIgnoreNode('${nodeId}')" style="margin-left: var(--spacing-03); background: none; border: none; cursor: pointer; color: var(--text-tertiary); font-size: var(--font-size-xs); padding: 2px 6px; border-radius: var(--radius-sm);" title="Ignore this layer">Ignore</button>`;
+        html += `<div style="display: flex; align-items: center; padding: var(--spacing-03) var(--spacing-04); border-bottom: 1px solid var(--border); background: var(--background); cursor: pointer;" onclick="lintSelectNode('${escapeAttr(nodeId)}')">`;
+        html += `<span style="font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeAttr(group.path)}">${escapeHtml(group.nodeName)}</span>`;
+        html += `<span style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-left: var(--spacing-03);">${escapeHtml(group.nodeType)}</span>`;
+        html += `<button onclick="event.stopPropagation(); lintIgnoreNode('${escapeAttr(nodeId)}')" style="margin-left: var(--spacing-03); background: none; border: none; cursor: pointer; color: var(--text-tertiary); font-size: var(--font-size-xs); padding: 2px 6px; border-radius: var(--radius-sm);" title="Ignore this layer">Ignore</button>`;
         html += `</div>`;
 
         for (const err of group.errors) {
@@ -7248,7 +7252,8 @@
           html += `<div style="display: flex; align-items: center; padding: var(--spacing-02) var(--spacing-04); gap: var(--spacing-03); border-bottom: 1px solid var(--border);">`;
           html += `<span style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: ${color}; color: white; font-size: 9px; font-weight: 700; flex-shrink: 0;">${icon}</span>`;
           html += `<span style="font-size: var(--font-size-xs); color: var(--text-primary); flex: 1;">${escapeHtml(err.message)}</span>`;
-          html += `<button onclick="lintSelectAllWithValue('${err.errorType}', '${escapeAttr(err.value)}')" style="background: none; border: none; cursor: pointer; color: var(--interactive); font-size: var(--font-size-xs); padding: 2px 6px; white-space: nowrap;" title="Select all layers with this value">Select All</button>`;
+          html += `<button onclick="lintIgnoreError('${escapeAttr(err.nodeId)}', '${escapeAttr(err.errorType)}', '${escapeAttr(err.value)}')" style="background: none; border: none; cursor: pointer; color: var(--text-tertiary); font-size: var(--font-size-xs); padding: 2px 6px; white-space: nowrap;" title="Ignore this error">Ignore</button>`;
+          html += `<button onclick="lintSelectAllWithValue('${escapeAttr(err.errorType)}', '${escapeAttr(err.value)}')" style="background: none; border: none; cursor: pointer; color: var(--interactive); font-size: var(--font-size-xs); padding: 2px 6px; white-space: nowrap;" title="Select all layers with this value">Select All</button>`;
           html += `</div>`;
         }
 
@@ -7274,6 +7279,10 @@
 
     function lintIgnoreNode(nodeId) {
       parent.postMessage({ pluginMessage: { type: 'lint-ignore-node', data: { nodeId } } }, '*');
+    }
+
+    function lintIgnoreError(nodeId, errorType, value) {
+      parent.postMessage({ pluginMessage: { type: 'lint-ignore-error', data: { nodeId, errorType, value } } }, '*');
     }
 
     function lintSelectAllWithValue(errorType, value) {

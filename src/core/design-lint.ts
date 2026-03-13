@@ -29,7 +29,8 @@ export const DEFAULT_LINT_SETTINGS: LintSettings = {
 let ignoredNodeIds: Set<string> = new Set();
 let ignoredErrorKeys: Set<string> = new Set();
 
-function errorKey(nodeId: string, errorType: LintErrorType): string {
+function errorKey(nodeId: string, errorType: LintErrorType, value?: string): string {
+  if (value) return `${nodeId}::${errorType}::${value}`;
   return `${nodeId}::${errorType}`;
 }
 
@@ -37,8 +38,8 @@ export function ignoreNode(nodeId: string): void {
   ignoredNodeIds.add(nodeId);
 }
 
-export function ignoreError(nodeId: string, errorType: LintErrorType): void {
-  ignoredErrorKeys.add(errorKey(nodeId, errorType));
+export function ignoreError(nodeId: string, errorType: LintErrorType, value?: string): void {
+  ignoredErrorKeys.add(errorKey(nodeId, errorType, value));
 }
 
 export function ignoreAllOfType(errors: LintError[], errorType: LintErrorType): void {
@@ -118,8 +119,13 @@ function checkFills(node: SceneNode, errors: LintError[], path: string): void {
     if (styleId && styleId !== '' && styleId !== figma.mixed) return; // Has a style applied
   }
 
-  // No style applied — flag each visible fill
+  // No style applied — flag each visible fill (skip if bound to a color variable)
   for (const fill of visibleFills) {
+    try {
+      const bv = (fill as any).boundVariables;
+      if (bv && bv.color) continue;
+    } catch { /* ignore */ }
+
     const value = determineFill(fill);
     errors.push({
       nodeId: node.id,
@@ -342,9 +348,13 @@ function traverseAndLint(
     const preLen = errors.length;
     lintNode(node, settings, errors, path);
 
-    // Filter out ignored error keys
+    // Filter out ignored error keys (check both generic and value-specific keys)
     for (let i = errors.length - 1; i >= preLen; i--) {
-      if (ignoredErrorKeys.has(errorKey(errors[i].nodeId, errors[i].errorType))) {
+      const err = errors[i];
+      if (
+        ignoredErrorKeys.has(errorKey(err.nodeId, err.errorType)) ||
+        ignoredErrorKeys.has(errorKey(err.nodeId, err.errorType, err.value))
+      ) {
         errors.splice(i, 1);
       }
     }
@@ -386,14 +396,21 @@ export function runDesignLint(
   if (settings.checkSpacing) {
     const spacingResult = checkSpacing(nodes, skipOpts);
     for (const issue of spacingResult.issues) {
+      // Apply same ignore filter as traverseAndLint
+      const val = issue.currentValue || '';
+      if (ignoredNodeIds.has(issue.nodeId)) continue;
+      if (ignoredErrorKeys.has(errorKey(issue.nodeId, 'spacing'))) continue;
+      if (ignoredErrorKeys.has(errorKey(issue.nodeId, 'spacing', val))) continue;
+
       errors.push({
         nodeId: issue.nodeId,
         nodeName: issue.nodeName,
         nodeType: 'FRAME',
         errorType: 'spacing',
         message: issue.message,
-        value: issue.currentValue || '',
+        value: val,
         path: issue.nodeName,
+        property: issue.fixAction?.params?.property as string | undefined,
       });
     }
   }
@@ -401,6 +418,10 @@ export function runDesignLint(
   if (settings.checkAutoLayout) {
     const autoLayoutResult = checkAutoLayout(nodes, skipOpts);
     for (const issue of autoLayoutResult.issues) {
+      // Apply same ignore filter as traverseAndLint
+      if (ignoredNodeIds.has(issue.nodeId)) continue;
+      if (ignoredErrorKeys.has(errorKey(issue.nodeId, 'autoLayout'))) continue;
+
       errors.push({
         nodeId: issue.nodeId,
         nodeName: issue.nodeName,

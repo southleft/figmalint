@@ -36,12 +36,15 @@ export default function InputBar({ onSend, placeholder = 'Ask about this compone
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
+        aria-label="Chat message"
       />
       <button
+        type="button"
         className="flex items-center justify-center w-7 h-7 rounded-md bg-bg-brand text-fg-onbrand hover:opacity-90 disabled:opacity-40 transition-opacity"
         onClick={handleSend}
         disabled={disabled || !text.trim()}
         title="Send"
+        aria-label="Send message"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="22" y1="2" x2="11" y2="13" />

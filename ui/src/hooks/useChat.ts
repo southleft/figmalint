@@ -19,6 +19,7 @@ function computeScoreBreakdown(result: LintResult): ScoreBreakdown {
 
   function category(type: string): { passed: number; failed: number } {
     const failed = (s.byType as Record<string, number>)[type] || 0;
+    // `failed` is the issue count (not node count); clamp `passed` to avoid misleading negatives
     return { passed: Math.max(0, total - failed), failed };
   }
 

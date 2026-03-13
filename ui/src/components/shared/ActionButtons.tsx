@@ -5,7 +5,7 @@ interface ActionButtonsProps {
   onAction: (action: string, params?: Record<string, unknown>) => void;
 }
 
-const VARIANT_CLASSES: Record<string, string> = {
+const VARIANT_CLASSES: Record<'primary' | 'secondary' | 'ghost', string> = {
   primary: 'bg-bg-brand text-fg-onbrand hover:opacity-90',
   secondary: 'bg-bg-secondary text-fg border border-border hover:bg-bg-hover',
   ghost: 'text-fg-secondary hover:bg-bg-hover',

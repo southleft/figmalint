@@ -185,7 +185,7 @@ export default function App() {
               type: 'fixSpacingToNearest' as const,
               params: {
                 nodeId: err.nodeId,
-                property: extractSpacingProperty(err.message),
+                property: err.property || extractSpacingProperty(err.message),
               },
             }));
 
@@ -224,7 +224,7 @@ export default function App() {
               label: 'Fix to nearest',
               variant: 'primary' as const,
               action: 'fix-single-spacing',
-              params: { nodeId: issue.nodeId, property: extractSpacingProperty(issue.message) },
+              params: { nodeId: issue.nodeId, property: issue.property || extractSpacingProperty(issue.message) },
             });
           }
           buttons.push({
