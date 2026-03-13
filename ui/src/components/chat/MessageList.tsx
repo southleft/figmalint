@@ -58,6 +58,37 @@ export default function MessageList({ messages, onAction, onJumpToNode }: Messag
             return <FixResult key={msg.id} data={m.data} />;
           case 'action-buttons':
             return <ActionButtons key={msg.id} buttons={m.buttons} onAction={onAction} />;
+          case 'batch-summary':
+            return (
+              <div key={msg.id} className="bg-bg-success rounded-xl px-3 py-2 text-12">
+                <div className="flex items-center gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-fg-success shrink-0">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span>
+                    <strong>{m.data.applied}</strong> of {m.data.total} fixes applied
+                    {m.data.failed > 0 && <span className="text-fg-danger"> ({m.data.failed} failed)</span>}
+                  </span>
+                </div>
+              </div>
+            );
+          case 'score-update': {
+            const diff = m.data.newScore - m.data.oldScore;
+            const arrow = diff > 0 ? '\u2191' : diff < 0 ? '\u2193' : '\u2192';
+            const color = diff > 0 ? 'text-fg-success' : diff < 0 ? 'text-fg-danger' : 'text-fg-secondary';
+            return (
+              <div key={msg.id} className="bg-bg-secondary rounded-xl px-3 py-2 text-12">
+                <span className={color}>
+                  Score: {m.data.oldScore} {arrow} {m.data.newScore} ({diff > 0 ? '+' : ''}{diff})
+                </span>
+                {m.data.issuesRemaining > 0 && (
+                  <span className="text-fg-secondary ml-2">
+                    {m.data.issuesRemaining} issue{m.data.issuesRemaining !== 1 ? 's' : ''} remaining
+                  </span>
+                )}
+              </div>
+            );
+          }
           default:
             return null;
         }

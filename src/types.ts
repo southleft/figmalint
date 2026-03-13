@@ -210,6 +210,12 @@ export type UIMessageType =
   // Chat UI message types
   | 'jump-to-node'
   | 'fix-spacing'
+  | 'fix-spacing-to-nearest'
+  | 'fix-all-spacing'
+  | 'apply-style-fix'
+  | 'rename-layer-fix'
+  | 'batch-fix-v2'
+  | 'rescan-lint'
   | 'export-screenshot';
 
 // Auto-fix Types

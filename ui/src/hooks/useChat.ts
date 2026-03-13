@@ -114,7 +114,9 @@ export function useChat() {
     }));
   }, []);
 
-  const handleFixApplied = useCallback((data: { nodeId: string; nodeName: string; oldValue: unknown; newValue: unknown }) => {
+  const handleFixApplied = useCallback((data: { nodeId: string; nodeName: string; oldValue: unknown; newValue: unknown; property?: string; success?: boolean }) => {
+    if (data.success === false) return; // Skip failed fixes (error is shown separately)
+
     setState(prev => ({
       ...prev,
       issuesFixed: prev.issuesFixed + 1,
@@ -128,11 +130,85 @@ export function useChat() {
             applied: true,
             oldValue: String(data.oldValue),
             newValue: String(data.newValue),
+            property: data.property,
           },
         }),
       ],
     }));
   }, []);
+
+  const handleBatchFixResult = useCallback((data: { total: number; applied: number; failed: number; results: Array<{ nodeId: string; nodeName: string; success: boolean; message: string; oldValue?: string; newValue?: string }> }) => {
+    const messages: ChatMessage[] = [];
+
+    // Add individual fix results
+    for (const r of data.results) {
+      if (r.success) {
+        messages.push(createMessage({
+          kind: 'fix-result',
+          data: {
+            nodeId: r.nodeId,
+            nodeName: r.nodeName,
+            applied: true,
+            oldValue: r.oldValue,
+            newValue: r.newValue,
+          },
+        }));
+      }
+    }
+
+    // Add batch summary
+    messages.push(createMessage({
+      kind: 'batch-summary',
+      data: { total: data.total, applied: data.applied, failed: data.failed },
+    }));
+
+    setState(prev => ({
+      ...prev,
+      issuesFixed: prev.issuesFixed + data.applied,
+      messages: [...prev.messages, ...messages],
+    }));
+  }, []);
+
+  const handleRescan = useCallback((result: LintResult) => {
+    const newScore = computeScoreBreakdown(result);
+    const oldOverall = state.score?.overall || 0;
+
+    const messages: ChatMessage[] = [];
+
+    if (result.summary.totalErrors === 0) {
+      messages.push(createMessage({
+        kind: 'ai-text',
+        content: 'All issues resolved! Component is clean.',
+      }));
+    } else {
+      messages.push(createMessage({
+        kind: 'score-update',
+        data: {
+          oldScore: oldOverall,
+          newScore: newScore.overall,
+          issuesRemaining: result.summary.totalErrors,
+        },
+      }));
+    }
+
+    messages.push(createMessage({ kind: 'score-card', data: newScore }));
+
+    if (result.errors.length > 0) {
+      const fixableCount = result.errors.filter(e => e.errorType === 'spacing').length;
+      messages.push(createMessage({
+        kind: 'issues-list',
+        data: result.errors,
+        fixableCount,
+      }));
+    }
+
+    setState(prev => ({
+      ...prev,
+      lintResult: result,
+      score: newScore,
+      messages: [...prev.messages, ...messages],
+    }));
+  }, [state.score]);
 
   const clearMessages = useCallback(() => {
     setState({
@@ -150,6 +226,8 @@ export function useChat() {
     startAnalysis,
     handleLintResult,
     handleFixApplied,
+    handleBatchFixResult,
+    handleRescan,
     clearMessages,
   };
 }

@@ -3,6 +3,7 @@
   var __defProp = Object.defineProperty;
   var __defProps = Object.defineProperties;
   var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getOwnPropSymbols = Object.getOwnPropertySymbols;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __propIsEnum = Object.prototype.propertyIsEnumerable;
@@ -19,6 +20,144 @@
     return a;
   };
   var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+  var __esm = (fn, res) => function __init() {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  };
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+
+  // src/fix/apply-style.ts
+  var apply_style_exports = {};
+  __export(apply_style_exports, {
+    applyEffectStyle: () => applyEffectStyle,
+    applyFillStyle: () => applyFillStyle,
+    applyStrokeStyle: () => applyStrokeStyle,
+    applyTextStyle: () => applyTextStyle
+  });
+  async function applyFillStyle(nodeId, styleKey) {
+    const node = figma.getNodeById(nodeId);
+    if (!node || !("fillStyleId" in node)) {
+      return { success: false, nodeId, nodeName: "", property: "fillStyle", oldValue: "", newValue: "", error: "Node not found or does not support fill styles" };
+    }
+    try {
+      const style = await figma.importStyleByKeyAsync(styleKey);
+      const oldStyleId = node.fillStyleId || "";
+      node.fillStyleId = style.id;
+      return {
+        success: true,
+        nodeId,
+        nodeName: node.name,
+        property: "fillStyle",
+        oldValue: oldStyleId ? "existing style" : "no style",
+        newValue: style.name
+      };
+    } catch (error) {
+      return {
+        success: false,
+        nodeId,
+        nodeName: node.name,
+        property: "fillStyle",
+        oldValue: "",
+        newValue: styleKey,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  async function applyStrokeStyle(nodeId, styleKey) {
+    const node = figma.getNodeById(nodeId);
+    if (!node || !("strokeStyleId" in node)) {
+      return { success: false, nodeId, nodeName: "", property: "strokeStyle", oldValue: "", newValue: "", error: "Node not found or does not support stroke styles" };
+    }
+    try {
+      const style = await figma.importStyleByKeyAsync(styleKey);
+      const oldStyleId = node.strokeStyleId || "";
+      node.strokeStyleId = style.id;
+      return {
+        success: true,
+        nodeId,
+        nodeName: node.name,
+        property: "strokeStyle",
+        oldValue: oldStyleId ? "existing style" : "no style",
+        newValue: style.name
+      };
+    } catch (error) {
+      return {
+        success: false,
+        nodeId,
+        nodeName: node.name,
+        property: "strokeStyle",
+        oldValue: "",
+        newValue: styleKey,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  async function applyTextStyle(nodeId, styleKey) {
+    const node = figma.getNodeById(nodeId);
+    if (!node || node.type !== "TEXT") {
+      return { success: false, nodeId, nodeName: "", property: "textStyle", oldValue: "", newValue: "", error: "Node not found or is not a text node" };
+    }
+    try {
+      const style = await figma.importStyleByKeyAsync(styleKey);
+      const textNode = node;
+      const oldStyleId = textNode.textStyleId || "";
+      textNode.textStyleId = style.id;
+      return {
+        success: true,
+        nodeId,
+        nodeName: node.name,
+        property: "textStyle",
+        oldValue: oldStyleId ? "existing style" : "no style",
+        newValue: style.name
+      };
+    } catch (error) {
+      return {
+        success: false,
+        nodeId,
+        nodeName: node.name,
+        property: "textStyle",
+        oldValue: "",
+        newValue: styleKey,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  async function applyEffectStyle(nodeId, styleKey) {
+    const node = figma.getNodeById(nodeId);
+    if (!node || !("effectStyleId" in node)) {
+      return { success: false, nodeId, nodeName: "", property: "effectStyle", oldValue: "", newValue: "", error: "Node not found or does not support effect styles" };
+    }
+    try {
+      const style = await figma.importStyleByKeyAsync(styleKey);
+      const oldStyleId = node.effectStyleId || "";
+      node.effectStyleId = style.id;
+      return {
+        success: true,
+        nodeId,
+        nodeName: node.name,
+        property: "effectStyle",
+        oldValue: oldStyleId ? "existing style" : "no style",
+        newValue: style.name
+      };
+    } catch (error) {
+      return {
+        success: false,
+        nodeId,
+        nodeName: node.name,
+        property: "effectStyle",
+        oldValue: "",
+        newValue: styleKey,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  var init_apply_style = __esm({
+    "src/fix/apply-style.ts"() {
+      "use strict";
+    }
+  });
 
   // src/utils/figma-helpers.ts
   function isValidNodeForAnalysis(node) {
@@ -6403,6 +6542,234 @@ ${scoringCriteria}
     return result;
   }
 
+  // src/fix/fix-spacing.ts
+  var SPACING_PROPERTIES = [
+    "itemSpacing",
+    "paddingTop",
+    "paddingBottom",
+    "paddingLeft",
+    "paddingRight",
+    "counterAxisSpacing"
+  ];
+  function fixSpacing(nodeId, property, newValue) {
+    const node = figma.getNodeById(nodeId);
+    if (!node) {
+      return { success: false, nodeId, nodeName: "", property, oldValue: 0, newValue, error: "Node not found" };
+    }
+    if (node.type !== "FRAME" && node.type !== "COMPONENT" && node.type !== "INSTANCE") {
+      return { success: false, nodeId, nodeName: node.name, property, oldValue: 0, newValue, error: "Node is not a frame" };
+    }
+    const frame = node;
+    if (frame.layoutMode === "NONE") {
+      return { success: false, nodeId, nodeName: node.name, property, oldValue: 0, newValue, error: "Frame has no auto-layout" };
+    }
+    try {
+      const oldValue = frame[property];
+      frame[property] = newValue;
+      return {
+        success: true,
+        nodeId,
+        nodeName: node.name,
+        property,
+        oldValue,
+        newValue
+      };
+    } catch (error) {
+      return {
+        success: false,
+        nodeId,
+        nodeName: node.name,
+        property,
+        oldValue: 0,
+        newValue,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+  function fixSpacingToNearest(nodeId, property) {
+    const node = figma.getNodeById(nodeId);
+    if (!node || node.type !== "FRAME" && node.type !== "COMPONENT" && node.type !== "INSTANCE") {
+      return { success: false, nodeId, nodeName: (node == null ? void 0 : node.name) || "", property, oldValue: 0, newValue: 0, error: "Invalid node" };
+    }
+    const frame = node;
+    const currentValue = frame[property];
+    if (typeof currentValue !== "number") {
+      return { success: false, nodeId, nodeName: node.name, property, oldValue: 0, newValue: 0, error: "Property is not a number" };
+    }
+    if (SPACING_SCALE.includes(currentValue)) {
+      return { success: true, nodeId, nodeName: node.name, property, oldValue: currentValue, newValue: currentValue };
+    }
+    const suggestions = findClosestSpacingValues(currentValue);
+    if (suggestions.length === 0) {
+      return { success: false, nodeId, nodeName: node.name, property, oldValue: currentValue, newValue: currentValue, error: "No suggestion found" };
+    }
+    const closest = suggestions.reduce((a, b) => Math.abs(a - currentValue) <= Math.abs(b - currentValue) ? a : b);
+    return fixSpacing(nodeId, property, closest);
+  }
+  function fixAllSpacingOnNode(nodeId) {
+    const node = figma.getNodeById(nodeId);
+    if (!node || node.type !== "FRAME" && node.type !== "COMPONENT" && node.type !== "INSTANCE") {
+      return [];
+    }
+    const frame = node;
+    if (frame.layoutMode === "NONE") return [];
+    const results = [];
+    for (const prop of SPACING_PROPERTIES) {
+      if (!(prop in frame)) continue;
+      const value = frame[prop];
+      if (typeof value !== "number") continue;
+      if (SPACING_SCALE.includes(value)) continue;
+      const result = fixSpacingToNearest(nodeId, prop);
+      results.push(result);
+    }
+    return results;
+  }
+
+  // src/fix/rename-layer.ts
+  function renameLayerById(nodeId, newName) {
+    const node = figma.getNodeById(nodeId);
+    if (!node || node.type === "DOCUMENT" || node.type === "PAGE") {
+      return { success: false, nodeId, oldName: "", newName, error: "Node not found" };
+    }
+    try {
+      const oldName = node.name;
+      node.name = newName;
+      return { success: true, nodeId, oldName, newName };
+    } catch (error) {
+      return {
+        success: false,
+        nodeId,
+        oldName: node.name,
+        newName,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  // src/fix/batch.ts
+  init_apply_style();
+  async function executeBatchFix(fixes) {
+    let applied = 0;
+    let failed = 0;
+    const results = [];
+    for (let i = 0; i < fixes.length; i++) {
+      const fix = fixes[i];
+      try {
+        const result = await executeSingleFix(fix);
+        results.push(__spreadValues({ index: i }, result));
+        if (result.success) {
+          applied++;
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        failed++;
+        results.push({
+          index: i,
+          type: fix.type,
+          success: false,
+          nodeId: String(fix.params.nodeId || ""),
+          nodeName: "",
+          message: "Unexpected error",
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+    return { total: fixes.length, applied, failed, results };
+  }
+  async function executeSingleFix(fix) {
+    const { type, params } = fix;
+    switch (type) {
+      case "applyStyle": {
+        const styleType = params.styleType;
+        const nodeId = params.nodeId;
+        const styleKey = params.styleKey;
+        let result;
+        switch (styleType) {
+          case "fill":
+            result = await applyFillStyle(nodeId, styleKey);
+            break;
+          case "stroke":
+            result = await applyStrokeStyle(nodeId, styleKey);
+            break;
+          case "text":
+            result = await applyTextStyle(nodeId, styleKey);
+            break;
+          case "effect":
+            result = await applyEffectStyle(nodeId, styleKey);
+            break;
+          default:
+            return { type, success: false, nodeId, nodeName: "", message: `Unknown style type: ${styleType}` };
+        }
+        return {
+          type,
+          success: result.success,
+          nodeId: result.nodeId,
+          nodeName: result.nodeName,
+          message: result.success ? `Applied ${result.property}: ${result.newValue}` : result.error || "Failed",
+          oldValue: result.oldValue,
+          newValue: result.newValue,
+          error: result.error
+        };
+      }
+      case "fixSpacing": {
+        const nodeId = params.nodeId;
+        const property = params.property;
+        const value = params.value;
+        const result = fixSpacing(
+          nodeId,
+          property,
+          value
+        );
+        return {
+          type,
+          success: result.success,
+          nodeId: result.nodeId,
+          nodeName: result.nodeName,
+          message: result.success ? `${result.property}: ${result.oldValue}px \u2192 ${result.newValue}px` : result.error || "Failed",
+          oldValue: `${result.oldValue}px`,
+          newValue: `${result.newValue}px`,
+          error: result.error
+        };
+      }
+      case "fixSpacingToNearest": {
+        const nodeId = params.nodeId;
+        const property = params.property;
+        const result = fixSpacingToNearest(
+          nodeId,
+          property
+        );
+        return {
+          type,
+          success: result.success,
+          nodeId: result.nodeId,
+          nodeName: result.nodeName,
+          message: result.success ? `${result.property}: ${result.oldValue}px \u2192 ${result.newValue}px` : result.error || "Failed",
+          oldValue: `${result.oldValue}px`,
+          newValue: `${result.newValue}px`,
+          error: result.error
+        };
+      }
+      case "renameLayer": {
+        const nodeId = params.nodeId;
+        const newName = params.newName;
+        const result = renameLayerById(nodeId, newName);
+        return {
+          type,
+          success: result.success,
+          nodeId: result.nodeId,
+          nodeName: result.newName,
+          message: result.success ? `Renamed "${result.oldName}" \u2192 "${result.newName}"` : result.error || "Failed",
+          oldValue: result.oldName,
+          newValue: result.newName,
+          error: result.error
+        };
+      }
+      default:
+        return { type, success: false, nodeId: "", nodeName: "", message: `Unknown fix type: ${type}` };
+    }
+  }
+
   // src/ui/message-handler.ts
   var storedApiKey = null;
   var selectedModel = "claude-sonnet-4-5-20250929";
@@ -6512,6 +6879,24 @@ ${scoringCriteria}
           break;
         case "fix-spacing":
           handleFixSpacing(data);
+          break;
+        case "fix-spacing-to-nearest":
+          handleFixSpacingToNearest(data);
+          break;
+        case "fix-all-spacing":
+          handleFixAllSpacing(data);
+          break;
+        case "apply-style-fix":
+          await handleApplyStyleFix(data);
+          break;
+        case "rename-layer-fix":
+          handleRenameLayerFix(data);
+          break;
+        case "batch-fix-v2":
+          await handleBatchFixV2(data);
+          break;
+        case "rescan-lint":
+          handleRescanLint();
           break;
         case "export-screenshot":
           await handleExportScreenshot(data);
@@ -7187,6 +7572,123 @@ Respond naturally and helpfully to the user's question.`;
       console.warn("Could not export screenshot:", error);
       sendMessageToUI("screenshot-error", { error: "Failed to export screenshot" });
     }
+  }
+  function handleFixSpacingToNearest(data) {
+    try {
+      const result = fixSpacingToNearest(
+        data.nodeId,
+        data.property
+      );
+      sendMessageToUI("fix-applied", {
+        type: "spacing",
+        nodeId: result.nodeId,
+        nodeName: result.nodeName,
+        property: data.property,
+        oldValue: result.oldValue,
+        newValue: result.newValue,
+        success: result.success,
+        error: result.error
+      });
+    } catch (error) {
+      sendMessageToUI("fix-error", { error: "Failed to auto-fix spacing" });
+    }
+  }
+  function handleFixAllSpacing(data) {
+    try {
+      const results = fixAllSpacingOnNode(data.nodeId);
+      const applied = results.filter((r) => r.success).length;
+      for (const result of results) {
+        sendMessageToUI("fix-applied", {
+          type: "spacing",
+          nodeId: result.nodeId,
+          nodeName: result.nodeName,
+          property: result.property,
+          oldValue: result.oldValue,
+          newValue: result.newValue,
+          success: result.success
+        });
+      }
+      if (applied > 0) {
+        figma.notify(`Fixed ${applied} spacing value${applied !== 1 ? "s" : ""}`, { timeout: 2e3 });
+      }
+    } catch (error) {
+      sendMessageToUI("fix-error", { error: "Failed to fix all spacing" });
+    }
+  }
+  async function handleApplyStyleFix(data) {
+    try {
+      const { applyFillStyle: applyFillStyle2, applyStrokeStyle: applyStrokeStyle2, applyTextStyle: applyTextStyle2, applyEffectStyle: applyEffectStyle2 } = await Promise.resolve().then(() => (init_apply_style(), apply_style_exports));
+      let result;
+      switch (data.styleType) {
+        case "fill":
+          result = await applyFillStyle2(data.nodeId, data.styleKey);
+          break;
+        case "stroke":
+          result = await applyStrokeStyle2(data.nodeId, data.styleKey);
+          break;
+        case "text":
+          result = await applyTextStyle2(data.nodeId, data.styleKey);
+          break;
+        case "effect":
+          result = await applyEffectStyle2(data.nodeId, data.styleKey);
+          break;
+        default:
+          sendMessageToUI("fix-error", { error: `Unknown style type: ${data.styleType}` });
+          return;
+      }
+      sendMessageToUI("fix-applied", {
+        type: "style",
+        nodeId: result.nodeId,
+        nodeName: result.nodeName,
+        property: result.property,
+        oldValue: result.oldValue,
+        newValue: result.newValue,
+        success: result.success,
+        error: result.error
+      });
+    } catch (error) {
+      sendMessageToUI("fix-error", { error: "Failed to apply style" });
+    }
+  }
+  function handleRenameLayerFix(data) {
+    try {
+      const result = renameLayerById(data.nodeId, data.newName);
+      sendMessageToUI("fix-applied", {
+        type: "rename",
+        nodeId: result.nodeId,
+        nodeName: result.newName,
+        oldValue: result.oldName,
+        newValue: result.newName,
+        success: result.success,
+        error: result.error
+      });
+    } catch (error) {
+      sendMessageToUI("fix-error", { error: "Failed to rename layer" });
+    }
+  }
+  async function handleBatchFixV2(data) {
+    try {
+      const summary = await executeBatchFix(data.fixes);
+      sendMessageToUI("batch-fix-v2-result", summary);
+      if (summary.failed === 0) {
+        figma.notify(`Applied ${summary.applied} fix${summary.applied !== 1 ? "es" : ""} successfully`, { timeout: 2e3 });
+      } else if (summary.applied > 0) {
+        figma.notify(`Applied ${summary.applied}, ${summary.failed} failed`, { timeout: 3e3 });
+      } else {
+        figma.notify(`All ${summary.failed} fixes failed`, { error: true });
+      }
+      handleRescanLint();
+    } catch (error) {
+      sendMessageToUI("fix-error", { error: "Batch fix failed" });
+    }
+  }
+  function handleRescanLint() {
+    const result = lintSelection(currentLintSettings);
+    sendMessageToUI("design-lint-result", result);
+    sendMessageToUI("rescan-complete", {
+      totalErrors: result.summary.totalErrors,
+      nodesWithErrors: result.summary.nodesWithErrors
+    });
   }
   async function initializePlugin() {
     try {

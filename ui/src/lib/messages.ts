@@ -102,8 +102,10 @@ export type ChatMessageType =
   | { kind: 'score-card'; data: ScoreBreakdown }
   | { kind: 'issues-list'; data: LintError[]; fixableCount: number }
   | { kind: 'issue-detail'; data: LintError }
-  | { kind: 'fix-result'; data: { nodeId: string; nodeName: string; applied: boolean; oldValue?: string; newValue?: string } }
-  | { kind: 'action-buttons'; buttons: ActionButton[] };
+  | { kind: 'fix-result'; data: { nodeId: string; nodeName: string; applied: boolean; oldValue?: string; newValue?: string; property?: string } }
+  | { kind: 'action-buttons'; buttons: ActionButton[] }
+  | { kind: 'batch-summary'; data: { total: number; applied: number; failed: number } }
+  | { kind: 'score-update'; data: { oldScore: number; newScore: number; issuesRemaining: number } };
 
 export interface ScoreBreakdown {
   overall: number;
@@ -135,8 +137,10 @@ export type PluginEvent =
   | { type: 'design-lint-result'; data: LintResult }
   | { type: 'enhanced-analysis-result'; data: EnhancedAnalysisResult }
   | { type: 'analysis-error'; data: { error: string } }
-  | { type: 'fix-applied'; data: { type: string; nodeId: string; nodeName: string; oldValue: unknown; newValue: unknown } }
+  | { type: 'fix-applied'; data: { type: string; nodeId: string; nodeName: string; oldValue: unknown; newValue: unknown; property?: string; success?: boolean; error?: string } }
   | { type: 'fix-error'; data: { error: string } }
+  | { type: 'batch-fix-v2-result'; data: { total: number; applied: number; failed: number; results: Array<{ nodeId: string; nodeName: string; success: boolean; message: string; oldValue?: string; newValue?: string }> } }
+  | { type: 'rescan-complete'; data: { totalErrors: number; nodesWithErrors: number } }
   | { type: 'api-key-status'; data: { hasKey: boolean; provider: string; model?: string } }
   | { type: 'api-key-saved'; data: { success: boolean } }
   | { type: 'screenshot-result'; data: { nodeId: string; nodeName: string; screenshot: string; width: number; height: number } }

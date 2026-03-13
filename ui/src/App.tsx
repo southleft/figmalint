@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import ChatContainer from './components/chat/ChatContainer';
 import { useChat } from './hooks/useChat';
 import { usePluginMessages, usePostToPlugin } from './hooks/usePluginMessages';
@@ -9,6 +9,7 @@ export default function App() {
   const post = usePostToPlugin();
   const [componentName, setComponentName] = useState<string | undefined>();
   const [hasApiKey, setHasApiKey] = useState(false);
+  const walkthroughIndex = useRef(0);
 
   // Listen for messages from the plugin main thread
   usePluginMessages(
@@ -16,7 +17,12 @@ export default function App() {
       (event: PluginEvent) => {
         switch (event.type) {
           case 'design-lint-result':
-            chat.handleLintResult(event.data as LintResult);
+            // If we already have a lint result, treat this as a rescan
+            if (chat.lintResult) {
+              chat.handleRescan(event.data as LintResult);
+            } else {
+              chat.handleLintResult(event.data as LintResult);
+            }
             break;
           case 'enhanced-analysis-result': {
             const result = event.data as any;
@@ -43,6 +49,12 @@ export default function App() {
               content: `Fix failed: ${(event.data as any)?.error || 'Unknown error'}`,
             });
             break;
+          case 'batch-fix-v2-result':
+            chat.handleBatchFixResult(event.data as any);
+            break;
+          case 'rescan-complete':
+            // Rescan lint result will arrive via 'design-lint-result' — handled there
+            break;
           case 'api-key-status':
             setHasApiKey((event.data as any)?.hasKey || false);
             break;
@@ -59,13 +71,13 @@ export default function App() {
 
   const handleAnalyze = useCallback(() => {
     chat.startAnalysis();
+    walkthroughIndex.current = 0;
     post('run-design-lint');
   }, [chat, post]);
 
   const handleSendMessage = useCallback(
     (text: string) => {
       chat.addMessage({ kind: 'user-text', content: text });
-      // For now, send as chat message to plugin (AI will handle in Sprint 3)
       post('chat-message', { message: text });
     },
     [chat, post]
@@ -75,46 +87,95 @@ export default function App() {
     (action: string, params?: Record<string, unknown>) => {
       switch (action) {
         case 'fix-all': {
-          // Fix all spacing issues
+          // Collect all spacing errors and send as batch fix
           const spacingErrors = chat.lintResult?.errors.filter(
             (e: LintError) => e.errorType === 'spacing'
           );
           if (spacingErrors && spacingErrors.length > 0) {
             chat.addMessage({
               kind: 'ai-text',
-              content: `Applying ${spacingErrors.length} spacing fixes...`,
+              content: `Fixing ${spacingErrors.length} spacing issue${spacingErrors.length !== 1 ? 's' : ''}...`,
             });
-            // Apply fixes one by one (batch in Sprint 2)
-            for (const err of spacingErrors) {
-              // Parse spacing suggestion from the value
-              const match = err.value.match(/(\d+)px/);
-              if (match) {
-                post('fix-spacing', {
-                  nodeId: err.nodeId,
-                  property: 'itemSpacing', // simplified; real impl should track property
-                  value: parseInt(match[1]),
-                });
-              }
-            }
+
+            // Build batch fix actions
+            const fixes = spacingErrors.map(err => ({
+              type: 'fixSpacingToNearest' as const,
+              params: {
+                nodeId: err.nodeId,
+                property: extractSpacingProperty(err.message),
+              },
+            }));
+
+            post('batch-fix-v2', { fixes });
           }
           break;
         }
+
         case 'walkthrough': {
-          const firstIssue = chat.lintResult?.errors[0];
-          if (firstIssue) {
+          const errors = chat.lintResult?.errors;
+          if (!errors || errors.length === 0) break;
+
+          const idx = walkthroughIndex.current;
+          if (idx >= errors.length) {
             chat.addMessage({
               kind: 'ai-text',
-              content: `**1/${chat.lintResult?.errors.length}:** ${firstIssue.message}\n\nLayer: ${firstIssue.nodeName}`,
+              content: 'All issues reviewed!',
             });
-            post('jump-to-node', { nodeId: firstIssue.nodeId });
+            walkthroughIndex.current = 0;
+            break;
+          }
+
+          const issue = errors[idx];
+          walkthroughIndex.current = idx + 1;
+
+          chat.addMessage({
+            kind: 'ai-text',
+            content: `**${idx + 1}/${errors.length}:** ${issue.message}\n\nLayer: **${issue.nodeName}** (${issue.nodeType})`,
+          });
+
+          // Show fix actions for this issue
+          const buttons = [];
+          if (issue.errorType === 'spacing') {
+            buttons.push({
+              id: `fix-${issue.nodeId}`,
+              label: 'Fix to nearest',
+              variant: 'primary' as const,
+              action: 'fix-single-spacing',
+              params: { nodeId: issue.nodeId, property: extractSpacingProperty(issue.message) },
+            });
+          }
+          buttons.push({
+            id: `skip-${idx}`,
+            label: idx + 1 < errors.length ? 'Next issue' : 'Done',
+            variant: 'secondary' as const,
+            action: 'walkthrough',
+          });
+
+          chat.addMessage({ kind: 'action-buttons', buttons });
+          post('jump-to-node', { nodeId: issue.nodeId });
+          break;
+        }
+
+        case 'fix-single-spacing': {
+          if (params?.nodeId && params?.property) {
+            post('fix-spacing-to-nearest', {
+              nodeId: params.nodeId,
+              property: params.property,
+            });
           }
           break;
         }
+
+        case 'rescan': {
+          chat.addMessage({ kind: 'ai-text', content: 'Re-scanning...' });
+          post('rescan-lint');
+          break;
+        }
+
         case 'export': {
-          // Export as markdown (simplified for Sprint 1)
           const result = chat.lintResult;
           if (result) {
-            const md = buildMarkdownExport(result, componentName);
+            const md = buildMarkdownExport(result, componentName, chat.issuesFixed);
             navigator.clipboard.writeText(md).then(() => {
               chat.addMessage({
                 kind: 'ai-text',
@@ -162,16 +223,42 @@ export default function App() {
   );
 }
 
-function buildMarkdownExport(result: LintResult, componentName?: string): string {
+/**
+ * Extract spacing property name from lint error message.
+ * Messages look like: "Gap is 13px — not in spacing scale"
+ */
+function extractSpacingProperty(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes('gap') && !lower.includes('counter')) return 'itemSpacing';
+  if (lower.includes('counter')) return 'counterAxisSpacing';
+  if (lower.includes('padding top')) return 'paddingTop';
+  if (lower.includes('padding bottom')) return 'paddingBottom';
+  if (lower.includes('padding left')) return 'paddingLeft';
+  if (lower.includes('padding right')) return 'paddingRight';
+  return 'itemSpacing'; // fallback
+}
+
+function buildMarkdownExport(result: LintResult, componentName?: string, issuesFixed?: number): string {
   const lines = [
     `# Design Lint Report: ${componentName || 'Component'}`,
     '',
-    `Score: ${result.summary.totalErrors} issues across ${result.summary.nodesWithErrors} layers`,
+    `Total issues: ${result.summary.totalErrors} across ${result.summary.nodesWithErrors} layers`,
+    ...(issuesFixed ? [`Fixed: ${issuesFixed}`] : []),
     '',
-    '## Issues',
+    '## Issues by Type',
     '',
   ];
 
+  const byType = result.summary.byType;
+  if (byType.fill > 0) lines.push(`- **Fill styles:** ${byType.fill} missing`);
+  if (byType.stroke > 0) lines.push(`- **Stroke styles:** ${byType.stroke} missing`);
+  if (byType.effect > 0) lines.push(`- **Effect styles:** ${byType.effect} missing`);
+  if (byType.text > 0) lines.push(`- **Text styles:** ${byType.text} missing`);
+  if (byType.radius > 0) lines.push(`- **Border radius:** ${byType.radius} non-standard`);
+  if (byType.spacing > 0) lines.push(`- **Spacing:** ${byType.spacing} off-grid`);
+  if (byType.autoLayout > 0) lines.push(`- **Auto Layout:** ${byType.autoLayout} missing`);
+
+  lines.push('', '## All Issues', '');
   for (const err of result.errors) {
     lines.push(`- **[${err.errorType.toUpperCase()}]** ${err.nodeName}: ${err.message}`);
   }

@@ -40,6 +40,9 @@ import {
 } from '../fixes/naming-fixer';
 import { FixRequest, FixPreviewRequest, BatchFixRequest, LintSettings } from '../types';
 import { exportScreenshot } from '../extract/screenshot';
+import { fixSpacing as fixSpacingValue, fixSpacingToNearest, fixAllSpacingOnNode } from '../fix/fix-spacing';
+import { renameLayerById } from '../fix/rename-layer';
+import { executeBatchFix, type BatchFixAction } from '../fix/batch';
 import {
   lintSelection,
   ignoreNode,
@@ -171,6 +174,24 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         break;
       case 'fix-spacing':
         handleFixSpacing(data);
+        break;
+      case 'fix-spacing-to-nearest':
+        handleFixSpacingToNearest(data);
+        break;
+      case 'fix-all-spacing':
+        handleFixAllSpacing(data);
+        break;
+      case 'apply-style-fix':
+        await handleApplyStyleFix(data);
+        break;
+      case 'rename-layer-fix':
+        handleRenameLayerFix(data);
+        break;
+      case 'batch-fix-v2':
+        await handleBatchFixV2(data);
+        break;
+      case 'rescan-lint':
+        handleRescanLint();
         break;
       case 'export-screenshot':
         await handleExportScreenshot(data);
@@ -1099,6 +1120,137 @@ async function handleExportScreenshot(data: { nodeId?: string }): Promise<void> 
     console.warn('Could not export screenshot:', error);
     sendMessageToUI('screenshot-error', { error: 'Failed to export screenshot' });
   }
+}
+
+function handleFixSpacingToNearest(data: { nodeId: string; property: string }): void {
+  try {
+    const result = fixSpacingToNearest(
+      data.nodeId,
+      data.property as 'itemSpacing' | 'paddingTop' | 'paddingBottom' | 'paddingLeft' | 'paddingRight' | 'counterAxisSpacing'
+    );
+    sendMessageToUI('fix-applied', {
+      type: 'spacing',
+      nodeId: result.nodeId,
+      nodeName: result.nodeName,
+      property: data.property,
+      oldValue: result.oldValue,
+      newValue: result.newValue,
+      success: result.success,
+      error: result.error,
+    });
+  } catch (error) {
+    sendMessageToUI('fix-error', { error: 'Failed to auto-fix spacing' });
+  }
+}
+
+function handleFixAllSpacing(data: { nodeId: string }): void {
+  try {
+    const results = fixAllSpacingOnNode(data.nodeId);
+    const applied = results.filter(r => r.success).length;
+
+    for (const result of results) {
+      sendMessageToUI('fix-applied', {
+        type: 'spacing',
+        nodeId: result.nodeId,
+        nodeName: result.nodeName,
+        property: result.property,
+        oldValue: result.oldValue,
+        newValue: result.newValue,
+        success: result.success,
+      });
+    }
+
+    if (applied > 0) {
+      figma.notify(`Fixed ${applied} spacing value${applied !== 1 ? 's' : ''}`, { timeout: 2000 });
+    }
+  } catch (error) {
+    sendMessageToUI('fix-error', { error: 'Failed to fix all spacing' });
+  }
+}
+
+async function handleApplyStyleFix(data: { nodeId: string; styleType: string; styleKey: string }): Promise<void> {
+  try {
+    const { applyFillStyle, applyStrokeStyle, applyTextStyle, applyEffectStyle } = await import('../fix/apply-style');
+
+    let result;
+    switch (data.styleType) {
+      case 'fill':
+        result = await applyFillStyle(data.nodeId, data.styleKey);
+        break;
+      case 'stroke':
+        result = await applyStrokeStyle(data.nodeId, data.styleKey);
+        break;
+      case 'text':
+        result = await applyTextStyle(data.nodeId, data.styleKey);
+        break;
+      case 'effect':
+        result = await applyEffectStyle(data.nodeId, data.styleKey);
+        break;
+      default:
+        sendMessageToUI('fix-error', { error: `Unknown style type: ${data.styleType}` });
+        return;
+    }
+
+    sendMessageToUI('fix-applied', {
+      type: 'style',
+      nodeId: result.nodeId,
+      nodeName: result.nodeName,
+      property: result.property,
+      oldValue: result.oldValue,
+      newValue: result.newValue,
+      success: result.success,
+      error: result.error,
+    });
+  } catch (error) {
+    sendMessageToUI('fix-error', { error: 'Failed to apply style' });
+  }
+}
+
+function handleRenameLayerFix(data: { nodeId: string; newName: string }): void {
+  try {
+    const result = renameLayerById(data.nodeId, data.newName);
+    sendMessageToUI('fix-applied', {
+      type: 'rename',
+      nodeId: result.nodeId,
+      nodeName: result.newName,
+      oldValue: result.oldName,
+      newValue: result.newName,
+      success: result.success,
+      error: result.error,
+    });
+  } catch (error) {
+    sendMessageToUI('fix-error', { error: 'Failed to rename layer' });
+  }
+}
+
+async function handleBatchFixV2(data: { fixes: BatchFixAction[] }): Promise<void> {
+  try {
+    const summary = await executeBatchFix(data.fixes);
+
+    sendMessageToUI('batch-fix-v2-result', summary);
+
+    if (summary.failed === 0) {
+      figma.notify(`Applied ${summary.applied} fix${summary.applied !== 1 ? 'es' : ''} successfully`, { timeout: 2000 });
+    } else if (summary.applied > 0) {
+      figma.notify(`Applied ${summary.applied}, ${summary.failed} failed`, { timeout: 3000 });
+    } else {
+      figma.notify(`All ${summary.failed} fixes failed`, { error: true });
+    }
+
+    // Auto re-scan after batch fix
+    handleRescanLint();
+  } catch (error) {
+    sendMessageToUI('fix-error', { error: 'Batch fix failed' });
+  }
+}
+
+function handleRescanLint(): void {
+  const result = lintSelection(currentLintSettings);
+  sendMessageToUI('design-lint-result', result);
+  sendMessageToUI('rescan-complete', {
+    totalErrors: result.summary.totalErrors,
+    nodesWithErrors: result.summary.nodesWithErrors,
+  });
 }
 
 /**
