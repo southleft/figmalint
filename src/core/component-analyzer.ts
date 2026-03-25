@@ -1383,7 +1383,7 @@ export async function processEnhancedAnalysis(
     const llmResponse = await callProvider(providerId, apiKey, {
       prompt: llmPrompt,
       model,
-      maxTokens: 2048,
+      maxTokens: 4096,
       temperature: 0.1,
     });
     const llmData = extractJSONFromResponse(llmResponse.content);
@@ -1418,7 +1418,7 @@ export async function processEnhancedAnalysis(
     const llmFallbackResponse = await callProvider(providerId, apiKey, {
       prompt,
       model,
-      maxTokens: 2048,
+      maxTokens: 4096,
       temperature: 0.1,
     });
     analysisResult = extractJSONFromResponse(llmFallbackResponse.content);

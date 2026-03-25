@@ -439,7 +439,7 @@ async function handleBatchAnalysis(nodes: readonly SceneNode[], _options: Enhanc
         const batchLlmResponse = await callProvider(selectedProvider, storedApiKey!, {
           prompt: deterministicPrompt,
           model: selectedModel,
-          maxTokens: 2048,
+          maxTokens: 4096,
           temperature: 0.1,
         });
         const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
@@ -526,7 +526,7 @@ async function handleChatMessage(data: { message: string; history: ChatMessage[]
     const llmResponse = await callProvider(selectedProvider, storedApiKey, {
       prompt: enhancedPrompt,
       model: selectedModel,
-      maxTokens: 2048,
+      maxTokens: 4096,
       temperature: 0.7,
     });
 

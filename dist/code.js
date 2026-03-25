@@ -1731,7 +1731,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
      * @throws Error if response format is invalid
      */
     parseResponse(response) {
-      var _a;
+      var _a, _b;
       const geminiResponse = response;
       if (geminiResponse.error) {
         throw new LLMError(
@@ -1754,7 +1754,13 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           "INVALID_REQUEST" /* INVALID_REQUEST */
         );
       }
-      const parts = (_a = candidate.content) == null ? void 0 : _a.parts;
+      if (candidate.finishReason === "MAX_TOKENS" && (!((_a = candidate.content) == null ? void 0 : _a.parts) || candidate.content.parts.length === 0)) {
+        throw new LLMError(
+          "The selection is too large for analysis. Try selecting fewer layers or a simpler component.",
+          "CONTEXT_LENGTH_EXCEEDED" /* CONTEXT_LENGTH_EXCEEDED */
+        );
+      }
+      const parts = (_b = candidate.content) == null ? void 0 : _b.parts;
       if (!parts || parts.length === 0) {
         throw new LLMError(
           `No content parts in Gemini response. Finish reason: ${candidate.finishReason || "unknown"}. Has content: ${!!candidate.content}`,
@@ -3703,7 +3709,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       const llmResponse = await callProvider(providerId, apiKey, {
         prompt: llmPrompt,
         model,
-        maxTokens: 2048,
+        maxTokens: 4096,
         temperature: 0.1
       });
       const llmData = extractJSONFromResponse(llmResponse.content);
@@ -3731,7 +3737,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       const llmFallbackResponse = await callProvider(providerId, apiKey, {
         prompt,
         model,
-        maxTokens: 2048,
+        maxTokens: 4096,
         temperature: 0.1
       });
       analysisResult = extractJSONFromResponse(llmFallbackResponse.content);
@@ -5872,7 +5878,7 @@ ${scoringCriteria}
           const batchLlmResponse = await callProvider(selectedProvider, storedApiKey, {
             prompt: deterministicPrompt,
             model: selectedModel,
-            maxTokens: 2048,
+            maxTokens: 4096,
             temperature: 0.1
           });
           const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
@@ -5929,7 +5935,7 @@ ${scoringCriteria}
       const llmResponse = await callProvider(selectedProvider, storedApiKey, {
         prompt: enhancedPrompt,
         model: selectedModel,
-        maxTokens: 2048,
+        maxTokens: 4096,
         temperature: 0.7
       });
       const chatResponse = {

@@ -209,6 +209,14 @@ class GoogleProvider implements LLMProvider {
       );
     }
 
+    // Check for MAX_TOKENS with no content — model hit output limit before producing text
+    if (candidate.finishReason === 'MAX_TOKENS' && (!candidate.content?.parts || candidate.content.parts.length === 0)) {
+      throw new LLMError(
+        'The selection is too large for analysis. Try selecting fewer layers or a simpler component.',
+        LLMErrorCode.CONTEXT_LENGTH_EXCEEDED
+      );
+    }
+
     // Extract text from response — some models return thought parts before text parts
     const parts = candidate.content?.parts;
     if (!parts || parts.length === 0) {
