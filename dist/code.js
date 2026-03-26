@@ -5315,6 +5315,46 @@ ${scoringCriteria}
       };
     }
   }
+  var libraryVariableCache = null;
+  var libraryCollectionCache = null;
+  async function getLibraryVariables(resolvedType) {
+    if (libraryVariableCache !== null && libraryCollectionCache !== null) {
+      const filtered2 = libraryVariableCache.filter((v) => v.resolvedType === resolvedType);
+      return { variables: filtered2, collectionNames: libraryCollectionCache };
+    }
+    const allImported = [];
+    const collectionNames = /* @__PURE__ */ new Map();
+    try {
+      const libraryCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+      for (const libCollection of libraryCollections) {
+        try {
+          const libraryVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCollection.key);
+          for (const libVar of libraryVars) {
+            try {
+              const imported = await figma.variables.importVariableByKeyAsync(libVar.key);
+              allImported.push(imported);
+              if (!collectionNames.has(imported.variableCollectionId)) {
+                collectionNames.set(
+                  imported.variableCollectionId,
+                  `${libCollection.libraryName} / ${libCollection.name}`
+                );
+              }
+            } catch (importErr) {
+              console.warn(`Failed to import library variable ${libVar.name}:`, importErr);
+            }
+          }
+        } catch (collErr) {
+          console.warn(`Failed to load variables from library collection ${libCollection.name}:`, collErr);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load library variable collections:", error);
+    }
+    libraryVariableCache = allImported;
+    libraryCollectionCache = collectionNames;
+    const filtered = allImported.filter((v) => v.resolvedType === resolvedType);
+    return { variables: filtered, collectionNames };
+  }
   async function findMatchingColorVariable(hexColor, tolerance = 0) {
     try {
       const targetRgb = hexToRgb(hexColor);
@@ -5322,6 +5362,7 @@ ${scoringCriteria}
         return [];
       }
       const suggestions = [];
+      const seenVariableIds = /* @__PURE__ */ new Set();
       const colorVariables = await figma.variables.getLocalVariablesAsync("COLOR");
       const collections = await figma.variables.getLocalVariableCollectionsAsync();
       const collectionMap = /* @__PURE__ */ new Map();
@@ -5339,6 +5380,7 @@ ${scoringCriteria}
         const varColor = value;
         const matchScore = calculateColorMatchScore(targetRgb, varColor);
         if (matchScore >= 1 - tolerance) {
+          seenVariableIds.add(variable.id);
           suggestions.push({
             variableId: variable.id,
             variableName: variable.name,
@@ -5349,6 +5391,34 @@ ${scoringCriteria}
           });
         }
       }
+      try {
+        const { variables: libColorVars, collectionNames } = await getLibraryVariables("COLOR");
+        for (const variable of libColorVars) {
+          if (seenVariableIds.has(variable.id)) continue;
+          const varCollection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+          if (!varCollection) continue;
+          const modeId = varCollection.modes[0].modeId;
+          const value = variable.valuesByMode[modeId];
+          if (!value || typeof value !== "object" || !("r" in value)) {
+            continue;
+          }
+          const varColor = value;
+          const matchScore = calculateColorMatchScore(targetRgb, varColor);
+          if (matchScore >= 1 - tolerance) {
+            seenVariableIds.add(variable.id);
+            suggestions.push({
+              variableId: variable.id,
+              variableName: variable.name,
+              collectionName: collectionNames.get(variable.variableCollectionId) || varCollection.name,
+              value: rgbToHex(varColor.r, varColor.g, varColor.b),
+              matchScore,
+              type: "color"
+            });
+          }
+        }
+      } catch (libError) {
+        console.warn("Library variable search failed for colors:", libError);
+      }
       return suggestions.sort((a, b) => b.matchScore - a.matchScore);
     } catch (error) {
       console.error("Error finding matching color variable:", error);
@@ -5358,6 +5428,7 @@ ${scoringCriteria}
   async function findMatchingSpacingVariable(pixelValue, tolerance = 0) {
     try {
       const suggestions = [];
+      const seenVariableIds = /* @__PURE__ */ new Set();
       const numberVariables = await figma.variables.getLocalVariablesAsync("FLOAT");
       const collections = await figma.variables.getLocalVariableCollectionsAsync();
       const collectionMap = /* @__PURE__ */ new Map();
@@ -5375,6 +5446,7 @@ ${scoringCriteria}
         const difference = Math.abs(value - pixelValue);
         if (difference <= tolerance) {
           const matchScore = difference === 0 ? 1 : 1 - difference / (tolerance || 1);
+          seenVariableIds.add(variable.id);
           suggestions.push({
             variableId: variable.id,
             variableName: variable.name,
@@ -5384,6 +5456,34 @@ ${scoringCriteria}
             type: "number"
           });
         }
+      }
+      try {
+        const { variables: libNumberVars, collectionNames } = await getLibraryVariables("FLOAT");
+        for (const variable of libNumberVars) {
+          if (seenVariableIds.has(variable.id)) continue;
+          const varCollection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+          if (!varCollection) continue;
+          const modeId = varCollection.modes[0].modeId;
+          const value = variable.valuesByMode[modeId];
+          if (typeof value !== "number") {
+            continue;
+          }
+          const difference = Math.abs(value - pixelValue);
+          if (difference <= tolerance) {
+            const matchScore = difference === 0 ? 1 : 1 - difference / (tolerance || 1);
+            seenVariableIds.add(variable.id);
+            suggestions.push({
+              variableId: variable.id,
+              variableName: variable.name,
+              collectionName: collectionNames.get(variable.variableCollectionId) || varCollection.name,
+              value: `${value}px`,
+              matchScore,
+              type: "number"
+            });
+          }
+        }
+      } catch (libError) {
+        console.warn("Library variable search failed for spacing:", libError);
       }
       return suggestions.sort((a, b) => b.matchScore - a.matchScore);
     } catch (error) {

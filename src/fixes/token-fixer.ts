@@ -468,8 +468,79 @@ export async function findOrCreateVariableCollection(
 // Token Search Functions
 // ============================================================================
 
+// Session cache for imported library variables to avoid repeated API calls
+let libraryVariableCache: Variable[] | null = null;
+let libraryCollectionCache: Map<string, string> | null = null; // variableCollectionId -> collection name (with library prefix)
+
 /**
- * Find existing variables that match a given hex color
+ * Clear the library variable cache (call when plugin session resets)
+ */
+export function clearLibraryVariableCache(): void {
+  libraryVariableCache = null;
+  libraryCollectionCache = null;
+}
+
+/**
+ * Import and cache all library variables of a given type.
+ * Uses session-level caching to avoid repeated imports.
+ *
+ * @param resolvedType - The variable type to import ('COLOR' or 'FLOAT')
+ * @returns Array of imported Variable objects and a map of collection names
+ */
+async function getLibraryVariables(
+  resolvedType: VariableResolvedDataType
+): Promise<{ variables: Variable[]; collectionNames: Map<string, string> }> {
+  // Return from cache if available (cache stores all types, we filter below)
+  if (libraryVariableCache !== null && libraryCollectionCache !== null) {
+    const filtered = libraryVariableCache.filter(v => v.resolvedType === resolvedType);
+    return { variables: filtered, collectionNames: libraryCollectionCache };
+  }
+
+  const allImported: Variable[] = [];
+  const collectionNames = new Map<string, string>();
+
+  try {
+    const libraryCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+
+    for (const libCollection of libraryCollections) {
+      try {
+        const libraryVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCollection.key);
+
+        for (const libVar of libraryVars) {
+          try {
+            const imported = await figma.variables.importVariableByKeyAsync(libVar.key);
+            allImported.push(imported);
+            // Store collection name with library prefix for clarity
+            if (!collectionNames.has(imported.variableCollectionId)) {
+              collectionNames.set(
+                imported.variableCollectionId,
+                `${libCollection.libraryName} / ${libCollection.name}`
+              );
+            }
+          } catch (importErr) {
+            // Skip individual variables that fail to import
+            console.warn(`Failed to import library variable ${libVar.name}:`, importErr);
+          }
+        }
+      } catch (collErr) {
+        console.warn(`Failed to load variables from library collection ${libCollection.name}:`, collErr);
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load library variable collections:', error);
+  }
+
+  // Cache all imported variables for the session
+  libraryVariableCache = allImported;
+  libraryCollectionCache = collectionNames;
+
+  const filtered = allImported.filter(v => v.resolvedType === resolvedType);
+  return { variables: filtered, collectionNames };
+}
+
+/**
+ * Find existing variables that match a given hex color.
+ * Searches both local and published library variables.
  *
  * @param hexColor - Hex color to match (e.g., '#FF0000')
  * @param tolerance - Color tolerance (0-1, default 0 for exact match)
@@ -486,12 +557,12 @@ export async function findMatchingColorVariable(
     }
 
     const suggestions: TokenSuggestion[] = [];
+    const seenVariableIds = new Set<string>();
 
-    // Get all color variables
+    // --- Search local variables ---
     const colorVariables = await figma.variables.getLocalVariablesAsync('COLOR');
     const collections = await figma.variables.getLocalVariableCollectionsAsync();
 
-    // Create collection lookup map
     const collectionMap = new Map<string, VariableCollection>();
     for (const collection of collections) {
       collectionMap.set(collection.id, collection);
@@ -501,21 +572,18 @@ export async function findMatchingColorVariable(
       const collection = collectionMap.get(variable.variableCollectionId);
       if (!collection) continue;
 
-      // Get the default mode value
       const modeId = collection.modes[0].modeId;
       const value = variable.valuesByMode[modeId];
 
-      // Skip if it's an alias or not a direct color value
       if (!value || typeof value !== 'object' || !('r' in value)) {
         continue;
       }
 
       const varColor = value as { r: number; g: number; b: number };
-
-      // Calculate color difference
       const matchScore = calculateColorMatchScore(targetRgb, varColor);
 
       if (matchScore >= 1 - tolerance) {
+        seenVariableIds.add(variable.id);
         suggestions.push({
           variableId: variable.id,
           variableName: variable.name,
@@ -527,6 +595,45 @@ export async function findMatchingColorVariable(
       }
     }
 
+    // --- Search library variables ---
+    try {
+      const { variables: libColorVars, collectionNames } = await getLibraryVariables('COLOR');
+
+      for (const variable of libColorVars) {
+        // Skip if already found as local variable
+        if (seenVariableIds.has(variable.id)) continue;
+
+        // Get the variable's collection to read default mode value
+        const varCollection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+        if (!varCollection) continue;
+
+        const modeId = varCollection.modes[0].modeId;
+        const value = variable.valuesByMode[modeId];
+
+        if (!value || typeof value !== 'object' || !('r' in value)) {
+          continue;
+        }
+
+        const varColor = value as { r: number; g: number; b: number };
+        const matchScore = calculateColorMatchScore(targetRgb, varColor);
+
+        if (matchScore >= 1 - tolerance) {
+          seenVariableIds.add(variable.id);
+          suggestions.push({
+            variableId: variable.id,
+            variableName: variable.name,
+            collectionName: collectionNames.get(variable.variableCollectionId) || varCollection.name,
+            value: rgbToHex(varColor.r, varColor.g, varColor.b),
+            matchScore,
+            type: 'color'
+          });
+        }
+      }
+    } catch (libError) {
+      // Library search is best-effort; local results still returned
+      console.warn('Library variable search failed for colors:', libError);
+    }
+
     // Sort by match score (highest first)
     return suggestions.sort((a, b) => b.matchScore - a.matchScore);
   } catch (error) {
@@ -536,7 +643,8 @@ export async function findMatchingColorVariable(
 }
 
 /**
- * Find existing variables that match a given pixel value
+ * Find existing variables that match a given pixel value.
+ * Searches both local and published library variables.
  *
  * @param pixelValue - Pixel value to match
  * @param tolerance - Value tolerance in pixels (default 0 for exact match)
@@ -548,12 +656,12 @@ export async function findMatchingSpacingVariable(
 ): Promise<TokenSuggestion[]> {
   try {
     const suggestions: TokenSuggestion[] = [];
+    const seenVariableIds = new Set<string>();
 
-    // Get all number variables
+    // --- Search local variables ---
     const numberVariables = await figma.variables.getLocalVariablesAsync('FLOAT');
     const collections = await figma.variables.getLocalVariableCollectionsAsync();
 
-    // Create collection lookup map
     const collectionMap = new Map<string, VariableCollection>();
     for (const collection of collections) {
       collectionMap.set(collection.id, collection);
@@ -563,20 +671,18 @@ export async function findMatchingSpacingVariable(
       const collection = collectionMap.get(variable.variableCollectionId);
       if (!collection) continue;
 
-      // Get the default mode value
       const modeId = collection.modes[0].modeId;
       const value = variable.valuesByMode[modeId];
 
-      // Skip if it's an alias or not a number
       if (typeof value !== 'number') {
         continue;
       }
 
-      // Calculate value difference
       const difference = Math.abs(value - pixelValue);
 
       if (difference <= tolerance) {
         const matchScore = difference === 0 ? 1 : 1 - (difference / (tolerance || 1));
+        seenVariableIds.add(variable.id);
         suggestions.push({
           variableId: variable.id,
           variableName: variable.name,
@@ -586,6 +692,42 @@ export async function findMatchingSpacingVariable(
           type: 'number'
         });
       }
+    }
+
+    // --- Search library variables ---
+    try {
+      const { variables: libNumberVars, collectionNames } = await getLibraryVariables('FLOAT');
+
+      for (const variable of libNumberVars) {
+        if (seenVariableIds.has(variable.id)) continue;
+
+        const varCollection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+        if (!varCollection) continue;
+
+        const modeId = varCollection.modes[0].modeId;
+        const value = variable.valuesByMode[modeId];
+
+        if (typeof value !== 'number') {
+          continue;
+        }
+
+        const difference = Math.abs(value - pixelValue);
+
+        if (difference <= tolerance) {
+          const matchScore = difference === 0 ? 1 : 1 - (difference / (tolerance || 1));
+          seenVariableIds.add(variable.id);
+          suggestions.push({
+            variableId: variable.id,
+            variableName: variable.name,
+            collectionName: collectionNames.get(variable.variableCollectionId) || varCollection.name,
+            value: `${value}px`,
+            matchScore,
+            type: 'number'
+          });
+        }
+      }
+    } catch (libError) {
+      console.warn('Library variable search failed for spacing:', libError);
     }
 
     // Sort by match score (highest first)

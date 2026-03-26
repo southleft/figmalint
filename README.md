@@ -38,7 +38,7 @@ Switch providers and models at any time. API keys are stored per provider and au
 
 Apply fixes directly from the analysis results:
 
-- **Token binding** — Bind hard-coded colors and spacing values to design system variables. Fuzzy matching finds the closest token with property-aware scoring (stroke weight matches stroke tokens, padding matches spacing tokens, etc.)
+- **Token binding** — Bind hard-coded colors and spacing values to design system variables. Searches both local and published library variables, so your tokens can live in a separate file. Fuzzy matching finds the closest token with property-aware scoring (stroke weight matches stroke tokens, padding matches spacing tokens, etc.)
 - **Layer renaming** — Detects generic Figma names (Frame 1, Rectangle 4) and suggests semantic alternatives. Six naming strategies: Semantic, BEM, prefix-based, kebab-case, camelCase, snake_case. Recognizes 30+ semantic layer types.
 - **Add component properties** — Stage recommended Boolean, Text, Instance Swap, or Variant properties from AI suggestions.
 - **Batch operations** — Fix All buttons to resolve all token or naming issues at once.
