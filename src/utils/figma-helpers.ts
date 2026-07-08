@@ -43,17 +43,48 @@ export function rgbToHex(r: number, g: number, b: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+// ---------------------------------------------------------------------------
+// Variable id → Variable lookup cache
+//
+// Token extraction calls getVariableName/getVariableValue once per bound
+// variable per node; the same variable ids repeat heavily across a component
+// tree. Cache the async lookups for the duration of an extraction run.
+// Promises are cached (rather than resolved values) so concurrent lookups for
+// the same id share a single figma.variables.getVariableByIdAsync call.
+// ---------------------------------------------------------------------------
+const variableByIdCache = new Map<string, Promise<Variable | null>>();
+
+/**
+ * Clear the variable id → Variable lookup cache.
+ * Call at the start of a fresh extraction so renamed/edited variables are
+ * picked up, while lookups within a single extraction stay cached.
+ */
+export function clearVariableLookupCache(): void {
+  variableByIdCache.clear();
+}
+
+/**
+ * Cached wrapper around figma.variables.getVariableByIdAsync.
+ * Errors resolve to null (matching previous per-call catch behavior).
+ */
+function getVariableByIdCached(variableId: string): Promise<Variable | null> {
+  let cached = variableByIdCache.get(variableId);
+  if (!cached) {
+    cached = figma.variables.getVariableByIdAsync(variableId).catch((error) => {
+      console.warn('Could not access variable:', variableId, error);
+      return null;
+    });
+    variableByIdCache.set(variableId, cached);
+  }
+  return cached;
+}
+
 /**
  * Safely get variable name by ID using async method
  */
 export async function getVariableName(variableId: string): Promise<string | null> {
-  try {
-    const variable = await figma.variables.getVariableByIdAsync(variableId);
-    return variable ? variable.name : null;
-  } catch (error) {
-    console.warn('Could not access variable:', variableId, error);
-    return null;
-  }
+  const variable = await getVariableByIdCached(variableId);
+  return variable ? variable.name : null;
 }
 
 /**
@@ -61,7 +92,7 @@ export async function getVariableName(variableId: string): Promise<string | null
  */
 export async function getVariableValue(variableId: string, node?: SceneNode): Promise<string | null> {
   try {
-    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    const variable = await getVariableByIdCached(variableId);
     if (!variable) return null;
 
     // Try to resolve the variable value for the current node

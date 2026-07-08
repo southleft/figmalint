@@ -1,10 +1,12 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { ComponentContext, LayerHierarchy, ComponentMetadata, EnhancedAnalysisResult, DetailedAuditResults, AuditCheck, DetachedInstanceInfo, TokenAnalysis, DesignToken, EnhancedAnalysisOptions } from '../types';
-import { extractTextContent, getAllChildNodes } from '../utils/figma-helpers';
+import { extractTextContent, getAllChildNodes, sendMessageToUI } from '../utils/figma-helpers';
+import { debugLog } from '../utils/debug';
 import { extractDesignTokensFromNode } from './token-analyzer';
-import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations, createMCPEnhancedAnalysis } from '../api/claude';
+import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
+import { consistencyEngine } from './consistency-engine';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
 import { findMatchingColorVariable, findBestMatchingVariable } from '../fixes/token-fixer';
 
@@ -87,10 +89,10 @@ async function extractAdditionalContext(node: SceneNode): Promise<any> {
   // Combine both approaches
   const isContainer = isContainerByName || isContainerByStructure;
 
-  console.log(`🔍 [CONTAINER DETECTION] ${node.name}:`);
-  console.log(`  Name-based: ${isContainerByName}`);
-  console.log(`  Structure-based: ${isContainerByStructure}`);
-  console.log(`  Final result: ${isContainer}`);
+  debugLog(`🔍 [CONTAINER DETECTION] ${node.name}:`);
+  debugLog(`  Name-based: ${isContainerByName}`);
+  debugLog(`  Structure-based: ${isContainerByStructure}`);
+  debugLog(`  Final result: ${isContainer}`);
 
   // Detect component family/type
   if (nodeName.includes('avatar') || nodeName.includes('profile')) {
@@ -174,11 +176,11 @@ async function analyzeContainerStructure(node: SceneNode): Promise<boolean> {
   const childInstances = node.children.filter(child => child.type === 'INSTANCE') as InstanceNode[];
 
   if (childInstances.length === 0) {
-    console.log(`🔍 [STRUCTURE] No child instances found in ${node.name}`);
+    debugLog(`🔍 [STRUCTURE] No child instances found in ${node.name}`);
     return false;
   }
 
-  console.log(`🔍 [STRUCTURE] Analyzing ${node.name} with ${childInstances.length} child instances`);
+  debugLog(`🔍 [STRUCTURE] Analyzing ${node.name} with ${childInstances.length} child instances`);
 
   // Group instances by their main component name
   const instanceGroups = new Map<string, InstanceNode[]>();
@@ -196,11 +198,11 @@ async function analyzeContainerStructure(node: SceneNode): Promise<boolean> {
       }
     } catch (error) {
       // Ignore instances with inaccessible main components
-      console.log(`⚠️ [STRUCTURE] Could not access main component for instance:`, error);
+      debugLog(`⚠️ [STRUCTURE] Could not access main component for instance:`, error);
     }
   }));
 
-  console.log(`🔍 [STRUCTURE] Instance groups:`, Array.from(instanceGroups.entries()).map(([name, instances]) => `${name}: ${instances.length}`));
+  debugLog(`🔍 [STRUCTURE] Instance groups:`, Array.from(instanceGroups.entries()).map(([name, instances]) => `${name}: ${instances.length}`));
 
   // Container indicators:
 
@@ -234,11 +236,11 @@ async function analyzeContainerStructure(node: SceneNode): Promise<boolean> {
   // 4. Has components that suggest they're managed as a collection
   const hasCollectionPattern = instanceGroups.size >= 2 && hasRepeatedComponents;
 
-  console.log(`🔍 [STRUCTURE] Analysis for ${node.name}:`);
-  console.log(`  Repeated components: ${hasRepeatedComponents}`);
-  console.log(`  Organizational components: ${hasOrganizationalComponents}`);
-  console.log(`  Instance ratio: ${instanceRatio.toFixed(2)} (${isInstanceHeavy ? 'high' : 'low'})`);
-  console.log(`  Collection pattern: ${hasCollectionPattern}`);
+  debugLog(`🔍 [STRUCTURE] Analysis for ${node.name}:`);
+  debugLog(`  Repeated components: ${hasRepeatedComponents}`);
+  debugLog(`  Organizational components: ${hasOrganizationalComponents}`);
+  debugLog(`  Instance ratio: ${instanceRatio.toFixed(2)} (${isInstanceHeavy ? 'high' : 'low'})`);
+  debugLog(`  Collection pattern: ${hasCollectionPattern}`);
 
   // A component is likely a container if it has any of these strong indicators:
   const isContainer = hasRepeatedComponents || hasOrganizationalComponents || (isInstanceHeavy && instanceGroups.size >= 2);
@@ -426,7 +428,7 @@ function detectSlots(node: SceneNode): string[] {
            !structuralTerms.some(term => lowerSlot.includes(term));
   });
 
-  console.log(`🔍 [SLOTS] Detected ${filteredSlots.length} legitimate content slots from ${slots.length} candidates:`, filteredSlots);
+  debugLog(`🔍 [SLOTS] Detected ${filteredSlots.length} legitimate content slots from ${slots.length} candidates:`, filteredSlots);
 
   return filteredSlots;
 }
@@ -544,18 +546,18 @@ function extractPropertiesFromVariantNames(componentSet: ComponentSetNode): Arra
 async function extractActualComponentProperties(node: SceneNode, selectedNode?: SceneNode): Promise<Array<{ name: string; values: string[]; default: string }>> {
   const actualProperties: Array<{ name: string; values: string[]; default: string }> = [];
 
-  console.log('🔍 [DEBUG] Starting property extraction for node:', node.name, 'type:', node.type);
-  console.log('🔍 [DEBUG] Originally selected node:', selectedNode?.name, 'type:', selectedNode?.type);
+  debugLog('🔍 [DEBUG] Starting property extraction for node:', node.name, 'type:', node.type);
+  debugLog('🔍 [DEBUG] Originally selected node:', selectedNode?.name, 'type:', selectedNode?.type);
 
   // PRIORITY 1: If we have a selected instance, extract from its componentProperties first
   if (selectedNode && selectedNode.type === 'INSTANCE') {
     const instance = selectedNode as InstanceNode;
-    console.log('🔍 [DEBUG] Extracting from selected instance componentProperties...');
+    debugLog('🔍 [DEBUG] Extracting from selected instance componentProperties...');
 
     try {
       if ('componentProperties' in instance && instance.componentProperties) {
         const instanceProps = instance.componentProperties;
-        console.log('🔍 [DEBUG] Found componentProperties on selected instance:', Object.keys(instanceProps));
+        debugLog('🔍 [DEBUG] Found componentProperties on selected instance:', Object.keys(instanceProps));
 
         // Get the component set for property definitions
         const mainComponent = await instance.getMainComponentAsync();
@@ -567,16 +569,16 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
           try {
             if ('componentPropertyDefinitions' in componentSet) {
               propertyDefinitions = componentSet.componentPropertyDefinitions;
-              console.log('🔍 [DEBUG] Got componentPropertyDefinitions from component set');
+              debugLog('🔍 [DEBUG] Got componentPropertyDefinitions from component set');
             }
           } catch (error) {
-            console.log('🔍 [DEBUG] Could not access componentPropertyDefinitions, using instance properties only');
+            debugLog('🔍 [DEBUG] Could not access componentPropertyDefinitions, using instance properties only');
           }
 
           // Extract properties from instance
           for (const propName in instanceProps) {
             const instanceProp = instanceProps[propName];
-            console.log(`🔍 [DEBUG] Processing instance property "${propName}":`, instanceProp);
+            debugLog(`🔍 [DEBUG] Processing instance property "${propName}":`, instanceProp);
 
             let displayName = propName;
             let values: string[] = [];
@@ -597,7 +599,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
             // Try to get property definition for values
             if (propertyDefinitions && propertyDefinitions[propName]) {
               const propDef = propertyDefinitions[propName];
-              console.log(`🔍 [DEBUG] Found property definition for "${propName}":`, propDef);
+              debugLog(`🔍 [DEBUG] Found property definition for "${propName}":`, propDef);
 
               switch (propDef.type) {
                 case 'VARIANT':
@@ -621,7 +623,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
               }
             } else {
               // No property definition available, infer from current value
-              console.log(`🔍 [DEBUG] No property definition for "${propName}", inferring from value`);
+              debugLog(`🔍 [DEBUG] No property definition for "${propName}", inferring from value`);
 
               if (currentValue === 'true' || currentValue === 'false') {
                 values = ['true', 'false'];
@@ -636,18 +638,18 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
               default: currentValue || values[0] || 'default'
             });
 
-            console.log(`🔍 [DEBUG] Added instance property:`, { name: displayName, values, default: currentValue });
+            debugLog(`🔍 [DEBUG] Added instance property:`, { name: displayName, values, default: currentValue });
           }
 
           // If we successfully extracted from instance, return early
           if (actualProperties.length > 0) {
-            console.log(`🔍 [DEBUG] Successfully extracted ${actualProperties.length} properties from selected instance`);
+            debugLog(`🔍 [DEBUG] Successfully extracted ${actualProperties.length} properties from selected instance`);
             return actualProperties;
           }
         }
       }
     } catch (error) {
-      console.log('🔍 [DEBUG] Could not extract from instance componentProperties:', error);
+      debugLog('🔍 [DEBUG] Could not extract from instance componentProperties:', error);
     }
   }
 
@@ -656,23 +658,23 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
     const componentSet = node as ComponentSetNode;
 
     // Method 1: Try componentPropertyDefinitions (most comprehensive)
-    console.log('🔍 [DEBUG] Attempting to access componentPropertyDefinitions...');
+    debugLog('🔍 [DEBUG] Attempting to access componentPropertyDefinitions...');
     try {
       // Test if the property exists first
       if ('componentPropertyDefinitions' in componentSet) {
-        console.log('🔍 [DEBUG] componentPropertyDefinitions property exists on componentSet');
+        debugLog('🔍 [DEBUG] componentPropertyDefinitions property exists on componentSet');
 
         const propertyDefinitions = componentSet.componentPropertyDefinitions;
-        console.log('🔍 [DEBUG] Raw componentPropertyDefinitions:', propertyDefinitions);
-        console.log('🔍 [DEBUG] Type of componentPropertyDefinitions:', typeof propertyDefinitions);
+        debugLog('🔍 [DEBUG] Raw componentPropertyDefinitions:', propertyDefinitions);
+        debugLog('🔍 [DEBUG] Type of componentPropertyDefinitions:', typeof propertyDefinitions);
 
         if (propertyDefinitions && typeof propertyDefinitions === 'object') {
           const propKeys = Object.keys(propertyDefinitions);
-          console.log('🔍 [DEBUG] Found componentPropertyDefinitions with keys:', propKeys);
+          debugLog('🔍 [DEBUG] Found componentPropertyDefinitions with keys:', propKeys);
 
           for (const propName in propertyDefinitions) {
             const prop = propertyDefinitions[propName];
-            console.log(`🔍 [DEBUG] Processing property "${propName}":`, prop);
+            debugLog(`🔍 [DEBUG] Processing property "${propName}":`, prop);
 
             let displayName = propName;
             let values: string[] = [];
@@ -681,44 +683,44 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
             // Clean up property name (remove unique identifier for display)
             if (propName.includes('#')) {
               displayName = propName.split('#')[0];
-              console.log(`🔍 [DEBUG] Cleaned display name: "${displayName}" from "${propName}"`);
+              debugLog(`🔍 [DEBUG] Cleaned display name: "${displayName}" from "${propName}"`);
             }
 
             switch (prop.type) {
               case 'VARIANT':
                 values = prop.variantOptions || [];
                 defaultValue = String(prop.defaultValue) || values[0] || 'default';
-                console.log(`🔍 [DEBUG] VARIANT property "${displayName}": values=${values}, default=${defaultValue}`);
+                debugLog(`🔍 [DEBUG] VARIANT property "${displayName}": values=${values}, default=${defaultValue}`);
                 break;
 
               case 'BOOLEAN':
                 values = ['true', 'false'];
                 defaultValue = prop.defaultValue ? 'true' : 'false';
-                console.log(`🔍 [DEBUG] BOOLEAN property "${displayName}": default=${defaultValue}`);
+                debugLog(`🔍 [DEBUG] BOOLEAN property "${displayName}": default=${defaultValue}`);
                 break;
 
               case 'TEXT':
                 values = [String(prop.defaultValue || 'Text content')];
                 defaultValue = String(prop.defaultValue || 'Text content');
-                console.log(`🔍 [DEBUG] TEXT property "${displayName}": value=${defaultValue}`);
+                debugLog(`🔍 [DEBUG] TEXT property "${displayName}": value=${defaultValue}`);
                 break;
 
               case 'INSTANCE_SWAP':
                 // Handle instance swap properties
                 if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
                   values = prop.preferredValues.map((v: any) => {
-                    console.log(`🔍 [DEBUG] INSTANCE_SWAP preferred value:`, v);
+                    debugLog(`🔍 [DEBUG] INSTANCE_SWAP preferred value:`, v);
                     return v.key || v.name || 'Component instance';
                   });
                 } else {
                   values = ['Component instance'];
                 }
                 defaultValue = values[0] || 'Component instance';
-                console.log(`🔍 [DEBUG] INSTANCE_SWAP property "${displayName}": values=${values}, default=${defaultValue}`);
+                debugLog(`🔍 [DEBUG] INSTANCE_SWAP property "${displayName}": values=${values}, default=${defaultValue}`);
                 break;
 
               default:
-                console.log(`🔍 [DEBUG] Unknown property type "${prop.type}" for "${displayName}"`);
+                debugLog(`🔍 [DEBUG] Unknown property type "${prop.type}" for "${displayName}"`);
                 values = ['Property value'];
                 defaultValue = 'Default';
             }
@@ -729,13 +731,13 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
               default: defaultValue
             });
 
-            console.log(`🔍 [DEBUG] Added property:`, { name: displayName, values, default: defaultValue });
+            debugLog(`🔍 [DEBUG] Added property:`, { name: displayName, values, default: defaultValue });
           }
         } else {
-          console.log('🔍 [DEBUG] componentPropertyDefinitions is not a valid object:', propertyDefinitions);
+          debugLog('🔍 [DEBUG] componentPropertyDefinitions is not a valid object:', propertyDefinitions);
         }
       } else {
-        console.log('🔍 [DEBUG] componentPropertyDefinitions property does not exist on componentSet');
+        debugLog('🔍 [DEBUG] componentPropertyDefinitions property does not exist on componentSet');
       }
     } catch (error) {
       console.error('🔍 [ERROR] Could not access componentPropertyDefinitions:', error);
@@ -744,18 +746,18 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
 
     // Method 2: Fallback to variantGroupProperties if componentPropertyDefinitions failed
     if (actualProperties.length === 0) {
-      console.log('🔍 [DEBUG] No properties found, trying variantGroupProperties fallback...');
+      debugLog('🔍 [DEBUG] No properties found, trying variantGroupProperties fallback...');
       try {
         const variantProps = componentSet.variantGroupProperties;
-        console.log('🔍 [DEBUG] variantGroupProperties:', variantProps);
+        debugLog('🔍 [DEBUG] variantGroupProperties:', variantProps);
 
         if (variantProps) {
           const variantKeys = Object.keys(variantProps);
-          console.log('🔍 [DEBUG] Found variantGroupProperties with keys:', variantKeys);
+          debugLog('🔍 [DEBUG] Found variantGroupProperties with keys:', variantKeys);
 
           for (const propName in variantProps) {
             const prop = variantProps[propName];
-            console.log(`🔍 [DEBUG] Processing variant property "${propName}":`, prop);
+            debugLog(`🔍 [DEBUG] Processing variant property "${propName}":`, prop);
 
             actualProperties.push({
               name: propName,
@@ -764,7 +766,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
             });
           }
         } else {
-          console.log('🔍 [DEBUG] variantGroupProperties is null/undefined');
+          debugLog('🔍 [DEBUG] variantGroupProperties is null/undefined');
         }
       } catch (error) {
         console.warn('🔍 [WARN] Component set has errors, cannot access variantGroupProperties:', error);
@@ -773,7 +775,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
 
       // Method 2.5: Try to extract properties by analyzing variant differences
   if (actualProperties.length === 0 && componentSet.children.length > 0) {
-    console.log('🔍 [DEBUG] Analyzing variant structure to infer properties...');
+    debugLog('🔍 [DEBUG] Analyzing variant structure to infer properties...');
 
     // Collect all unique layer structures and naming patterns
     const propertyPatterns = new Map<string, Set<string>>();
@@ -783,7 +785,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
     componentSet.children.forEach((variant, index) => {
       if (variant.type === 'COMPONENT') {
         const variantName = variant.name;
-        console.log(`🔍 [DEBUG] Analyzing variant ${index}: ${variantName}`);
+        debugLog(`🔍 [DEBUG] Analyzing variant ${index}: ${variantName}`);
 
         // Parse variant name for property-value pairs
         const pairs = variantName.split(',').map(s => s.trim());
@@ -844,35 +846,35 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
             values: ['true', 'false'],
             default: 'false'
           });
-          console.log(`🔍 [DEBUG] Inferred boolean property from visibility: ${propertyName}`);
+          debugLog(`🔍 [DEBUG] Inferred boolean property from visibility: ${propertyName}`);
         }
       }
     });
 
-    console.log(`🔍 [DEBUG] Inferred ${actualProperties.length} properties from variant analysis`);
+    debugLog(`🔍 [DEBUG] Inferred ${actualProperties.length} properties from variant analysis`);
   }
 
     // Method 3: Enhanced structural analysis when APIs fail
     if (actualProperties.length === 0) {
-      console.log('🔍 [DEBUG] All Figma APIs failed, using comprehensive structural analysis...');
+      debugLog('🔍 [DEBUG] All Figma APIs failed, using comprehensive structural analysis...');
       const structuralProperties = extractPropertiesFromStructuralAnalysis(componentSet);
-      console.log('🔍 [DEBUG] Properties from structural analysis:', structuralProperties);
+      debugLog('🔍 [DEBUG] Properties from structural analysis:', structuralProperties);
       actualProperties.push(...structuralProperties);
     }
 
   } else if (node.type === 'COMPONENT') {
     const component = node as ComponentNode;
-    console.log('🔍 [DEBUG] Processing COMPONENT node:', component.name);
+    debugLog('🔍 [DEBUG] Processing COMPONENT node:', component.name);
 
     // For individual components, try componentPropertyDefinitions first
     try {
       if ('componentPropertyDefinitions' in component) {
         const propertyDefinitions = component.componentPropertyDefinitions;
-        console.log('🔍 [DEBUG] Component componentPropertyDefinitions:', propertyDefinitions);
+        debugLog('🔍 [DEBUG] Component componentPropertyDefinitions:', propertyDefinitions);
 
         if (propertyDefinitions && typeof propertyDefinitions === 'object') {
           const propKeys = Object.keys(propertyDefinitions);
-          console.log('🔍 [DEBUG] Found componentPropertyDefinitions on component with keys:', propKeys);
+          debugLog('🔍 [DEBUG] Found componentPropertyDefinitions on component with keys:', propKeys);
 
           for (const propName in propertyDefinitions) {
             const prop = propertyDefinitions[propName];
@@ -919,7 +921,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
           }
         }
       } else {
-        console.log('🔍 [DEBUG] componentPropertyDefinitions does not exist on component');
+        debugLog('🔍 [DEBUG] componentPropertyDefinitions does not exist on component');
       }
     } catch (error) {
       console.warn('🔍 [WARN] Could not access componentPropertyDefinitions on component:', error);
@@ -928,7 +930,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
     // Check if component is part of a component set for variant properties
     if (component.parent && component.parent.type === 'COMPONENT_SET') {
       const componentSet = component.parent as ComponentSetNode;
-      console.log('🔍 [DEBUG] Component is part of a component set, getting variant properties...');
+      debugLog('🔍 [DEBUG] Component is part of a component set, getting variant properties...');
 
       try {
         const variantProps = componentSet.variantGroupProperties;
@@ -952,7 +954,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
 
   } else if (node.type === 'INSTANCE') {
     const instance = node as InstanceNode;
-    console.log('🔍 [DEBUG] Processing INSTANCE node (fallback — Priority 1 may have been skipped)');
+    debugLog('🔍 [DEBUG] Processing INSTANCE node (fallback — Priority 1 may have been skipped)');
 
     // If Priority 1 didn't run (no selectedNode), extract from the instance directly
     if (actualProperties.length === 0) {
@@ -962,7 +964,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
           // If main component belongs to a component set, extract from the set
           if (mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
             const componentSet = mainComponent.parent as ComponentSetNode;
-            console.log('🔍 [DEBUG] Instance fallback: extracting from parent component set:', componentSet.name);
+            debugLog('🔍 [DEBUG] Instance fallback: extracting from parent component set:', componentSet.name);
 
             try {
               if ('componentPropertyDefinitions' in componentSet) {
@@ -1006,7 +1008,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
 
                     actualProperties.push({ name: displayName, values, default: defaultValue });
                   }
-                  console.log(`🔍 [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from component set`);
+                  debugLog(`🔍 [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from component set`);
                 }
               }
             } catch (error) {
@@ -1035,7 +1037,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
             }
           } else {
             // Main component is standalone (no component set)
-            console.log('🔍 [DEBUG] Instance fallback: extracting from standalone main component');
+            debugLog('🔍 [DEBUG] Instance fallback: extracting from standalone main component');
             try {
               if ('componentPropertyDefinitions' in mainComponent) {
                 const propertyDefinitions = mainComponent.componentPropertyDefinitions;
@@ -1074,7 +1076,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
 
                     actualProperties.push({ name: displayName, values, default: defaultValue });
                   }
-                  console.log(`🔍 [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from main component`);
+                  debugLog(`🔍 [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from main component`);
                 }
               }
             } catch (error) {
@@ -1096,7 +1098,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
     }
   });
 
-  console.log(`🔍 [DEBUG] Final result: Extracted ${uniqueProperties.length} unique properties:`, uniqueProperties.map(p => ({ name: p.name, valueCount: p.values.length, default: p.default })));
+  debugLog(`🔍 [DEBUG] Final result: Extracted ${uniqueProperties.length} unique properties:`, uniqueProperties.map(p => ({ name: p.name, valueCount: p.values.length, default: p.default })));
   return uniqueProperties;
 }
 
@@ -1106,7 +1108,7 @@ async function extractActualComponentProperties(node: SceneNode, selectedNode?: 
 function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode): Array<{ name: string; values: string[]; default: string }> {
   const properties: Array<{ name: string; values: string[]; default: string }> = [];
 
-  console.log('🔍 [STRUCTURAL] Starting comprehensive structural analysis of component set:', componentSet.name);
+  debugLog('🔍 [STRUCTURAL] Starting comprehensive structural analysis of component set:', componentSet.name);
 
   // First, get all variant properties from variant names
   const variantProperties = extractPropertiesFromVariantNames(componentSet);
@@ -1120,12 +1122,12 @@ function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode)
 
   componentSet.children.forEach(variant => {
     if (variant.type === 'COMPONENT') {
-      console.log(`🔍 [STRUCTURAL] Analyzing variant: ${variant.name}`);
+      debugLog(`🔍 [STRUCTURAL] Analyzing variant: ${variant.name}`);
 
       // Traverse the variant to find all child nodes
       const traverseNode = (node: SceneNode, depth = 0) => {
         const indent = '  '.repeat(depth);
-        console.log(`🔍 [STRUCTURAL] ${indent}Found child: ${node.name} (type: ${node.type})`);
+        debugLog(`🔍 [STRUCTURAL] ${indent}Found child: ${node.name} (type: ${node.type})`);
 
         allChildNames.add(node.name);
 
@@ -1151,11 +1153,11 @@ function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode)
     }
   });
 
-  console.log('🔍 [STRUCTURAL] Analysis results:');
-  console.log('🔍 [STRUCTURAL] - All child names:', Array.from(allChildNames));
-  console.log('🔍 [STRUCTURAL] - Text layers:', Array.from(textLayers));
-  console.log('🔍 [STRUCTURAL] - Instance layers:', Array.from(instanceLayers));
-  console.log('🔍 [STRUCTURAL] - Boolean indicators:', Array.from(booleanIndicators));
+  debugLog('🔍 [STRUCTURAL] Analysis results:');
+  debugLog('🔍 [STRUCTURAL] - All child names:', Array.from(allChildNames));
+  debugLog('🔍 [STRUCTURAL] - Text layers:', Array.from(textLayers));
+  debugLog('🔍 [STRUCTURAL] - Instance layers:', Array.from(instanceLayers));
+  debugLog('🔍 [STRUCTURAL] - Boolean indicators:', Array.from(booleanIndicators));
 
   // Infer additional properties from common patterns
 
@@ -1168,7 +1170,7 @@ function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode)
         values: ['Text content'],
         default: 'Label'
       });
-      console.log(`🔍 [STRUCTURAL] Added TEXT property: ${cleanName}`);
+      debugLog(`🔍 [STRUCTURAL] Added TEXT property: ${cleanName}`);
     }
   });
 
@@ -1181,7 +1183,7 @@ function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode)
         values: ['Component instance'],
         default: 'Default component'
       });
-      console.log(`🔍 [STRUCTURAL] Added INSTANCE_SWAP property: ${cleanName}`);
+      debugLog(`🔍 [STRUCTURAL] Added INSTANCE_SWAP property: ${cleanName}`);
     }
   });
 
@@ -1206,7 +1208,7 @@ function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode)
         values: ['true', 'false'],
         default: 'false'
       });
-      console.log(`🔍 [STRUCTURAL] Added BOOLEAN property: ${propertyName}`);
+      debugLog(`🔍 [STRUCTURAL] Added BOOLEAN property: ${propertyName}`);
     }
   });
 
@@ -1247,12 +1249,12 @@ function extractPropertiesFromStructuralAnalysis(componentSet: ComponentSetNode)
           values,
           default: defaultValue
         });
-        console.log(`🔍 [STRUCTURAL] Added common ${type} property: ${name}`);
+        debugLog(`🔍 [STRUCTURAL] Added common ${type} property: ${name}`);
       }
     });
   }
 
-  console.log(`🔍 [STRUCTURAL] Final structural analysis result: ${properties.length} properties found`);
+  debugLog(`🔍 [STRUCTURAL] Final structural analysis result: ${properties.length} properties found`);
   return properties;
 }
 
@@ -1324,6 +1326,14 @@ async function extractActualComponentStates(node: SceneNode): Promise<string[]> 
   return uniqueStates;
 }
 
+const ANALYSIS_TOTAL_STEPS = 4;
+
+/** Post a phase-boundary progress update so the UI can show real progress
+ * instead of a static spinner during a 10-60s analysis. */
+function reportAnalysisProgress(step: number, label: string): void {
+  sendMessageToUI('analysis-progress', { step, total: ANALYSIS_TOTAL_STEPS, label });
+}
+
 /**
  * Process enhanced analysis with improved MCP integration
  * Now leverages the upgraded MCP server processing capabilities
@@ -1335,13 +1345,15 @@ export async function processEnhancedAnalysis(
   options: EnhancedAnalysisOptions = {},
   providerId: ProviderId = 'anthropic'
 ): Promise<EnhancedAnalysisResult> {
-  console.log('🎯 Starting enhanced component analysis...');
+  debugLog('🎯 Starting enhanced component analysis...');
 
   const selectedNode = figma.currentPage.selection[0];
   const node = options.node || selectedNode;
   if (!node) {
     throw new Error('No node selected');
   }
+
+  reportAnalysisProgress(1, 'Extracting component data from Figma');
 
   // Extract actual component data from Figma API
   const actualProperties = await extractActualComponentProperties(node, selectedNode);
@@ -1364,43 +1376,70 @@ export async function processEnhancedAnalysis(
   context.existingDescription = componentDescription;
 
   // Log extracted data for debugging
-  console.log(`📊 [ANALYSIS] Extracted from Figma API:`);
-  console.log(`  Properties: ${actualProperties.length}`);
-  console.log(`  States: ${actualStates.length}`);
-  console.log(`  Tokens: ${Object.keys(tokens).length} categories`);
-  console.log(`  Description: ${componentDescription ? 'Present' : 'Missing'}`);
+  debugLog(`📊 [ANALYSIS] Extracted from Figma API:`);
+  debugLog(`  Properties: ${actualProperties.length}`);
+  debugLog(`  States: ${actualStates.length}`);
+  debugLog(`  Tokens: ${Object.keys(tokens).length} categories`);
+  debugLog(`  Description: ${componentDescription ? 'Present' : 'Missing'}`);
 
-  // Check if MCP server is available
-  const mcpServerUrl = options.mcpServerUrl || 'http://localhost:3000/mcp';
-  const useMCP = options.useMCP !== false && mcpServerUrl;
+  // Serve structurally identical components from the analysis cache — this
+  // skips the entire LLM round trip (and its cost) when re-analyzing an
+  // unchanged component. `bypassCache` forces a fresh analysis.
+  const allTokensForHash = [
+    ...tokens.colors,
+    ...tokens.spacing,
+    ...tokens.typography,
+    ...tokens.effects,
+    ...tokens.borders,
+  ];
+  const componentHash = consistencyEngine.generateComponentHash(context, allTokensForHash);
+  if (!options.bypassCache) {
+    const cached = consistencyEngine.getCachedAnalysis(componentHash);
+    if (cached) {
+      console.log('✅ Returning cached analysis (component unchanged)');
+      return { ...cached.result, fromCache: true };
+    }
+  }
+
+  // Check if MCP server is available. Default to the hosted design-systems MCP
+  // server — it is the only MCP endpoint in manifest.json's networkAccess
+  // allowlist, so any other default (e.g. localhost) is silently blocked by
+  // Figma's network sandbox and MCP enhancement never actually runs.
+  const mcpServerUrl = options.mcpServerUrl || 'https://design-systems-mcp.southleft-llc.workers.dev/mcp';
+  const useMCP = options.useMCP !== false && options.enableMCPEnhancement !== false && !!mcpServerUrl;
 
   let analysisResult: any;
 
   if (useMCP) {
-    console.log(`🔄 Using hybrid LLM + MCP approach (${providerId})...`);
+    debugLog(`🔄 Using hybrid LLM + MCP approach (${providerId})...`);
+    reportAnalysisProgress(2, 'Analyzing with AI');
 
-    // Step 1: Use LLM for direct Figma data extraction and analysis
+    // Run the LLM extraction and the MCP best-practice queries in parallel —
+    // the MCP queries only need the component family, which is known before
+    // the LLM responds, and getMCPBestPractices never rejects (it resolves
+    // with {success: false} on failure, which the merge treats as "no MCP").
     const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
-    const llmResponse = await callProvider(providerId, apiKey, {
-      prompt: llmPrompt,
-      model,
-      maxTokens: 4096,
-      temperature: 0.1,
-    });
+    const [llmResponse, mcpEnhancements] = await Promise.all([
+      callProvider(providerId, apiKey, {
+        prompt: llmPrompt,
+        model,
+        maxTokens: 4096,
+        temperature: 0.1,
+      }),
+      getMCPBestPractices(context, mcpServerUrl, {}),
+    ]);
     const llmData = extractJSONFromResponse(llmResponse.content);
 
     if (!llmData) {
       throw new Error('Failed to extract JSON from LLM response');
     }
 
-    // Step 2: Use MCP for best practices and recommendations (lightweight queries)
-    let mcpEnhancements = null;
-    try {
-      mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, llmData);
-      console.log('✅ MCP enhancements received');
-    } catch (mcpError) {
-      console.warn('⚠️ MCP enhancement failed, continuing with LLM data only:', mcpError);
+    if (mcpEnhancements?.success) {
+      debugLog('✅ MCP enhancements received');
+    } else {
+      console.warn('⚠️ MCP enhancement unavailable, continuing with LLM data only');
     }
+    reportAnalysisProgress(3, 'Applying design-system guidance');
 
     // Step 3: Merge LLM data with MCP enhancements
     analysisResult = mergClaudeAndMCPResults(llmData, mcpEnhancements, {
@@ -1414,7 +1453,8 @@ export async function processEnhancedAnalysis(
 
   } else {
     // Fallback to LLM-only analysis (no MCP)
-    console.log(`📝 Using ${providerId}-only analysis...`);
+    debugLog(`📝 Using ${providerId}-only analysis...`);
+    reportAnalysisProgress(2, 'Analyzing with AI');
     const prompt = createEnhancedMetadataPrompt(context);
     const llmFallbackResponse = await callProvider(providerId, apiKey, {
       prompt,
@@ -1429,9 +1469,62 @@ export async function processEnhancedAnalysis(
     }
   }
 
-  // Filter and process the result
+  // Filter and process the result, reusing the data extracted above so the
+  // Figma traversal doesn't run twice per analysis.
+  reportAnalysisProgress(4, 'Building audit results');
   const filteredData = filterDevelopmentRecommendations(analysisResult);
-  return await processAnalysisResult(filteredData, context, options);
+  const result = await processAnalysisResult(filteredData, context, options, {
+    actualProperties,
+    actualStates,
+    tokens,
+    componentDescription,
+  });
+
+  consistencyEngine.cacheAnalysis(componentHash, result);
+  return result;
+}
+
+/**
+ * Serialize a layer hierarchy as a compact indented outline for LLM prompts.
+ *
+ * Pretty-printed JSON of the full tree was easily 10-100KB of prompt on large
+ * component sets; an outline capped by depth and sibling count carries the
+ * same structural signal at a fraction of the tokens.
+ */
+export function serializeHierarchy(
+  hierarchy: LayerHierarchy[],
+  maxDepth: number = 4,
+  maxChildrenPerNode: number = 12
+): string {
+  const lines: string[] = [];
+
+  const countNodes = (nodes: LayerHierarchy[]): number => {
+    let count = 0;
+    for (const n of nodes) {
+      count += 1 + (n.children ? countNodes(n.children) : 0);
+    }
+    return count;
+  };
+
+  const walk = (nodes: LayerHierarchy[], depth: number): void => {
+    const indent = '  '.repeat(depth);
+    for (const n of nodes.slice(0, maxChildrenPerNode)) {
+      lines.push(`${indent}${n.type} "${n.name}"`);
+      if (n.children && n.children.length > 0) {
+        if (depth + 1 < maxDepth) {
+          walk(n.children, depth + 1);
+        } else {
+          lines.push(`${indent}  … ${countNodes(n.children)} nested layers omitted`);
+        }
+      }
+    }
+    if (nodes.length > maxChildrenPerNode) {
+      lines.push(`${indent}… ${nodes.length - maxChildrenPerNode} more siblings omitted`);
+    }
+  };
+
+  walk(hierarchy, 0);
+  return lines.join('\n');
 }
 
 /**
@@ -1469,7 +1562,7 @@ ${actualProperties.length > 10 ? `... and ${actualProperties.length - 10} more p
 - AI suggestions: ${tokens.summary.aiSuggestions}
 
 **Component Structure:**
-${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
+${serializeHierarchy(context.hierarchy)}
 
 **TASK:** Analyze this Figma component and provide:
 1. Component name and description based on actual structure
@@ -1744,7 +1837,7 @@ function generateMCPReadinessFromBestPractices(
  */
 function generatePropertyCheatSheet(
   properties: Array<{ name: string; values: string[]; default: string }>,
-  componentName: string
+  _componentName: string
 ): string[] {
   const cheatSheet: string[] = [];
 
@@ -1792,44 +1885,88 @@ function generatePropertyCheatSheet(
 }
 
 /**
+ * Annotate hard-coded tokens with whether a matching design-token variable
+ * exists (drives the Fix buttons in the UI). Mutates the token contexts.
+ * Also used by the lightweight refresh-tokens path after fixes are applied.
+ */
+export async function enrichTokensWithMatches(tokens: TokenAnalysis): Promise<void> {
+  const categories: Array<'colors' | 'spacing' | 'typography' | 'effects' | 'borders'> = ['colors', 'spacing', 'typography', 'effects', 'borders'];
+  for (const category of categories) {
+    for (const token of tokens[category]) {
+      if (token.source !== 'hard-coded' || !token.context?.nodeId || !token.context?.property) continue;
+
+      try {
+        const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(token.context.property);
+        if (isColorProperty) {
+          const matches = await findMatchingColorVariable(token.value || '', 0.1);
+          token.context.hasMatchingToken = matches.length > 0;
+        } else {
+          const pixelValue = parseFloat(token.value || '0');
+          if (!isNaN(pixelValue)) {
+            const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
+            token.context.hasMatchingToken = matches.length > 0;
+          } else {
+            token.context.hasMatchingToken = false;
+          }
+        }
+      } catch {
+        token.context.hasMatchingToken = false;
+      }
+    }
+  }
+}
+
+/**
  * Process analysis result from Claude and convert to EnhancedAnalysisResult
  */
 export async function processAnalysisResult(
   filteredData: any,
   context: ComponentContext,
-  options: EnhancedAnalysisOptions
+  options: EnhancedAnalysisOptions,
+  preExtracted?: {
+    actualProperties?: Array<{ name: string; values: string[]; default: string }>;
+    actualStates?: string[];
+    tokens?: TokenAnalysis;
+    componentDescription?: string;
+  }
 ): Promise<EnhancedAnalysisResult> {
   try {
-    console.log('🔄 Processing analysis result...');
-    console.log('📊 Filtered data received:', JSON.stringify(filteredData, null, 2).substring(0, 500) + '...');
+    debugLog('🔄 Processing analysis result...');
 
-    // We need to get the node from somewhere - let's get it from the current selection
-    const selection = figma.currentPage.selection;
-    let node: SceneNode | null = null;
+    // Prefer the node resolved by the caller (instance → main component,
+    // variant → component set, batch-loop node); the raw selection is only a
+    // last resort and may not match the node the context was built from.
+    let node: SceneNode | null = options.node || null;
 
-    if (selection.length > 0) {
-      node = selection[0];
-    } else {
-      throw new Error('No component selected');
+    if (!node) {
+      const selection = figma.currentPage.selection;
+      if (selection.length > 0) {
+        node = selection[0];
+      } else {
+        throw new Error('No component selected');
+      }
     }
 
-    // Extract actual properties from the Figma component
-    // Pass node as selectedNode too — node IS the selected node from selection[0],
-    // and extractActualComponentProperties needs it for Priority 1 instance extraction
-    const actualProperties = await extractActualComponentProperties(node, node);
+    // Reuse data the caller already extracted (processEnhancedAnalysis and the
+    // batch loop both traverse the node before calling us) — re-extracting
+    // doubles the Figma-side cost of every analysis.
+    const actualProperties = preExtracted?.actualProperties
+      ?? await extractActualComponentProperties(node, node);
 
-    // Extract actual states
-    const actualStates = await extractActualComponentStates(node);
-    
+    const actualStates = preExtracted?.actualStates
+      ?? await extractActualComponentStates(node);
+
     // Extract component description if available
-    let componentDescription = '';
-    if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
-      componentDescription = (node as ComponentNode | ComponentSetNode).description || '';
-    } else if (node.type === 'INSTANCE') {
-      const instance = node as InstanceNode;
-      const mainComponent = await instance.getMainComponentAsync();
-      if (mainComponent) {
-        componentDescription = mainComponent.description || '';
+    let componentDescription = preExtracted?.componentDescription ?? '';
+    if (preExtracted?.componentDescription === undefined) {
+      if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+        componentDescription = (node as ComponentNode | ComponentSetNode).description || '';
+      } else if (node.type === 'INSTANCE') {
+        const instance = node as InstanceNode;
+        const mainComponent = await instance.getMainComponentAsync();
+        if (mainComponent) {
+          componentDescription = mainComponent.description || '';
+        }
       }
     }
 
@@ -1850,33 +1987,8 @@ export async function processAnalysisResult(
     };
 
     if (options.includeTokenAnalysis !== false) {
-      tokens = await extractDesignTokensFromNode(node);
-
-      // Check which hard-coded tokens have matching variables available
-      const categories: Array<'colors' | 'spacing' | 'typography' | 'effects' | 'borders'> = ['colors', 'spacing', 'typography', 'effects', 'borders'];
-      for (const category of categories) {
-        for (const token of tokens[category]) {
-          if (token.source !== 'hard-coded' || !token.context?.nodeId || !token.context?.property) continue;
-
-          try {
-            const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(token.context.property);
-            if (isColorProperty) {
-              const matches = await findMatchingColorVariable(token.value || '', 0.1);
-              token.context.hasMatchingToken = matches.length > 0;
-            } else {
-              const pixelValue = parseFloat(token.value || '0');
-              if (!isNaN(pixelValue)) {
-                const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
-                token.context.hasMatchingToken = matches.length > 0;
-              } else {
-                token.context.hasMatchingToken = false;
-              }
-            }
-          } catch {
-            token.context.hasMatchingToken = false;
-          }
-        }
-      }
+      tokens = preExtracted?.tokens ?? await extractDesignTokensFromNode(node);
+      await enrichTokensWithMatches(tokens);
     }
 
     // Ensure we have complete metadata even if some parts failed
@@ -1945,9 +2057,9 @@ export async function processAnalysisResult(
     };
 
     // Log what we're sending to UI
-    console.log('📤 Sending to UI - metadata.props:', metadata.props?.length);
-    console.log('📤 Sending to UI - metadata.states:', metadata.states);
-    console.log('📤 Sending to UI - metadata.mcpReadiness:', metadata.mcpReadiness);
+    debugLog('📤 Sending to UI - metadata.props:', metadata.props?.length);
+    debugLog('📤 Sending to UI - metadata.states:', metadata.states);
+    debugLog('📤 Sending to UI - metadata.mcpReadiness:', metadata.mcpReadiness);
 
     // Create audit results with best practices analysis
     const audit: DetailedAuditResults = await createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
@@ -1959,13 +2071,13 @@ export async function processAnalysisResult(
       description: rec.description || '',
       examples: rec.examples || []
     })).filter((rec: any) => rec.name);
-    console.log(`💡 AI-generated property recommendations: ${recommendations.length}`);
+    debugLog(`💡 AI-generated property recommendations: ${recommendations.length}`);
 
     // Analyze naming issues (depth-limited to 5 for performance)
     const namingIssues = analyzeNamingIssues(node, 5);
-    console.log(`📛 Found ${namingIssues.length} naming issues`);
+    debugLog(`📛 Found ${namingIssues.length} naming issues`);
 
-    console.log('✅ Analysis result processed successfully');
+    debugLog('✅ Analysis result processed successfully');
 
     return {
       metadata,
@@ -1986,12 +2098,12 @@ export async function processAnalysisResult(
  * Create audit results from Claude analysis data
  */
 async function createAuditResults(
-  filteredData: any,
-  context: ComponentContext,
+  _filteredData: any,
+  _context: ComponentContext,
   node: SceneNode,
   actualProperties: Array<{ name: string; values: string[]; default: string }>,
   actualStates: string[],
-  tokens: TokenAnalysis,
+  _tokens: TokenAnalysis,
   componentDescription?: string
 ): Promise<DetailedAuditResults> {
   // Check parent component set description for context-aware description check
@@ -2551,71 +2663,6 @@ function generateImplementationNotes(
 }
 
 /**
- * Enhance MCP readiness data from Claude with fallback content
- */
-function enhanceMCPReadinessWithFallback(mcpData: any, data: {
-  node: SceneNode;
-  context: any;
-  actualProperties: Array<{ name: string; values: string[]; default: string }>;
-  actualStates: string[];
-  tokens: any;
-}): any {
-  const score = parseInt(mcpData.score) || 0;
-  let strengths = Array.isArray(mcpData.strengths) ? mcpData.strengths.filter((s: any) =>
-    typeof s === 'string' && s.trim() && !s.includes('REQUIRED') && !s.includes('Examples')
-  ) : [];
-  let gaps = Array.isArray(mcpData.gaps) ? mcpData.gaps.filter((g: any) =>
-    typeof g === 'string' && g.trim() && !g.includes('REQUIRED') && !g.includes('Examples')
-  ) : [];
-  let recommendations = Array.isArray(mcpData.recommendations) ? mcpData.recommendations.filter((r: any) =>
-    typeof r === 'string' && r.trim() && !r.includes('REQUIRED') && !r.includes('Examples')
-  ) : [];
-
-  // Generate fallback content if Claude didn't provide enough
-  if (strengths.length === 0 || gaps.length === 0 || recommendations.length === 0) {
-    console.log('🔄 Enhancing MCP readiness with fallback content...');
-    const fallback = generateFallbackMCPReadiness(data);
-
-    if (strengths.length === 0) {
-      strengths = fallback.strengths;
-    }
-    if (gaps.length === 0) {
-      gaps = fallback.gaps;
-    }
-    if (recommendations.length === 0) {
-      recommendations = fallback.recommendations;
-    }
-  }
-
-  return {
-    score,
-    strengths,
-    gaps: deduplicateRecommendations(gaps), // Apply same deduplication to gaps
-    recommendations: deduplicateRecommendations(recommendations),
-    implementationNotes: mcpData.implementationNotes ||
-      generateImplementationNotes(
-        data.context.additionalContext?.componentFamily || 'generic',
-        mcpData.strengths || [],
-        mcpData.gaps || [],
-        data.actualProperties,
-        data.actualStates,
-        {
-          colors: data.tokens?.colors?.filter((t: any) => t.isActualToken)?.length || 0,
-          spacing: data.tokens?.spacing?.filter((t: any) => t.isActualToken)?.length || 0,
-          typography: data.tokens?.typography?.filter((t: any) => t.isActualToken)?.length || 0,
-          hardCoded: [
-            ...(data.tokens?.colors?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
-            ...(data.tokens?.spacing?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
-            ...(data.tokens?.typography?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
-            ...(data.tokens?.effects?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || []),
-            ...(data.tokens?.borders?.filter((t: any) => !t.isActualToken && !t.isDefaultVariantStyle) || [])
-          ].length
-        }
-      )
-  };
-}
-
-/**
  * Deduplicate similar items (recommendations, gaps, etc.) to avoid redundancy
  */
 function deduplicateRecommendations(items: string[]): string[] {
@@ -2701,10 +2748,10 @@ function deduplicateRecommendations(items: string[]): string[] {
     }
   });
 
-  console.log(`🔍 [DEDUP] Reduced ${items.length} items to ${deduplicated.length}`);
+  debugLog(`🔍 [DEDUP] Reduced ${items.length} items to ${deduplicated.length}`);
   if (items.length !== deduplicated.length) {
-    console.log(`🔍 [DEDUP] Original:`, items);
-    console.log(`🔍 [DEDUP] Deduplicated:`, deduplicated);
+    debugLog(`🔍 [DEDUP] Original:`, items);
+    debugLog(`🔍 [DEDUP] Deduplicated:`, deduplicated);
   }
 
   return deduplicated;
@@ -2800,8 +2847,10 @@ export function detectDetachedInstances(node: SceneNode): DetachedInstanceInfo[]
   // e.g. "Button/Large/Disabled" when analyzing a component named "Button"
   const componentBaseName = node.name.split('/')[0].trim().toLowerCase();
 
-  // Scan the page for FRAME nodes (detached instances become FRAMEs)
-  const allFrames = page.findAll(n => n.type === 'FRAME') as FrameNode[];
+  // Scan the page for FRAME nodes (detached instances become FRAMEs).
+  // findAllWithCriteria is the optimized native path — page.findAll with a
+  // JS predicate walks every node through the plugin bridge.
+  const allFrames = page.findAllWithCriteria({ types: ['FRAME'] });
 
   const results: DetachedInstanceInfo[] = [];
 

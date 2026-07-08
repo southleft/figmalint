@@ -2,7 +2,7 @@
  * Google (Gemini) LLM Provider Implementation
  *
  * Implements the LLMProvider interface for Google's Generative AI (Gemini) API.
- * Supports Gemini 3.1 Pro, Gemini 3 Flash, and Gemini 2.5 Flash models.
+ * Supports Gemini 3.5 Flash, Gemini 3.1 Flash-Lite, and Gemini 2.5 Flash-Lite models.
  *
  * Note: Google uses URL-based authentication rather than header-based.
  * The API key is appended to the URL as a query parameter.
@@ -24,23 +24,23 @@ import {
  */
 export const GOOGLE_MODELS: LLMModel[] = [
   {
-    id: 'gemini-3.1-pro-preview',
-    name: 'Gemini 3.1 Pro',
-    description: 'Flagship model - Advanced reasoning and agentic capabilities',
-    contextWindow: 1000000,
-    isDefault: false,
-  },
-  {
-    id: 'gemini-3-flash-preview',
-    name: 'Gemini 3 Flash',
-    description: 'Standard model - Frontier-class performance at lower cost, recommended for most tasks',
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    description: 'Flagship model - Most intelligent, frontier performance on agentic and coding tasks, recommended for most tasks',
     contextWindow: 1000000,
     isDefault: true,
   },
   {
     id: 'gemini-3.1-flash-lite',
     name: 'Gemini 3.1 Flash-Lite',
-    description: 'Economy model - GA workhorse optimized for low-latency, high-volume tasks',
+    description: 'Standard model - Frontier-class performance rivaling larger models at a fraction of the cost',
+    contextWindow: 1000000,
+    isDefault: false,
+  },
+  {
+    id: 'gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash-Lite',
+    description: 'Economy model - Fastest and most budget-friendly for low-latency, high-volume tasks',
     contextWindow: 1000000,
     isDefault: false,
   },
@@ -197,7 +197,7 @@ class GoogleProvider implements LLMProvider {
     if (!geminiResponse.candidates || geminiResponse.candidates.length === 0) {
       const keys = Object.keys(geminiResponse as Record<string, unknown>);
       throw new LLMError(
-        `No candidates in Gemini response. Response keys: [${keys.join(', ')}]${geminiResponse.error ? `. Error: ${geminiResponse.error.message}` : ''}`,
+        `No candidates in Gemini response. Response keys: [${keys.join(', ')}]`,
         LLMErrorCode.INVALID_REQUEST
       );
     }

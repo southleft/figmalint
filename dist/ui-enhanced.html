@@ -2376,8 +2376,8 @@
               <select id="model-select">
                 <!-- Anthropic (Claude) Models -->
                 <optgroup label="Anthropic (Claude)" id="anthropic-models">
-                  <option value="claude-opus-4-7">Claude Opus 4.7 (Flagship - Advanced Reasoning)</option>
-                  <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 (Recommended - Best Value)</option>
+                  <option value="claude-opus-4-8">Claude Opus 4.8 (Flagship - Advanced Reasoning)</option>
+                  <option value="claude-sonnet-5" selected>Claude Sonnet 5 (Recommended - Best Value)</option>
                   <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast - Economy)</option>
                 </optgroup>
                 <!-- OpenAI (GPT) Models -->
@@ -2388,9 +2388,9 @@
                 </optgroup>
                 <!-- Google (Gemini) Models -->
                 <optgroup label="Google (Gemini)" id="google-models" style="display: none;">
-                  <option value="gemini-3.1-pro-preview" disabled>Gemini 3.1 Pro (Flagship - Reasoning)</option>
-                  <option value="gemini-3-flash-preview" disabled>Gemini 3 Flash (Recommended - Best Value)</option>
-                  <option value="gemini-3.1-flash-lite" disabled>Gemini 3.1 Flash-Lite (Fast - Economy)</option>
+                  <option value="gemini-3.5-flash" disabled>Gemini 3.5 Flash (Flagship - Recommended)</option>
+                  <option value="gemini-3.1-flash-lite" disabled>Gemini 3.1 Flash-Lite (Standard - Best Value)</option>
+                  <option value="gemini-2.5-flash-lite" disabled>Gemini 2.5 Flash-Lite (Fast - Economy)</option>
                 </optgroup>
               </select>
               <p class="card-subtitle">Choose the model that works best for your component analysis</p>
@@ -2404,6 +2404,7 @@
                 <span>Analyze Component</span>
               </button>
             </div>
+            <p id="selection-hint" class="card-subtitle" style="margin-top: 6px; display: none;"></p>
           </div>
 
           <!-- Status Message -->
@@ -2411,6 +2412,26 @@
             <div class="status-banner" id="status">
               <span class="status-icon" id="status-icon"></span>
               <span id="status-text">Ready to analyze</span>
+            </div>
+          </div>
+
+          <!-- Restore last analysis banner -->
+          <div id="restore-banner" style="display: none; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; margin-top: 8px; border: 1px solid var(--border-color, #e0e0e0); border-radius: 6px;">
+            <span id="restore-banner-text" style="font-size: 11px;"></span>
+            <span style="display: inline-flex; gap: 6px;">
+              <button id="restore-analysis" class="button button-secondary" style="font-size: 11px; padding: 3px 8px;">Restore</button>
+              <button id="dismiss-restore" class="button button-secondary" style="font-size: 11px; padding: 3px 8px;">Dismiss</button>
+            </span>
+          </div>
+
+          <!-- Analysis progress -->
+          <div id="analysis-progress" style="display: none; margin-top: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <span id="analysis-progress-label" style="font-size: 11px;">Preparing analysis…</span>
+              <button id="cancel-analysis" class="button button-secondary" style="font-size: 11px; padding: 3px 8px;">Cancel</button>
+            </div>
+            <div style="background: var(--bg-secondary, #eee); border-radius: 4px; height: 6px; margin-top: 6px; overflow: hidden;">
+              <div id="analysis-progress-bar" style="height: 6px; width: 5%; border-radius: 4px; background: var(--figma-blue, #18a0fb); transition: width 0.3s;"></div>
             </div>
           </div>
         </div>
@@ -2428,6 +2449,17 @@
 
         <!-- Analysis Results -->
         <div id="analysis-results" class="hidden">
+          <!-- Results header: which node these results belong to -->
+          <div id="results-header" style="display: none; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 4px;">
+            <div style="min-width: 0;">
+              <a href="#" id="results-node-name" style="font-weight: 600; text-decoration: none; color: inherit;"></a>
+              <span id="results-node-meta" style="color: var(--text-tertiary, #999); font-size: 11px; display: block;"></span>
+            </div>
+            <span style="display: inline-flex; gap: 6px; flex-shrink: 0;">
+              <button id="generate-instance-sheet" class="button button-secondary" title="Generate a documentation grid of instances (variants × properties) next to the component" style="font-size: 11px; padding: 3px 8px;">Instance sheet</button>
+              <button id="reanalyze-fresh" class="button button-secondary" style="font-size: 11px; padding: 3px 8px;">Re-analyze</button>
+            </span>
+          </div>
           <!-- Audit View -->
           <div class="collapsible">
             <div class="collapsible-header active" onclick="toggleCollapsible(this)">
@@ -2814,7 +2846,7 @@
         name: 'Claude',
         placeholder: 'sk-ant-...',
         hint: 'Get your API key from platform.claude.com',
-        defaultModel: 'claude-sonnet-4-6',
+        defaultModel: 'claude-sonnet-5',
         portalUrl: 'https://platform.claude.com/settings/keys',
         portalLabel: 'platform.claude.com',
         subscriptionName: 'Claude Pro / Claude Team'
@@ -2832,7 +2864,7 @@
         name: 'Gemini',
         placeholder: 'AIza...',
         hint: 'Get your API key from aistudio.google.com',
-        defaultModel: 'gemini-3-flash-preview',
+        defaultModel: 'gemini-3.5-flash',
         portalUrl: 'https://aistudio.google.com/apikey',
         portalLabel: 'aistudio.google.com',
         subscriptionName: 'Gemini Advanced'
@@ -2870,18 +2902,8 @@
     const exportMetadataButton = document.getElementById('export-metadata');
 
     // Playground elements
-    const generatePlaygroundButton = document.getElementById('generate-playground');
-    const playgroundEmpty = document.getElementById('playground-empty');
-    const playgroundContent = document.getElementById('playground-content');
-    const playgroundGrid = document.getElementById('playground-grid');
 
     // Documentation elements
-    const exportDocsButton = document.getElementById('export-docs');
-    const generateDocsFrameButton = document.getElementById('generate-docs-frame');
-    const saveNotesButton = document.getElementById('save-notes');
-    const docsEmpty = document.getElementById('docs-empty');
-    const docsPreview = document.getElementById('docs-preview');
-    const collabNotes = document.getElementById('collab-notes');
     // Note: export-format element is created dynamically, so we get it in the handler function
 
     // Chat Elements
@@ -2978,10 +3000,27 @@
             delete fix._groupIdx;
           });
         }
+
+        // Honor unchecked token groups in the Fix All modal
+        const uncheckedGroups = new Set();
+        document.querySelectorAll('#modal-body input[data-fix-group]').forEach(checkbox => {
+          if (!checkbox.checked) uncheckedGroups.add(checkbox.getAttribute('data-fix-group'));
+        });
+        const selectedFixes = fixes.filter(fix => !fix._groupKey || !uncheckedGroups.has(fix._groupKey));
+        selectedFixes.forEach(fix => { delete fix._groupKey; });
+
+        if (selectedFixes.length === 0) {
+          hideFixModal();
+          updateStatus('No fixes selected', 'info');
+          return;
+        }
+
         sendMessageToPlugin('apply-batch-fix', {
-          fixes: fixes,
+          fixes: selectedFixes,
           confirmAll: true
         });
+      } else if (type === 'naming-strategy') {
+        sendMessageToPlugin('apply-naming-strategy', { strategy: pendingFix.strategy });
       }
 
       hideFixModal();
@@ -3011,6 +3050,9 @@
     }
 
     // Batch fix all hard-coded tokens in a section
+    // Pending Fix-All request awaiting token resolution from the plugin
+    let pendingBatchFixRequest = null;
+
     function batchFixAllTokens(sectionId) {
       const container = document.getElementById(sectionId);
       if (!container) return;
@@ -3018,20 +3060,15 @@
       const items = container.querySelectorAll('.token-item-compact.warning');
       const fixes = [];
 
+      // Fix data lives in data-* attributes on the Fix buttons — no markup parsing
       items.forEach(item => {
         const fixBtn = item.querySelector('.fix-btn');
         if (!fixBtn) return;
-
-        // Extract data from the onclick attribute
-        const onclickStr = fixBtn.getAttribute('onclick') || '';
-        const match = onclickStr.match(/previewTokenFix\('([^']+)',\s*'([^']+)',\s*'([^']+)'\)/);
-        if (match) {
-          fixes.push({
-            type: 'token',
-            nodeId: match[1],
-            propertyPath: match[2],
-            newValue: match[3]
-          });
+        const nodeId = fixBtn.getAttribute('data-node-id');
+        const propertyPath = fixBtn.getAttribute('data-property');
+        const value = fixBtn.getAttribute('data-value');
+        if (nodeId && propertyPath && value) {
+          fixes.push({ type: 'token', nodeId, propertyPath, newValue: value });
         }
       });
 
@@ -3040,27 +3077,64 @@
         return;
       }
 
-      // Group by value to show a clear preview
+      // Resolve the actual token each value will bind to before asking the
+      // user to confirm — the modal opens when 'batch-fix-preview' arrives.
+      pendingBatchFixRequest = { fixes };
+      updateStatus('Matching values to design tokens…', 'info');
+      sendMessageToPlugin('preview-batch-fix', { fixes });
+    }
+
+    // Render the Fix All confirmation modal once token matches are resolved
+    function handleBatchFixPreview(data) {
+      if (!pendingBatchFixRequest) return;
+      const fixes = pendingBatchFixRequest.fixes;
+      pendingBatchFixRequest = null;
+      const resolutions = (data && data.resolutions) || {};
+
+      // Group by (value, property); annotate fixes with their resolved token
+      // so applying skips a second variable scan.
       const groups = {};
       fixes.forEach(fix => {
-        const key = fix.newValue;
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(fix);
+        const key = `${fix.newValue}|${fix.propertyPath}`;
+        const resolution = resolutions[key] || null;
+        if (resolution) fix.tokenId = resolution.tokenId;
+        fix._groupKey = key;
+        if (!groups[key]) groups[key] = { fixes: [], resolution };
+        groups[key].fixes.push(fix);
       });
 
-      let previewHtml = '<div style="margin-bottom: 8px; font-size: 12px;">Apply token fixes to <strong>' + fixes.length + ' item' + (fixes.length !== 1 ? 's' : '') + '</strong>:</div>';
-      Object.keys(groups).forEach(value => {
-        const count = groups[value].length;
-        const prop = groups[value][0].propertyPath;
-        previewHtml += '<div class="preview-box" style="margin-bottom: 6px;">';
-        previewHtml += '<div class="preview-value">' + escapeHtml(value) + ' (' + prop + ') — ' + count + ' node' + (count !== 1 ? 's' : '') + '</div>';
-        previewHtml += '</div>';
+      const matchable = fixes.filter(f => groups[f._groupKey].resolution).length;
+      let previewHtml = '<div style="margin-bottom: 8px; font-size: 12px;">Apply token fixes to <strong>' + matchable + ' of ' + fixes.length + ' item' + (fixes.length !== 1 ? 's' : '') + '</strong>:</div>';
+
+      Object.keys(groups).forEach((key, index) => {
+        const group = groups[key];
+        const value = group.fixes[0].newValue;
+        const prop = group.fixes[0].propertyPath;
+        const count = group.fixes.length;
+        const checkboxId = `batch-fix-group-${index}`;
+        if (group.resolution) {
+          previewHtml += '<label class="preview-box" for="' + checkboxId + '" style="margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer;">';
+          previewHtml += '<input type="checkbox" id="' + checkboxId + '" data-fix-group="' + escapeHtml(key) + '" checked style="flex-shrink: 0;">';
+          previewHtml += '<span class="preview-value" style="min-width: 0;">' + escapeHtml(value) + ' (' + escapeHtml(prop) + ') → <strong>' + escapeHtml(group.resolution.tokenName) + '</strong>' +
+            (group.resolution.collectionName ? ' <span style="color: var(--text-tertiary, #999);">(' + escapeHtml(group.resolution.collectionName) + ')</span>' : '') +
+            ' — ' + count + ' node' + (count !== 1 ? 's' : '') + '</span>';
+          previewHtml += '</label>';
+        } else {
+          previewHtml += '<div class="preview-box" style="margin-bottom: 6px; opacity: 0.6;">';
+          previewHtml += '<div class="preview-value">' + escapeHtml(value) + ' (' + escapeHtml(prop) + ') — no matching token, will be skipped</div>';
+          previewHtml += '</div>';
+        }
       });
-      previewHtml += '<p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">Each value will be matched to the best available design token.</p>';
+      previewHtml += '<p style="font-size: 11px; color: var(--text-secondary); margin-top: 8px;">Uncheck any rows you don\'t want to change.</p>';
+
+      if (matchable === 0) {
+        updateStatus('No matching design tokens found for these values — add variables first', 'warning');
+        return;
+      }
 
       showFixModal('Fix All Tokens', previewHtml, {
         type: 'batch',
-        fixes: fixes
+        fixes: fixes.filter(f => groups[f._groupKey].resolution)
       });
     }
 
@@ -3306,6 +3380,41 @@
       clearApiKeyLink.addEventListener('click', handleClearApiKey);
       batchModeSwitch.addEventListener('change', handleBatchModeToggle);
 
+      // Analysis lifecycle controls
+      document.getElementById('cancel-analysis').addEventListener('click', handleCancelAnalysis);
+      document.getElementById('reanalyze-fresh').addEventListener('click', () => handleAnalyzeComponent(true));
+      document.getElementById('generate-instance-sheet').addEventListener('click', () => {
+        const button = document.getElementById('generate-instance-sheet');
+        button.disabled = true;
+        updateStatus('Generating instance sheet…', 'info');
+        sendMessageToPlugin('generate-instance-sheet', { nodeId: lastAnalyzedNodeId });
+      });
+      document.getElementById('restore-analysis').addEventListener('click', () => {
+        document.getElementById('restore-banner').style.display = 'none';
+        updateStatus('Restoring last analysis…', 'info');
+        analysisResults.classList.remove('hidden');
+        showLoadingState();
+        sendMessageToPlugin('restore-last-analysis', {});
+      });
+      document.getElementById('dismiss-restore').addEventListener('click', () => {
+        document.getElementById('restore-banner').style.display = 'none';
+      });
+
+      // Keyboard shortcuts: Cmd/Ctrl+Enter analyzes, Esc closes the fix modal
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          if (!analyzeButton.disabled && document.activeElement !== chatInput) {
+            e.preventDefault();
+            handleAnalyzeComponent();
+          }
+        } else if (e.key === 'Escape') {
+          const modal = document.getElementById('fix-modal');
+          if (modal && modal.classList.contains('active')) {
+            hideFixModal();
+          }
+        }
+      });
+
       // Configuration visibility toggles
       showConfigButton.addEventListener('click', () => {
         apiKeyCard.style.display = 'block';
@@ -3322,20 +3431,6 @@
       // Export functionality
       if (exportMetadataButton) {
         exportMetadataButton.addEventListener('click', handleExportMetadata);
-      }
-
-      // Playground and documentation buttons (with null checks)
-      if (generatePlaygroundButton) {
-        generatePlaygroundButton.addEventListener('click', handleGeneratePlayground);
-      }
-      if (exportDocsButton) {
-        exportDocsButton.addEventListener('click', handleExportDocs);
-      }
-      if (generateDocsFrameButton) {
-        generateDocsFrameButton.addEventListener('click', handleGenerateDocsFrame);
-      }
-      if (saveNotesButton) {
-        saveNotesButton.addEventListener('click', handleSaveNotes);
       }
 
       // Chat Event Listeners
@@ -3940,10 +4035,43 @@
     })();
 
     // Handle API Key Changes
+    // Mirror the plugin-side key-format rules so users get feedback while
+    // typing instead of after clicking Save.
+    function validateApiKeyFormat(key, provider) {
+      const trimmed = (key || '').trim();
+      if (!trimmed) return null;
+      switch (provider) {
+        case 'anthropic':
+          if (!trimmed.startsWith('sk-ant-')) return 'Claude keys start with "sk-ant-"';
+          if (trimmed.length < 40) return 'This key looks too short — copy the complete key';
+          return null;
+        case 'openai':
+          if (!trimmed.startsWith('sk-')) return 'OpenAI keys start with "sk-"';
+          return null;
+        case 'google':
+          if (!trimmed.startsWith('AIza') && !trimmed.startsWith('AQ.')) return 'Google keys start with "AIza" or "AQ."';
+          return null;
+        default:
+          return null;
+      }
+    }
+
     function handleApiKeyChange() {
-      const hasApiKey = apiKeyInput.value.trim().length > 0;
+      const value = apiKeyInput.value.trim();
+      const hasApiKey = value.length > 0;
       if (hasApiKey && apiKeySaved) {
         updateAnalyzeButtonState(true);
+      }
+
+      // Inline format validation
+      const formatError = validateApiKeyFormat(value, currentProvider);
+      const config = providerConfig[currentProvider] || {};
+      if (formatError) {
+        apiKeyHint.textContent = formatError;
+        apiKeyHint.style.color = 'var(--figma-red, #f24822)';
+      } else {
+        apiKeyHint.textContent = config.hint || '';
+        apiKeyHint.style.color = '';
       }
     }
 
@@ -4058,7 +4186,59 @@
     }
 
     // Handle Analyze Component
-    function handleAnalyzeComponent() {
+    // --- Analysis lifecycle state ---
+    let currentRequestId = null;        // id of the in-flight analysis
+    let analysisWatchdogTimer = null;   // re-enables the UI if the plugin never responds
+    let lastResultFromCache = false;    // last result was served from the component cache
+    let lastResultNodeId = null;        // node the last result belongs to
+    let currentSelectionInfo = null;    // primary selection info from batch-selection-update
+
+    const ANALYSIS_WATCHDOG_MS = 90000;
+
+    function showAnalysisProgress(label, step, total) {
+      const container = document.getElementById('analysis-progress');
+      const labelEl = document.getElementById('analysis-progress-label');
+      const bar = document.getElementById('analysis-progress-bar');
+      container.style.display = 'block';
+      labelEl.textContent = total ? `${label} (${step}/${total})` : label;
+      bar.style.width = total ? `${Math.max(5, Math.round((step / total) * 100))}%` : '5%';
+    }
+
+    function hideAnalysisProgress() {
+      document.getElementById('analysis-progress').style.display = 'none';
+    }
+
+    function clearAnalysisWatchdog() {
+      if (analysisWatchdogTimer) {
+        clearTimeout(analysisWatchdogTimer);
+        analysisWatchdogTimer = null;
+      }
+    }
+
+    function startAnalysisWatchdog() {
+      clearAnalysisWatchdog();
+      analysisWatchdogTimer = setTimeout(() => {
+        // No response from the plugin — unblock the UI and offer a retry.
+        currentRequestId = null;
+        hideAnalysisProgress();
+        updateAnalyzeButtonState(apiKeySaved);
+        analysisResults.classList.add('hidden');
+        updateStatus('Analysis timed out. The AI provider may be slow — try again.', 'error');
+      }, ANALYSIS_WATCHDOG_MS);
+    }
+
+    function handleCancelAnalysis() {
+      if (!currentRequestId) return;
+      currentRequestId = null;
+      sendMessageToPlugin('cancel-analysis', {});
+      clearAnalysisWatchdog();
+      hideAnalysisProgress();
+      updateAnalyzeButtonState(apiKeySaved);
+      analysisResults.classList.add('hidden');
+      updateStatus('Analysis cancelled', 'info');
+    }
+
+    function handleAnalyzeComponent(forceFresh) {
       if (!apiKeySaved) {
         updateStatus('Please save API key first', 'error');
         return;
@@ -4076,12 +4256,26 @@
       analysisResults.classList.remove('hidden');
       showLoadingState();
 
+      currentRequestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Re-running a cached result for the same node forces a fresh analysis —
+      // the first click returns instantly from cache, the second refreshes.
+      const rerunOfCachedResult = lastResultFromCache
+        && currentSelectionInfo
+        && lastResultNodeId
+        && currentSelectionInfo.id === lastResultNodeId;
+
       sendMessageToPlugin('analyze-enhanced', {
         batchMode: batchMode,
         includeAudit: true,
         includeTokens: true,
-        includeValidation: true
+        includeValidation: true,
+        requestId: currentRequestId,
+        bypassCache: forceFresh === true || rerunOfCachedResult
       });
+
+      showAnalysisProgress('Preparing analysis…', 0, 4);
+      startAnalysisWatchdog();
     }
 
     // Handle Clear API Key
@@ -4108,68 +4302,6 @@
       updateStatus(batchMode ? 'Batch mode enabled' : 'Batch mode disabled', 'info');
     }
 
-    // Handle Generate Playground
-    function handleGeneratePlayground() {
-      if (!currentMetadata) {
-        updateStatus('No analysis results available', 'error');
-        return;
-      }
-
-      if (generatePlaygroundButton) {
-        generatePlaygroundButton.disabled = true;
-      }
-      updateStatus('Generating playground instances...', 'info');
-      sendMessageToPlugin('generate-playground', { metadata: currentMetadata });
-    }
-
-    // Handle Export Documentation (clipboard-based, legacy path)
-    function handleExportDocs() {
-      if (!currentMetadata) {
-        updateStatus('No analysis results available', 'error');
-        return;
-      }
-
-      const format = exportFormat ? exportFormat.value : 'markdown';
-      if (format === 'markdown') {
-        exportAsMarkdown();
-      } else if (format === 'ai-prompt') {
-        const content = generateAIPrompt(currentMetadata);
-        navigator.clipboard.writeText(content).then(() => {
-          updateStatus('AI Prompt copied to clipboard!', 'success');
-        });
-      } else if (format === 'json') {
-        exportAsJSON();
-      }
-    }
-
-    // Handle Generate Docs Frame
-    function handleGenerateDocsFrame() {
-      if (!currentMetadata) {
-        updateStatus('No analysis results available', 'error');
-        return;
-      }
-
-      if (generateDocsFrameButton) {
-        generateDocsFrameButton.disabled = true;
-      }
-      updateStatus('Generating documentation frame...', 'info');
-      sendMessageToPlugin('generate-docs-frame', {
-        metadata: currentMetadata,
-        notes: collabNotes && collabNotes.value ? collabNotes.value : ''
-      });
-    }
-
-    // Handle Save Notes
-    function handleSaveNotes() {
-      const notes = collabNotes.value.trim();
-      if (!notes) {
-        updateStatus('Please enter some notes', 'warning');
-        return;
-      }
-
-      sendMessageToPlugin('save-collab-notes', { notes });
-      updateStatus('Notes saved', 'success');
-    }
 
     // Handle Plugin Messages
     function handlePluginMessage(event) {
@@ -4185,66 +4317,57 @@
         case 'enhanced-analysis-result':
           handleEnhancedAnalysisResult(data);
           break;
-        case 'metadata-result':
-          // Handle old message format for backward compatibility
-          handleEnhancedAnalysisResult({
-            metadata: data.metadata,
-            audit: null,
-            properties: [],
-            tokens: {}
-          });
-          break;
-        case 'analysis-complete':
-          // Handle old message format - do nothing as the data is already displayed
-          if (data.success) {
-            console.log('Analysis completed:', data.message);
-          }
-          break;
-        case 'playground-generated':
-          handlePlaygroundGenerated(data);
-          break;
-        case 'docs-frame-generated':
-          handleDocsFrameGenerated(data);
-          break;
         case 'batch-selection-update':
           handleBatchSelectionUpdate(data);
           break;
+        case 'batch-analysis-result':
+          handleBatchAnalysisResult(data);
+          break;
+        case 'analysis-progress':
+          if (currentRequestId) {
+            showAnalysisProgress(data.label, data.step, data.total);
+            startAnalysisWatchdog(); // any progress resets the timeout
+          }
+          break;
+        case 'analysis-cancelled':
+          // Plugin acknowledged the cancel; UI state already reset locally
+          break;
+        case 'last-analysis-available':
+          handleLastAnalysisAvailable(data);
+          break;
+        case 'restore-unavailable':
+          document.getElementById('restore-banner').style.display = 'none';
+          updateStatus('No saved analysis to restore', 'info');
+          break;
+        case 'tokens-refreshed':
+          handleTokensRefreshed(data);
+          break;
+        case 'tokens-refresh-error':
+          updateStatus(`Token refresh failed: ${data.error}`, 'error');
+          break;
+        case 'naming-strategy-preview':
+          handleNamingStrategyPreview(data);
+          break;
+        case 'naming-strategy-applied':
+          handleNamingStrategyApplied(data);
+          break;
+        case 'batch-fix-progress':
+          updateStatus(`Applying fixes… ${data.current}/${data.total}`, 'info');
+          break;
+        case 'batch-fix-preview':
+          handleBatchFixPreview(data);
+          break;
+        case 'property-added':
+          handlePropertyAdded(data);
+          break;
+        case 'instance-sheet-generated': {
+          const sheetButton = document.getElementById('generate-instance-sheet');
+          if (sheetButton) sheetButton.disabled = false;
+          updateStatus(data.message, data.success ? 'success' : 'error');
+          break;
+        }
         case 'analysis-error':
-          handleAnalysisError(data.error);
-          break;
-        case 'variants-generated':
-          handlePlaygroundGenerated(data);
-          break;
-        case 'docs-generated':
-          handleDocsFrameGenerated(data);
-          break;
-        case 'notes-saved':
-          if (data.success) {
-            updateStatus('Notes saved with visual indicator!', 'success');
-          } else {
-            updateStatus(`Failed to save notes: ${data.error}`, 'error');
-          }
-          break;
-        case 'state-added':
-          if (data.success) {
-            updateStatus(`${data.state} state added successfully!`, 'success');
-          } else {
-            updateStatus(`Failed to add state: ${data.error}`, 'error');
-          }
-          break;
-        case 'accessibility-fixed':
-          if (data.success) {
-            updateStatus(`Accessibility issue fixed!`, 'success');
-          } else {
-            updateStatus(`Failed to fix accessibility: ${data.error}`, 'error');
-          }
-          break;
-        case 'naming-fixed':
-          if (data.success) {
-            updateStatus(`Layer renamed successfully!`, 'success');
-          } else {
-            updateStatus(`Failed to rename layer: ${data.error}`, 'error');
-          }
+          handleAnalysisError(data.error, data);
           break;
         case 'chat-response':
           handleChatResponse(data.response);
@@ -4365,8 +4488,44 @@
     function handleEnhancedAnalysisResult(data) {
       // Debug logging
       console.log('UI received enhanced analysis result:', data);
-      console.log('Audit data received in UI:', data.audit);
-      console.log('Token summary received in UI:', data.tokens ? data.tokens.summary : undefined);
+
+      // Analysis finished — stop the watchdog, hide progress and restore banner
+      currentRequestId = null;
+      clearAnalysisWatchdog();
+      hideAnalysisProgress();
+      document.getElementById('restore-banner').style.display = 'none';
+
+      // Track cache state so a repeat click can force a fresh analysis
+      lastResultFromCache = data.fromCache === true;
+      lastResultNodeId = (data.analyzedNode && data.analyzedNode.id) || data.analyzedNodeId || null;
+
+      // Results header: which node these results belong to, and when
+      const header = document.getElementById('results-header');
+      const nameLink = document.getElementById('results-node-name');
+      const metaEl = document.getElementById('results-node-meta');
+      if (data.analyzedNode && data.analyzedNode.name) {
+        const typeLabel = String(data.analyzedNode.type || '').toLowerCase().replace(/_/g, ' ');
+        const when = data.analyzedAt ? new Date(data.analyzedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        const badges = [
+          data.fromCache ? 'cached' : '',
+          data.restored ? 'restored' : ''
+        ].filter(Boolean).join(', ');
+        nameLink.textContent = data.analyzedNode.name;
+        nameLink.onclick = (e) => {
+          e.preventDefault();
+          sendMessageToPlugin('select-node', { nodeId: data.analyzedNode.id });
+        };
+        metaEl.textContent = `${typeLabel}${when ? ` · analyzed ${when}` : ''}${badges ? ` · ${badges}` : ''}`;
+        header.style.display = 'flex';
+      } else {
+        header.style.display = 'none';
+      }
+
+      if (data.fromCache) {
+        updateStatus('Loaded from cache (component unchanged) — click Analyze again for a fresh run', 'success');
+      } else if (data.restored) {
+        updateStatus('Restored previous analysis — Re-analyze for fresh results', 'success');
+      }
 
       // Store analysis data globally for scoring
       currentAnalysisData = data;
@@ -4867,7 +5026,7 @@
           else { namingErrorCount++; }
         });
 
-        // Summary bar with severity breakdown and Rename All button
+        // Summary bar with severity breakdown, naming strategy picker, and Rename All button
         html += `<div class="naming-tree-summary">
           <span>${currentNamingIssues.length} naming issue${currentNamingIssues.length !== 1 ? 's' : ''} found</span>
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -4876,6 +5035,10 @@
               ${namingWarnCount > 0 ? `<span class="sev-count">${ICO.warnTriangle} ${namingWarnCount}</span>` : ''}
               ${namingInfoCount > 0 ? `<span class="sev-count">${ICO.info} ${namingInfoCount}</span>` : ''}
             </div>
+            <select id="naming-strategy-select" title="Naming strategy for Rename All" style="font-size: 10px; padding: 2px 4px;" onchange="handleNamingStrategyChange(this.value)">
+              ${[['semantic', 'Semantic'], ['bem', 'BEM'], ['prefix-based', 'Prefix'], ['camelCase', 'camelCase'], ['kebab-case', 'kebab-case'], ['snake_case', 'snake_case']]
+                .map(([value, label]) => `<option value="${value}"${selectedNamingStrategy === value ? ' selected' : ''}>${label}</option>`).join('')}
+            </select>
             <button class="quick-actions-btn" id="rename-all-btn" onclick="handleRenameAll()" style="font-size: 10px; padding: 3px 10px;">Rename All</button>
           </div>
         </div>`;
@@ -5093,11 +5256,22 @@
         allRecommendations.forEach((rec, index) => {
           const typeColor = rec.type === 'slot' ? 'var(--warning)' : 'var(--interactive)';
 
+          // Variant/state recommendations are guidance only: their values
+          // require designed variants in the set, which FigmaLint won't
+          // generate. Boolean/text/instance-swap properties are pure API
+          // definitions and can be added (and bound) safely.
+          const recType = String(rec.type || '').toLowerCase().replace(/[^a-z]/g, '');
+          const isAddable = recType === 'boolean' || recType === 'text' || recType === 'instanceswap' || recType === 'slot';
+          const actionHtml = isAddable
+            ? `<button class="fix-btn" data-add-property="${escapeHtml(rec.name)}" onclick="handleAddRecommendedProperty(${index})" title="Add this property to the component and bind it to a matching layer" style="margin-left: auto; font-size: 10px;">Add property</button>`
+            : `<span title="Each variant value needs a designed variant in the component set — add these manually in Figma" style="margin-left: auto; font-size: 9px; color: var(--text-tertiary); white-space: nowrap;">guidance — add manually</span>`;
+
           html += `
             <div class="recommendation-card" id="rec-card-${index}" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                 <span style="font-weight: 600; font-size: 12px;">${rec.name}</span>
                 <span style="background: ${typeColor}; color: var(--text-on-color); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 9px; text-transform: uppercase; font-weight: 500;">${rec.type}</span>
+                ${actionHtml}
               </div>
               <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 6px 0;">${rec.description}</p>
               <div style="display: flex; flex-wrap: wrap; gap: 4px;">
@@ -5122,6 +5296,31 @@
 
       propertyCheatsheet.innerHTML = html;
     }
+
+    // Stage an AI-recommended property on the analyzed component
+    window.handleAddRecommendedProperty = function(index) {
+      const rec = _currentRecommendations && _currentRecommendations[index];
+      if (!rec) return;
+      if (!lastAnalyzedNodeId) {
+        updateStatus('Analyze a component first', 'error');
+        return;
+      }
+
+      const button = document.querySelector(`#rec-card-${index} [data-add-property]`);
+      if (button) button.disabled = true;
+
+      // LLM examples can be JSON booleans/numbers — always send strings
+      const examples = (rec.examples || []).map((e) => String(e));
+      const isVariant = String(rec.type || '').toLowerCase() === 'variant';
+      updateStatus(`Adding property "${rec.name}"…`, 'info');
+      sendMessageToPlugin('add-component-property', {
+        nodeId: lastAnalyzedNodeId,
+        propertyName: rec.name,
+        propertyType: rec.type || 'variant',
+        defaultValue: examples[0] || '',
+        variantOptions: isVariant ? examples : undefined
+      });
+    };
 
     // Enhanced Token Analysis Display
     function updateTokenSuggestions(tokens) {
@@ -5222,7 +5421,7 @@
               if (token.context?.hasMatchingToken === false) {
                 fixButton = `<span class="no-match-label" title="Add a variable matching this value to enable auto-fix">No matching token</span>`;
               } else {
-                fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property || 'fills[0]'}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property || 'fills[0]'}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
+                fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property || 'fills[0]'}" data-value="${token.value}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property || 'fills[0]'}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
               }
             }
 
@@ -5377,7 +5576,7 @@
                 if (token.context?.hasMatchingToken === false) {
                   fixButton = `<span class="no-match-label" title="Add a variable matching this value to enable auto-fix">No matching token</span>`;
                 } else {
-                  fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
+                  fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" data-value="${token.value}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
                 }
               }
 
@@ -5427,7 +5626,7 @@
                 if (token.context?.hasMatchingToken === false) {
                   fixButton = `<span class="no-match-label" title="Add a variable matching this value to enable auto-fix">No matching token</span>`;
                 } else {
-                  fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
+                  fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" data-value="${token.value}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
                 }
               }
 
@@ -5507,7 +5706,7 @@
               if (token.context?.hasMatchingToken === false) {
                 fixButton = `<span class="no-match-label" title="Add a variable matching this value to enable auto-fix">No matching token</span>`;
               } else {
-                fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
+                fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" data-value="${token.value}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
               }
             }
 
@@ -5835,108 +6034,7 @@
       }
     }
 
-    // Update Playground Tab
-    function updatePlaygroundTab() {
-      if (!currentMetadata) return;
 
-      if (playgroundEmpty) {
-        playgroundEmpty.classList.add('hidden');
-      }
-      if (playgroundContent) {
-        playgroundContent.classList.remove('hidden');
-      }
-
-      // Update playground preview
-      if (playgroundGrid) {
-        let html = '';
-        const hasContent = (currentMetadata.states && currentMetadata.states.length > 0) ||
-                          (currentMetadata.variants && Object.keys(currentMetadata.variants).length > 0);
-
-        if (hasContent) {
-          html = '<p style="text-align: center; color: var(--text-secondary); margin-bottom: 16px;">Click "Generate Instances" to create a visual playground of all component variations</p>';
-        } else {
-          html = '<p style="text-align: center; color: var(--text-tertiary);">No variants or states detected for this component</p>';
-        }
-
-        playgroundGrid.innerHTML = html;
-      }
-    }
-
-    // Update Documentation Tab
-    function updateDocumentationTab() {
-      if (!currentMetadata) return;
-
-      if (docsEmpty) {
-        docsEmpty.classList.add('hidden');
-      }
-      if (docsPreview) {
-        docsPreview.classList.remove('hidden');
-        // Generate documentation preview
-        const docsHtml = generateDocumentationHTML(currentMetadata);
-        docsPreview.innerHTML = docsHtml;
-      }
-
-      // Enable buttons with null checks
-      if (exportDocsButton) {
-        exportDocsButton.disabled = false;
-      }
-      if (generateDocsFrameButton) {
-        generateDocsFrameButton.disabled = false;
-      }
-      if (saveNotesButton) {
-        saveNotesButton.disabled = false;
-      }
-    }
-
-    // Generate Documentation HTML
-    function generateDocumentationHTML(metadata) {
-      let html = '';
-
-      html += '<div class="doc-section">';
-      html += `<h2 class="doc-heading">${metadata.component}</h2>`;
-      html += `<p class="doc-content">${metadata.description}</p>`;
-      html += '</div>';
-
-      if (metadata.props && metadata.props.length > 0) {
-        html += '<div class="doc-section">';
-        html += '<h3 class="doc-heading">Properties</h3>';
-        html += '<ul class="doc-content">';
-        metadata.props.forEach(prop => {
-          // Handle both object format and string format
-          const propName = typeof prop === 'string' ? prop : (prop.name || prop);
-          html += `<li>${propName}</li>`;
-        });
-        html += '</ul>';
-        html += '</div>';
-      }
-
-      if (metadata.states && metadata.states.length > 0) {
-        html += '<div class="doc-section">';
-        html += '<h3 class="doc-heading">States</h3>';
-        html += '<ul class="doc-content">';
-        metadata.states.forEach(state => {
-          html += `<li>${state}</li>`;
-        });
-        html += '</ul>';
-        html += '</div>';
-      }
-
-      if (metadata.usage) {
-        html += '<div class="doc-section">';
-        html += '<h3 class="doc-heading">Usage Guidelines</h3>';
-        html += `<p class="doc-content">${metadata.usage}</p>`;
-        html += '</div>';
-      }
-
-      if (metadata.accessibility) {
-        html += '<div class="doc-section">';
-        html += '<h3 class="doc-heading">Accessibility</h3>';
-        html += `<p class="doc-content">${metadata.accessibility}</p>`;
-        html += '</div>';
-      }
-
-      return html;
-    }
 
     // Export as Markdown
     function exportAsMarkdown() {
@@ -5980,47 +6078,9 @@
     function updateUIButtonStates() {
       const hasMetadata = currentMetadata !== null;
 
-      if (generatePlaygroundButton) {
-        generatePlaygroundButton.disabled = !hasMetadata;
-      }
-      if (exportDocsButton) {
-        exportDocsButton.disabled = !hasMetadata;
-      }
-      if (generateDocsFrameButton) {
-        generateDocsFrameButton.disabled = !hasMetadata;
-      }
-      if (saveNotesButton) {
-        saveNotesButton.disabled = !hasMetadata;
-      }
     }
 
-    // Handle Playground Generated
-    function handlePlaygroundGenerated(data) {
-      if (generatePlaygroundButton) {
-        generatePlaygroundButton.disabled = false;
-      }
-      if (data.success) {
-        updateStatus(data.message || 'Playground generated successfully!', 'success');
-        // Switch to playground tab
-        switchTab('playground');
-      } else {
-        updateStatus(`Failed to generate playground: ${data.error}`, 'error');
-      }
-    }
-
-    // Handle Docs Frame Generated
-    function handleDocsFrameGenerated(data) {
-      if (generateDocsFrameButton) {
-        generateDocsFrameButton.disabled = false;
-      }
-      if (data.success) {
-        updateStatus('Documentation frame generated in Figma!', 'success');
-      } else {
-        updateStatus(`Failed to generate docs: ${data.error}`, 'error');
-      }
-    }
-
-    // Handle Batch Selection Update
+    // Handle Batch Selection Update (also drives single-selection awareness)
     function handleBatchSelectionUpdate(data) {
       selectedComponents = data.components || [];
       if (selectedComponents.length > 1) {
@@ -6030,60 +6090,140 @@
         batchMode = false;
         batchModeSwitch.checked = false;
       }
+
+      // "Will analyze: X" hint + Analyze enablement for the primary selection
+      currentSelectionInfo = data.primary || null;
+      const hint = document.getElementById('selection-hint');
+      if (!hint) return;
+
+      if (!currentSelectionInfo) {
+        hint.style.display = 'block';
+        hint.textContent = 'Select a component, frame, or instance to analyze';
+        if (apiKeySaved) updateAnalyzeButtonState(false);
+        return;
+      }
+
+      const typeLabel = String(currentSelectionInfo.type || '').toLowerCase().replace(/_/g, ' ');
+      if (currentSelectionInfo.isValid) {
+        hint.style.display = 'block';
+        hint.textContent = data.count > 1
+          ? `Will analyze: ${currentSelectionInfo.name} (${typeLabel}) — ${data.count} selected`
+          : `Will analyze: ${currentSelectionInfo.name} (${typeLabel})`;
+        if (apiKeySaved && !currentRequestId) updateAnalyzeButtonState(true);
+      } else {
+        hint.style.display = 'block';
+        hint.textContent = `"${currentSelectionInfo.name}" (${typeLabel}) can't be analyzed — select a component, frame, or instance`;
+        if (apiKeySaved) updateAnalyzeButtonState(false);
+      }
     }
 
-    // Handle Analysis Error
-    function handleAnalysisError(error) {
+    // A previous session's analysis is available to restore
+    function handleLastAnalysisAvailable(data) {
+      // Don't interrupt an in-flight or already-displayed analysis
+      if (currentRequestId || currentMetadata) return;
+      const banner = document.getElementById('restore-banner');
+      const text = document.getElementById('restore-banner-text');
+      const when = data.analyzedAt ? new Date(data.analyzedAt).toLocaleString() : 'previous session';
+      text.textContent = `Restore last analysis for "${data.nodeName}" (${when})?`;
+      banner.style.display = 'flex';
+    }
+
+    // Lightweight token refresh after fixes (no LLM round trip)
+    function handleTokensRefreshed(data) {
+      if (!data.tokens) return;
+      if (currentAnalysisData) {
+        currentAnalysisData.tokens = data.tokens;
+      }
+      currentTokenSummary = data.tokens.summary;
+      currentFixableTokens = [];
+      ['colors', 'spacing', 'typography', 'effects', 'borders'].forEach(cat => {
+        (data.tokens[cat] || []).forEach(token => {
+          if (!token.isActualToken && token.source === 'hard-coded' && !token.isDefaultVariantStyle && token.context && token.context.nodeId) {
+            currentFixableTokens.push(token);
+          }
+        });
+      });
+      updateTokenSuggestions(data.tokens);
+      updateStatus('Token analysis refreshed', 'success');
+    }
+
+    // AI property recommendation was staged on the component
+    function handlePropertyAdded(data) {
+      if (data.success) {
+        updateStatus(data.message || `Property "${data.propertyName || ''}" added to component`, 'success');
+        // Mark the recommendation card as added
+        if (data.propertyName) {
+          const button = document.querySelector(`[data-add-property="${CSS.escape(data.propertyName)}"]`);
+          if (button) {
+            button.textContent = 'Added ✓';
+            button.disabled = true;
+          }
+        }
+      } else {
+        updateStatus(`Could not add property: ${data.error || 'unknown error'}`, 'error');
+        if (data.propertyName) {
+          const button = document.querySelector(`[data-add-property="${CSS.escape(data.propertyName)}"]`);
+          if (button) button.disabled = false;
+        }
+      }
+    }
+
+    // Handle Batch Analysis Result
+    function handleBatchAnalysisResult(data) {
+      currentRequestId = null;
+      clearAnalysisWatchdog();
+      hideAnalysisProgress();
       analyzeButton.disabled = false;
       quickAnalyzeButton.disabled = false;
-      updateStatus(`Error: ${error}`, 'error');
       analysisResults.classList.add('hidden');
+      const results = data.results || [];
+      const succeeded = results.filter((r) => r.success).length;
+      const failed = results.length - succeeded;
+      updateStatus(
+        `Batch analysis complete: ${succeeded} component${succeeded === 1 ? '' : 's'} analyzed${failed ? `, ${failed} failed` : ''}`,
+        failed ? 'warning' : 'success'
+      );
     }
 
+    // Handle Analysis Error — structured details enable targeted recovery
+    function handleAnalysisError(error, details) {
+      currentRequestId = null;
+      clearAnalysisWatchdog();
+      hideAnalysisProgress();
+      analyzeButton.disabled = false;
+      quickAnalyzeButton.disabled = false;
+      analysisResults.classList.add('hidden');
 
+      details = details || {};
+      const providerCfg = providerConfig[details.provider] || providerConfig[currentProvider] || {};
 
-    // Handle Fix Accessibility Button Click
-    window.handleFixAccessibility = function(issue) {
-      sendMessageToPlugin('fix-accessibility', {
-        issue: issue,
-        metadata: currentMetadata
-      });
-      updateStatus(`Fixing ${issue}...`, 'info');
-    }
-
-        // Helper function to extract clean suggestion name for display
-    function getCleanSuggestionName(suggestion) {
-      let actualName = suggestion;
-
-      // Handle "renamed to X" format
-      if (suggestion.includes('renamed to ')) {
-        actualName = suggestion.split('renamed to ')[1].trim();
+      // Rate limited: show a live countdown, then offer retry
+      if (details.retryAfterMs && details.retryAfterMs > 0) {
+        let remaining = Math.ceil(details.retryAfterMs / 1000);
+        updateStatus(`Rate limited — retrying available in ${remaining}s`, 'warning');
+        const countdown = setInterval(() => {
+          remaining--;
+          if (remaining <= 0) {
+            clearInterval(countdown);
+            updateStatus('Rate limit elapsed — you can retry the analysis now', 'info');
+          } else {
+            updateStatus(`Rate limited — retrying available in ${remaining}s`, 'warning');
+          }
+        }, 1000);
+        return;
       }
-      // Handle "should be X" format
-      else if (suggestion.includes('should be ')) {
-        actualName = suggestion.split('should be ')[1].trim();
-      }
-      // Handle "→ X" format
-      else if (suggestion.startsWith('→ ')) {
-        actualName = suggestion.substring(2).trim();
+
+      // Auth errors: point at the provider's key portal
+      const isAuthError = details.code === 'INVALID_API_KEY' || details.statusCode === 401 || details.statusCode === 403;
+      if (isAuthError && providerCfg.portalUrl) {
+        updateStatus(`Error: ${error} — check your key at ${providerCfg.portalLabel || providerCfg.portalUrl}`, 'error');
+        return;
       }
 
-      // Remove any quotes that might be around the name
-      return actualName.replace(/['"]/g, '').trim();
+      updateStatus(`Error: ${error}`, 'error');
     }
 
-    // Handle Fix Naming Button Click
-    window.handleFixNaming = function(layerName, suggestion) {
-      // Parse the actual suggested name from various formats
-      const actualName = getCleanSuggestionName(suggestion);
 
-      sendMessageToPlugin('fix-naming', {
-        layer: layerName,
-        newName: actualName,
-        metadata: currentMetadata
-      });
-      updateStatus(`Renaming ${layerName} to ${actualName}...`, 'info');
-    }
 
     // Update Analyze Button State
     function updateAnalyzeButtonState(enabled) {
@@ -6407,12 +6547,19 @@
       // Check if failures are all due to no matching tokens
       const noMatchCount = data.results ? data.results.filter(r => !r.success && r.message && r.message.includes('No matching token')).length : 0;
 
+      // Refresh the token section from Figma (no LLM round trip) so the
+      // results reflect the applied fixes without a full re-analysis.
+      const anyTokenFixes = data.results && data.results.some(r => r.success && r.fixType === 'token');
+      if (anyTokenFixes) {
+        sendMessageToPlugin('refresh-tokens', {});
+      }
+
       if (errorCount === 0) {
-        updateStatus(`All ${successCount} fixes applied successfully! Re-analyze to see updated results.`, 'success');
+        updateStatus(`All ${successCount} fixes applied successfully!`, 'success');
       } else if (successCount > 0 && noMatchCount === errorCount) {
         updateStatus(`Applied ${successCount}/${total} fixes. ${noMatchCount} skipped — no matching tokens found. Add variables for those values.`, 'warning');
       } else if (successCount > 0) {
-        updateStatus(`Applied ${successCount}/${total} fixes (${errorCount} failed). Re-analyze to see updated results.`, 'warning');
+        updateStatus(`Applied ${successCount}/${total} fixes (${errorCount} failed).`, 'warning');
       } else if (noMatchCount === errorCount) {
         updateStatus(`No matching tokens found for ${errorCount} value${errorCount !== 1 ? 's' : ''}. Add matching variables to your design tokens to enable auto-fix.`, 'error');
       } else {
@@ -6610,8 +6757,67 @@
       `;
     }
 
+    // Selected naming strategy for Rename All (persists across re-renders)
+    let selectedNamingStrategy = 'semantic';
+
+    window.handleNamingStrategyChange = function(value) {
+      selectedNamingStrategy = value || 'semantic';
+      if (selectedNamingStrategy !== 'semantic') {
+        updateStatus(`Rename All will apply the ${selectedNamingStrategy} convention to all layers`, 'info');
+      }
+    };
+
+    // Preview arrived for a convention-based rename — show the confirm modal
+    function handleNamingStrategyPreview(data) {
+      const previews = (data && data.previews) || [];
+      if ((data.errors || []).length > 0 && previews.length === 0) {
+        updateStatus(`Could not preview ${data.strategy} renames: ${data.errors[0]}`, 'error');
+        return;
+      }
+      if (previews.length === 0) {
+        updateStatus(`All layers already follow the ${data.strategy} convention`, 'info');
+        return;
+      }
+
+      let previewHtml = `<div style="margin-bottom: 12px;">
+        <p style="font-size: 12px; margin-bottom: 10px;">This will rename <strong>${previews.length}</strong> layer${previews.length !== 1 ? 's' : ''} using the <strong>${escapeHtml(String(data.strategy))}</strong> convention.</p>
+        <div style="max-height: 260px; overflow-y: auto;">`;
+      previews.slice(0, 50).forEach(p => {
+        previewHtml += `<div style="display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px;">
+          <span style="opacity: 0.6; min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.currentName)}</span>
+          <span style="color: var(--primary); font-weight: 600;">→</span>
+          <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.newName)}</span>
+        </div>`;
+      });
+      if (previews.length > 50) {
+        previewHtml += `<div style="font-size: 10px; color: var(--text-tertiary); padding: 4px 0;">… and ${previews.length - 50} more</div>`;
+      }
+      previewHtml += '</div></div>';
+
+      showFixModal(`Rename All (${data.strategy})`, previewHtml, {
+        type: 'naming-strategy',
+        strategy: data.strategy
+      });
+    }
+
+    // Convention-based rename finished
+    function handleNamingStrategyApplied(data) {
+      if ((data.errors || []).length > 0 && !data.renamed) {
+        updateStatus(`Rename failed: ${data.errors[0]}`, 'error');
+        return;
+      }
+      updateStatus(`Renamed ${data.renamed} layer${data.renamed === 1 ? '' : 's'} (${data.strategy})${data.skipped ? `, ${data.skipped} skipped` : ''}. Re-analyze to refresh naming issues.`, 'success');
+    }
+
     // Handle "Rename All" from Quick Actions bar and naming tree summary
     function handleRenameAll() {
+      // Convention strategies rename via a backend dry-run preview
+      if (selectedNamingStrategy !== 'semantic') {
+        updateStatus(`Previewing ${selectedNamingStrategy} renames…`, 'info');
+        sendMessageToPlugin('preview-naming-strategy', { strategy: selectedNamingStrategy });
+        return;
+      }
+
       if (!currentNamingIssues || currentNamingIssues.length === 0) {
         updateStatus('No naming issues to fix', 'info');
         return;

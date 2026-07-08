@@ -1,6 +1,6 @@
 /// <reference types="@figma/plugin-typings" />
 
-import { ComponentContext, ComponentMetadata, EnhancedAnalysisResult, DesignToken } from '../types';
+import { ComponentContext, EnhancedAnalysisResult, DesignToken } from '../types';
 import { ComponentAnalysisCache, DesignSystemsKnowledge, ConsistencyConfig } from './types/consistency';
 
 /**
@@ -11,7 +11,11 @@ import { ComponentAnalysisCache, DesignSystemsKnowledge, ConsistencyConfig } fro
 export class ComponentConsistencyEngine {
   private cache: Map<string, ComponentAnalysisCache> = new Map();
   private designSystemsKnowledge: DesignSystemsKnowledge | null = null;
+  private knowledgeLoadPromise: Promise<void> | null = null;
   private config: ConsistencyConfig;
+
+  /** Knowledge is refreshed at most this often; every Analyze click awaits it. */
+  private static readonly KNOWLEDGE_TTL_MS = 30 * 60 * 1000;
 
   constructor(config: ConsistencyConfig = {}) {
     this.config = {
@@ -34,6 +38,9 @@ export class ComponentConsistencyEngine {
       frameStructure: context.frameStructure,
       detectedStyles: context.detectedStyles,
       tokenFingerprint: this.generateTokenFingerprint(tokens),
+      // Editing the component description must invalidate the cached analysis
+      // (the description feeds the audit's description checks and prompts).
+      existingDescription: context.existingDescription || '',
       // Don't include dynamic context that could vary
       staticProperties: {
         hasInteractiveElements: context.additionalContext?.hasInteractiveElements || false,
@@ -81,9 +88,34 @@ export class ComponentConsistencyEngine {
   }
 
     /**
-   * Load design systems knowledge from MCP server
+   * Load design systems knowledge from MCP server.
+   *
+   * Memoized: the knowledge is loaded once (in the background at plugin init)
+   * and reused for KNOWLEDGE_TTL_MS. Without the guard, every Analyze click
+   * re-ran an MCP connectivity check plus four knowledge queries (~1-5s of
+   * fixed network latency per analysis). Concurrent callers share one in-flight
+   * load instead of racing.
    */
   async loadDesignSystemsKnowledge(): Promise<void> {
+    const knowledge = this.designSystemsKnowledge;
+    if (knowledge && Date.now() - knowledge.lastUpdated < ComponentConsistencyEngine.KNOWLEDGE_TTL_MS) {
+      return;
+    }
+
+    if (this.knowledgeLoadPromise) {
+      return this.knowledgeLoadPromise;
+    }
+
+    const load = this.doLoadDesignSystemsKnowledge();
+    this.knowledgeLoadPromise = load;
+    try {
+      await load;
+    } finally {
+      this.knowledgeLoadPromise = null;
+    }
+  }
+
+  private async doLoadDesignSystemsKnowledge(): Promise<void> {
     if (!this.config.enableMCPIntegration) {
       console.log('📚 MCP integration disabled, using fallback knowledge');
       this.loadFallbackKnowledge();
@@ -430,7 +462,7 @@ ${scoringCriteria}
     return guidance || this.getFallbackGuidance(context);
   }
 
-  private getScoringCriteria(context: ComponentContext): string {
+  private getScoringCriteria(_context: ComponentContext): string {
     if (!this.designSystemsKnowledge?.scoring) {
       return this.getFallbackScoringCriteria();
     }
@@ -653,7 +685,7 @@ ${scoringCriteria}
     return corrected;
   }
 
-  private ensureConsistentScoring(mcpReadiness: any, context: ComponentContext): any {
+  private ensureConsistentScoring(mcpReadiness: any, _context: ComponentContext): any {
     // Return the actual calculated score without arbitrary baselines
     return {
       ...mcpReadiness,
@@ -661,5 +693,16 @@ ${scoringCriteria}
     };
   }
 }
+
+/**
+ * Shared engine instance. The message handler and the analyzer must use the
+ * same instance so the analysis cache and design-systems knowledge are shared
+ * (a second instance would re-fetch knowledge and never see cached analyses).
+ */
+export const consistencyEngine = new ComponentConsistencyEngine({
+  enableCaching: true,
+  enableMCPIntegration: true,
+  mcpServerUrl: 'https://design-systems-mcp.southleft-llc.workers.dev/mcp',
+});
 
 export default ComponentConsistencyEngine;

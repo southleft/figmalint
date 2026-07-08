@@ -198,7 +198,14 @@ export type UIMessageType =
   | 'apply-naming-fix'
   | 'apply-batch-fix'
   | 'update-description'
-  | 'add-component-property';
+  | 'add-component-property'
+  | 'cancel-analysis'
+  | 'restore-last-analysis'
+  | 'refresh-tokens'
+  | 'preview-naming-strategy'
+  | 'apply-naming-strategy'
+  | 'preview-batch-fix'
+  | 'generate-instance-sheet';
 
 // Auto-fix Types
 export interface FixRequest {
@@ -230,6 +237,10 @@ export interface EnhancedAnalysisOptions {
   node?: SceneNode;
   mcpServerUrl?: string;
   useMCP?: boolean;
+  /** Skip the component-hash cache and force a fresh LLM analysis. */
+  bypassCache?: boolean;
+  /** UI-generated id used to drop results of cancelled/superseded analyses. */
+  requestId?: string;
 }
 
 export interface AuditCheck {
@@ -267,6 +278,8 @@ export interface EnhancedAnalysisResult {
   recommendations?: Array<{ name: string; type: string; description: string; examples: string[] }>;
   namingIssues?: NamingIssue[];
   existingDescription?: string;
+  /** True when served from the component-hash cache (no LLM call was made). */
+  fromCache?: boolean;
 }
 
 // Re-export NamingIssue shape for use in UI messages

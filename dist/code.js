@@ -38,18 +38,28 @@
     };
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   }
-  async function getVariableName(variableId) {
-    try {
-      const variable = await figma.variables.getVariableByIdAsync(variableId);
-      return variable ? variable.name : null;
-    } catch (error) {
-      console.warn("Could not access variable:", variableId, error);
-      return null;
+  var variableByIdCache = /* @__PURE__ */ new Map();
+  function clearVariableLookupCache() {
+    variableByIdCache.clear();
+  }
+  function getVariableByIdCached(variableId) {
+    let cached = variableByIdCache.get(variableId);
+    if (!cached) {
+      cached = figma.variables.getVariableByIdAsync(variableId).catch((error) => {
+        console.warn("Could not access variable:", variableId, error);
+        return null;
+      });
+      variableByIdCache.set(variableId, cached);
     }
+    return cached;
+  }
+  async function getVariableName(variableId) {
+    const variable = await getVariableByIdCached(variableId);
+    return variable ? variable.name : null;
   }
   async function getVariableValue(variableId, node) {
     try {
-      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      const variable = await getVariableByIdCached(variableId);
       if (!variable) return null;
       if (node && variable.resolveForConsumer) {
         try {
@@ -133,23 +143,19 @@
     return { path, description };
   }
 
-  // src/core/token-analyzer.ts
-  function hasDefaultVariantFrameStyles(node) {
-    var _a;
-    let currentNode = node;
-    let isPartOfVariant = false;
-    while (currentNode) {
-      if (currentNode.type === "COMPONENT_SET") {
-        isPartOfVariant = true;
-        break;
-      }
-      if (currentNode.parent && currentNode.parent.type === "COMPONENT_SET") {
-        isPartOfVariant = true;
-        break;
-      }
-      currentNode = currentNode.parent;
+  // src/utils/debug.ts
+  var DEBUG = true ? false : false;
+  function debugLog(...args) {
+    if (DEBUG) {
+      console.log(...args);
     }
-    if (!isPartOfVariant) {
+  }
+
+  // src/core/token-analyzer.ts
+  function hasDefaultVariantFrameStyles(node, isPartOfVariant) {
+    var _a;
+    const inVariant = isPartOfVariant !== void 0 ? isPartOfVariant : isNodeInVariant(node);
+    if (!inVariant) {
       return false;
     }
     if (!("strokes" in node) || !("cornerRadius" in node) || !("strokeWeight" in node)) {
@@ -167,11 +173,12 @@
     });
     const hasDefaultPadding = "paddingLeft" in node && "paddingRight" in node && "paddingTop" in node && "paddingBottom" in node && node.paddingLeft === 16 && node.paddingRight === 16 && node.paddingTop === 16 && node.paddingBottom === 16;
     const hasAllDefaults = hasDefaultRadius && hasDefaultStrokeWeight && hasDefaultStroke && hasDefaultPadding;
-    if (hasAllDefaults) {
-      console.log(`\u{1F3AF} [FILTER] Detected default variant frame styles in ${node.name} - filtering out`);
-      console.log(`   Type: ${node.type}, Parent: ${(_a = node.parent) == null ? void 0 : _a.type}`);
-      console.log(`   Radius: ${node.cornerRadius}, Weight: ${node.strokeWeight}, Color: ${strokes.length > 0 ? rgbToHex(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b) : "none"}`);
-      console.log(`   Padding: L=${node.paddingLeft}, R=${node.paddingRight}, T=${node.paddingTop}, B=${node.paddingBottom}`);
+    if (hasAllDefaults && DEBUG) {
+      debugLog(`\u{1F3AF} [FILTER] Detected default variant frame styles in ${node.name} - filtering out`);
+      debugLog(`   Type: ${node.type}, Parent: ${(_a = node.parent) == null ? void 0 : _a.type}`);
+      const strokeColor = strokes.length > 0 && strokes[0].type === "SOLID" ? rgbToHex(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b) : "none";
+      debugLog(`   Radius: ${String(node.cornerRadius)}, Weight: ${String(node.strokeWeight)}, Color: ${strokeColor}`);
+      debugLog(`   Padding: L=${node.paddingLeft}, R=${node.paddingRight}, T=${node.paddingTop}, B=${node.paddingBottom}`);
     }
     return hasAllDefaults;
   }
@@ -189,6 +196,7 @@
     return false;
   }
   async function extractDesignTokensFromNode(node) {
+    clearVariableLookupCache();
     const colors = [];
     const spacing = [];
     const typography = [];
@@ -199,8 +207,9 @@
     const typographySet = /* @__PURE__ */ new Set();
     const effectSet = /* @__PURE__ */ new Set();
     const borderSet = /* @__PURE__ */ new Set();
-    async function traverseNode(currentNode) {
-      console.log("\u{1F50D} Analyzing node:", currentNode.name, "Type:", currentNode.type);
+    async function traverseNode(currentNode, inVariant) {
+      debugLog("\u{1F50D} Analyzing node:", currentNode.name, "Type:", currentNode.type);
+      const isDefaultVariantFrame = hasDefaultVariantFrameStyles(currentNode, inVariant);
       const stylePromises = [];
       if ("fillStyleId" in currentNode && typeof currentNode.fillStyleId === "string") {
         stylePromises.push(
@@ -280,33 +289,41 @@
       await Promise.all(stylePromises);
       if ("boundVariables" in currentNode && currentNode.boundVariables) {
         const boundVars = currentNode.boundVariables;
-        console.log(`\u{1F50D} [VARIABLES] Checking bound variables for ${currentNode.name}:`, Object.keys(boundVars));
+        if (DEBUG) {
+          debugLog(`\u{1F50D} [VARIABLES] Checking bound variables for ${currentNode.name}:`, Object.keys(boundVars));
+        }
         const processVariableArray = async (variables, propertyName, targetSet, targetArray, tokenType) => {
           try {
             const varArray = Array.isArray(variables) ? variables : [variables];
+            const boundIds = [];
             for (const v of varArray) {
               if ((v == null ? void 0 : v.id) && typeof v.id === "string") {
-                const varName = await getVariableName(v.id);
-                console.log(`   \u{1F3AF} Found ${propertyName} variable:`, varName);
-                if (varName && !targetSet.has(varName)) {
-                  targetSet.add(varName);
-                  let displayValue = varName;
-                  if (tokenType === "color" && (propertyName === "fills" || propertyName === "strokes")) {
-                    const actualValue = await getVariableValue(v.id, currentNode);
-                    if (actualValue && actualValue.startsWith("#")) {
-                      displayValue = actualValue;
-                    }
-                  }
-                  targetArray.push({
-                    name: varName,
-                    value: displayValue,
-                    type: `${propertyName}-variable`,
-                    isToken: true,
-                    isActualToken: true,
-                    source: "figma-variable"
-                  });
-                  console.log(`   \u2705 Added ${tokenType} token: ${varName} (value: ${displayValue})`);
+                boundIds.push(v.id);
+              }
+            }
+            if (boundIds.length === 0) return;
+            const isColorPaint = tokenType === "color" && (propertyName === "fills" || propertyName === "strokes");
+            const lookups = await Promise.all(boundIds.map(async (id) => ({
+              varName: await getVariableName(id),
+              actualValue: isColorPaint ? await getVariableValue(id, currentNode) : null
+            })));
+            for (const { varName, actualValue } of lookups) {
+              debugLog(`   \u{1F3AF} Found ${propertyName} variable:`, varName);
+              if (varName && !targetSet.has(varName)) {
+                targetSet.add(varName);
+                let displayValue = varName;
+                if (isColorPaint && actualValue && actualValue.startsWith("#")) {
+                  displayValue = actualValue;
                 }
+                targetArray.push({
+                  name: varName,
+                  value: displayValue,
+                  type: `${propertyName}-variable`,
+                  isToken: true,
+                  isActualToken: true,
+                  source: "figma-variable"
+                });
+                debugLog(`   \u2705 Added ${tokenType} token: ${varName} (value: ${displayValue})`);
               }
             }
           } catch (error) {
@@ -316,7 +333,7 @@
         const processSingleVariable = async (variable, propertyName, targetSet, targetArray, tokenType) => {
           if (variable && typeof variable === "object" && "id" in variable && typeof variable.id === "string") {
             const varName = await getVariableName(variable.id);
-            console.log(`   \u{1F3AF} Found ${propertyName} variable:`, varName);
+            debugLog(`   \u{1F3AF} Found ${propertyName} variable:`, varName);
             if (varName && !targetSet.has(varName)) {
               targetSet.add(varName);
               targetArray.push({
@@ -327,77 +344,79 @@
                 isActualToken: true,
                 source: "figma-variable"
               });
-              console.log(`   \u2705 Added ${tokenType} token: ${varName}`);
+              debugLog(`   \u2705 Added ${tokenType} token: ${varName}`);
             }
           }
         };
         const variableProcessingPromises = [];
         if (boundVars.fills) {
-          console.log("   \u{1F3A8} Processing fills variables...");
+          debugLog("   \u{1F3A8} Processing fills variables...");
           variableProcessingPromises.push(processVariableArray(boundVars.fills, "fills", colorSet, colors, "color"));
         }
         if (boundVars.strokes) {
-          console.log("   \u{1F58A}\uFE0F Processing strokes variables...");
+          debugLog("   \u{1F58A}\uFE0F Processing strokes variables...");
           variableProcessingPromises.push(processVariableArray(boundVars.strokes, "strokes", colorSet, colors, "color"));
         }
         if (boundVars.effects) {
-          console.log("   \u2728 Processing effects variables...");
+          debugLog("   \u2728 Processing effects variables...");
           variableProcessingPromises.push(processVariableArray(boundVars.effects, "effects", effectSet, effects, "effect"));
         }
         const strokeWeightProps = ["strokeWeight", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight"];
         strokeWeightProps.forEach((prop) => {
           if (boundVars[prop]) {
-            console.log(`   \u{1F4CF} Processing ${prop} variable...`);
+            debugLog(`   \u{1F4CF} Processing ${prop} variable...`);
             variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, borderSet, borders, "border"));
           }
         });
         const radiusProps = ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius"];
         radiusProps.forEach((prop) => {
           if (boundVars[prop]) {
-            console.log(`   \u{1F504} Processing ${prop} variable...`);
+            debugLog(`   \u{1F504} Processing ${prop} variable...`);
             variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, borderSet, borders, "border"));
           }
         });
         const spacingProps = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "itemSpacing", "counterAxisSpacing"];
         spacingProps.forEach((prop) => {
           if (boundVars[prop]) {
-            console.log(`   \u{1F4D0} Processing ${prop} variable...`);
+            debugLog(`   \u{1F4D0} Processing ${prop} variable...`);
             variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, spacingSet, spacing, "spacing"));
           }
         });
         const sizeProps = ["width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight"];
         sizeProps.forEach((prop) => {
           if (boundVars[prop]) {
-            console.log(`   \u{1F4E6} Processing ${prop} variable...`);
+            debugLog(`   \u{1F4E6} Processing ${prop} variable...`);
             variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, spacingSet, spacing, "size"));
           }
         });
         if (boundVars.opacity) {
-          console.log("   \u{1F47B} Processing opacity variable...");
+          debugLog("   \u{1F47B} Processing opacity variable...");
           variableProcessingPromises.push(processSingleVariable(boundVars.opacity, "opacity", effectSet, effects, "effect"));
         }
         if (currentNode.type === "TEXT") {
           const typographyProps = ["fontSize", "lineHeight", "letterSpacing", "paragraphSpacing"];
           typographyProps.forEach((prop) => {
             if (boundVars[prop]) {
-              console.log(`   \u{1F4DD} Processing ${prop} variable...`);
+              debugLog(`   \u{1F4DD} Processing ${prop} variable...`);
               variableProcessingPromises.push(processSingleVariable(boundVars[prop], prop, typographySet, typography, "typography"));
             }
           });
         }
         await Promise.all(variableProcessingPromises);
-        console.log(`\u{1F50D} [VARIABLES] Total variables found for ${currentNode.name}: ${Object.keys(boundVars).length}`);
+        if (DEBUG) {
+          debugLog(`\u{1F50D} [VARIABLES] Total variables found for ${currentNode.name}: ${Object.keys(boundVars).length}`);
+        }
       }
       const hasFillVariables = "boundVariables" in currentNode && currentNode.boundVariables && currentNode.boundVariables.fills;
       const hasFillStyle = "fillStyleId" in currentNode && currentNode.fillStyleId;
       if ("fills" in currentNode && Array.isArray(currentNode.fills) && !hasFillStyle && !hasFillVariables) {
-        console.log(`\u{1F50D} [HARD-CODED] Checking fills for ${currentNode.name} (no variables, no style)`);
+        debugLog(`\u{1F50D} [HARD-CODED] Checking fills for ${currentNode.name} (no variables, no style)`);
         currentNode.fills.forEach((fill) => {
           if (fill.type === "SOLID" && fill.visible !== false && fill.color) {
             const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
             const fillDedupKey = `${hex}:${currentNode.id}`;
             if (!colorSet.has(fillDedupKey)) {
-              console.log(`   \u26A0\uFE0F Found hard-coded fill: ${hex}`);
+              debugLog(`   \u26A0\uFE0F Found hard-coded fill: ${hex}`);
               colorSet.add(fillDedupKey);
               const debugContext = getDebugContext(currentNode);
               colors.push({
@@ -419,23 +438,23 @@
           }
         });
       } else if (hasFillVariables) {
-        console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has fill variables - skipping hard-coded detection`);
+        debugLog(`\u{1F50D} [VARIABLES] ${currentNode.name} has fill variables - skipping hard-coded detection`);
       } else if (hasFillStyle) {
-        console.log(`\u{1F50D} [STYLES] ${currentNode.name} has fill style - skipping hard-coded detection`);
+        debugLog(`\u{1F50D} [STYLES] ${currentNode.name} has fill style - skipping hard-coded detection`);
       }
       const hasStrokeVariables = "boundVariables" in currentNode && currentNode.boundVariables && currentNode.boundVariables.strokes;
       const hasStrokeStyle = "strokeStyleId" in currentNode && currentNode.strokeStyleId;
       if ("strokes" in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
-        console.log(`\u{1F50D} [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
-        if (hasDefaultVariantFrameStyles(currentNode)) {
-          console.log(`   \u{1F6AB} Skipping default variant frame stroke colors`);
+        debugLog(`\u{1F50D} [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
+        if (isDefaultVariantFrame) {
+          debugLog(`   \u{1F6AB} Skipping default variant frame stroke colors`);
         } else {
           currentNode.strokes.forEach((stroke) => {
             if (stroke.type === "SOLID" && stroke.visible !== false && stroke.color) {
               const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
               const strokeDedupKey = `${hex}:${currentNode.id}`;
               if (!colorSet.has(strokeDedupKey)) {
-                console.log(`   \u26A0\uFE0F Found hard-coded stroke: ${hex}`);
+                debugLog(`   \u26A0\uFE0F Found hard-coded stroke: ${hex}`);
                 colorSet.add(strokeDedupKey);
                 const debugContext = getDebugContext(currentNode);
                 colors.push({
@@ -444,7 +463,7 @@
                   type: "stroke",
                   isToken: false,
                   source: "hard-coded",
-                  isDefaultVariantStyle: hex.toUpperCase() === "#9747FF" && isNodeInVariant(currentNode),
+                  isDefaultVariantStyle: hex.toUpperCase() === "#9747FF" && inVariant,
                   context: {
                     nodeType: currentNode.type,
                     nodeName: currentNode.name,
@@ -459,20 +478,22 @@
           });
         }
       } else if (hasStrokeVariables) {
-        console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has stroke variables - skipping hard-coded detection`);
+        debugLog(`\u{1F50D} [VARIABLES] ${currentNode.name} has stroke variables - skipping hard-coded detection`);
       } else if (hasStrokeStyle) {
-        console.log(`\u{1F50D} [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
+        debugLog(`\u{1F50D} [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
       }
       if ("strokeWeight" in currentNode && typeof currentNode.strokeWeight === "number") {
-        console.log(`\u{1F50D} Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
+        debugLog(`\u{1F50D} Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
         const hasStrokes = "strokes" in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
         const hasVisibleStrokes = hasStrokes && currentNode.strokes.some((stroke) => stroke.visible !== false);
         const hasStrokeWeightVariable = "boundVariables" in currentNode && currentNode.boundVariables && ["strokeWeight", "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight"].some((prop) => currentNode.boundVariables[prop]);
-        const boundVarKeys = "boundVariables" in currentNode && currentNode.boundVariables ? Object.keys(currentNode.boundVariables) : [];
-        console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}, boundVariable keys: [${boundVarKeys.join(", ")}]`);
+        if (DEBUG) {
+          const boundVarKeys = "boundVariables" in currentNode && currentNode.boundVariables ? Object.keys(currentNode.boundVariables) : [];
+          debugLog(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}, boundVariable keys: [${boundVarKeys.join(", ")}]`);
+        }
         if (hasStrokeWeightVariable) {
-          console.log(`   \u{1F517} ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
-        } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
+          debugLog(`   \u{1F517} ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
+        } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !isDefaultVariantFrame) {
           const strokeWeightValue = `${currentNode.strokeWeight}px`;
           let strokeColor = void 0;
           const firstVisibleStroke = currentNode.strokes.find((stroke) => stroke.visible !== false && stroke.type === "SOLID");
@@ -481,7 +502,7 @@
           }
           const swDedupKey = `${strokeWeightValue}:${currentNode.id}`;
           if (!borderSet.has(swDedupKey)) {
-            console.log(`   \u2705 Adding stroke weight: ${strokeWeightValue}`);
+            debugLog(`   \u2705 Adding stroke weight: ${strokeWeightValue}`);
             borderSet.add(swDedupKey);
             const debugContext = getDebugContext(currentNode);
             borders.push({
@@ -491,7 +512,7 @@
               isToken: false,
               source: "hard-coded",
               strokeColor,
-              isDefaultVariantStyle: currentNode.strokeWeight === 1 && (strokeColor == null ? void 0 : strokeColor.toUpperCase()) === "#9747FF" && isNodeInVariant(currentNode),
+              isDefaultVariantStyle: currentNode.strokeWeight === 1 && (strokeColor == null ? void 0 : strokeColor.toUpperCase()) === "#9747FF" && inVariant,
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
@@ -503,22 +524,22 @@
               }
             });
           }
-        } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && hasDefaultVariantFrameStyles(currentNode)) {
-          console.log(`   \u{1F6AB} Skipping default variant frame stroke weight`);
+        } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && isDefaultVariantFrame) {
+          debugLog(`   \u{1F6AB} Skipping default variant frame stroke weight`);
         }
       }
       const hasRadiusVariables = "boundVariables" in currentNode && currentNode.boundVariables && ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", "cornerRadius"].some((prop) => currentNode.boundVariables[prop]);
       if ("cornerRadius" in currentNode && typeof currentNode.cornerRadius === "number" && !hasRadiusVariables) {
-        console.log(`\u{1F50D} [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
-        if (hasDefaultVariantFrameStyles(currentNode)) {
-          console.log(`   \u{1F6AB} Skipping default variant frame corner radius`);
+        debugLog(`\u{1F50D} [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
+        if (isDefaultVariantFrame) {
+          debugLog(`   \u{1F6AB} Skipping default variant frame corner radius`);
         } else {
           const radius = currentNode.cornerRadius;
           if (radius > 0) {
             const radiusValue = `${radius}px`;
             const crDedupKey = `${radiusValue}:${currentNode.id}`;
             if (!borderSet.has(crDedupKey)) {
-              console.log(`   \u26A0\uFE0F Found hard-coded corner radius: ${radiusValue}`);
+              debugLog(`   \u26A0\uFE0F Found hard-coded corner radius: ${radiusValue}`);
               borderSet.add(crDedupKey);
               const debugContext = getDebugContext(currentNode);
               borders.push({
@@ -527,7 +548,7 @@
                 type: "corner-radius",
                 isToken: false,
                 source: "hard-coded",
-                isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
+                isDefaultVariantStyle: radius === 5 && inVariant,
                 context: {
                   nodeType: currentNode.type,
                   nodeName: currentNode.name,
@@ -541,12 +562,12 @@
           }
         }
       } else if (hasRadiusVariables) {
-        console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has radius variables - skipping hard-coded detection`);
+        debugLog(`\u{1F50D} [VARIABLES] ${currentNode.name} has radius variables - skipping hard-coded detection`);
       }
       if (!hasRadiusVariables && "topLeftRadius" in currentNode) {
-        console.log(`\u{1F50D} [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
-        if (hasDefaultVariantFrameStyles(currentNode)) {
-          console.log(`   \u{1F6AB} Skipping default variant frame individual corner radii`);
+        debugLog(`\u{1F50D} [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
+        if (isDefaultVariantFrame) {
+          debugLog(`   \u{1F6AB} Skipping default variant frame individual corner radii`);
         } else {
           const radiusProps = [
             { prop: "topLeftRadius", name: "top-left" },
@@ -561,7 +582,7 @@
                 const radiusValue = `${radius}px`;
                 const irDedupKey = `${radiusValue}:${currentNode.id}:${prop}`;
                 if (!borderSet.has(irDedupKey)) {
-                  console.log(`   \u26A0\uFE0F Found hard-coded ${name} radius: ${radiusValue}`);
+                  debugLog(`   \u26A0\uFE0F Found hard-coded ${name} radius: ${radiusValue}`);
                   borderSet.add(irDedupKey);
                   const debugContext = getDebugContext(currentNode);
                   borders.push({
@@ -570,7 +591,7 @@
                     type: `${name}-radius`,
                     isToken: false,
                     source: "hard-coded",
-                    isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
+                    isDefaultVariantStyle: radius === 5 && inVariant,
                     context: {
                       nodeType: currentNode.type,
                       nodeName: currentNode.name,
@@ -588,7 +609,7 @@
       }
       const hasPaddingVariables = "boundVariables" in currentNode && currentNode.boundVariables && ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"].some((prop) => currentNode.boundVariables[prop]);
       if ("paddingLeft" in currentNode && typeof currentNode.paddingLeft === "number" && !hasPaddingVariables) {
-        console.log(`\u{1F50D} [HARD-CODED] Checking padding for ${currentNode.name} (no variables)`);
+        debugLog(`\u{1F50D} [HARD-CODED] Checking padding for ${currentNode.name} (no variables)`);
         const frame = currentNode;
         const paddings = [
           { value: frame.paddingLeft, name: "left" },
@@ -599,10 +620,10 @@
         paddings.forEach((padding) => {
           const padDedupKey = `${padding.value}:${currentNode.id}:${padding.name}`;
           if (typeof padding.value === "number" && padding.value > 1 && !spacingSet.has(padDedupKey)) {
-            console.log(`   \u26A0\uFE0F Found hard-coded padding-${padding.name}: ${padding.value}px`);
+            debugLog(`   \u26A0\uFE0F Found hard-coded padding-${padding.name}: ${padding.value}px`);
             spacingSet.add(padDedupKey);
             const debugContext = getDebugContext(currentNode);
-            const isDefaultVariantPadding = padding.value === 16 && isNodeInVariant(currentNode) && hasDefaultVariantFrameStyles(currentNode);
+            const isDefaultVariantPadding = padding.value === 16 && inVariant && isDefaultVariantFrame;
             spacing.push({
               name: `hard-coded-padding-${padding.name}-${padding.value}`,
               value: `${padding.value}px`,
@@ -622,15 +643,15 @@
           }
         });
       } else if (hasPaddingVariables) {
-        console.log(`\u{1F50D} [VARIABLES] ${currentNode.name} has padding variables - skipping hard-coded detection`);
+        debugLog(`\u{1F50D} [VARIABLES] ${currentNode.name} has padding variables - skipping hard-coded detection`);
       }
       if ("children" in currentNode) {
         for (const child of currentNode.children) {
-          await traverseNode(child);
+          await traverseNode(child, inVariant || child.type === "COMPONENT_SET");
         }
       }
     }
-    await traverseNode(node);
+    await traverseNode(node, isNodeInVariant(node));
     return analyzeTokensConsistently({ colors, spacing, typography, effects, borders });
   }
   function analyzeTokensConsistently(extractedTokens) {
@@ -713,7 +734,8 @@
 **Component Analysis Context:**
 - Component Name: ${componentContext.name}
 - Component Type: ${componentContext.type}
-- Layer Structure: ${JSON.stringify(componentContext.hierarchy, null, 2)}
+- Layer Structure:
+${serializeHierarchy(componentContext.hierarchy)}
 - Detected Colors: ${componentContext.colors && componentContext.colors.length > 0 ? componentContext.colors.join(", ") : "None detected"}
 - Detected Spacing: ${componentContext.spacing && componentContext.spacing.length > 0 ? componentContext.spacing.join(", ") : "None detected"}
 - Text Content: ${componentContext.textContent || "No text content"}
@@ -1002,7 +1024,6 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       let escapeNext = false;
       for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
         const line = lines[lineIndex];
-        let shouldIncludeLine = true;
         for (let i = 0; i < line.length; i++) {
           const char = line[i];
           if (escapeNext) {
@@ -1219,9 +1240,9 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     }
   };
   var DEFAULT_MODELS = {
-    anthropic: "claude-sonnet-4-6",
+    anthropic: "claude-sonnet-5",
     openai: "gpt-5.4-mini",
-    google: "gemini-3-flash-preview"
+    google: "gemini-3.5-flash"
   };
   function detectProviderFromKey(apiKey) {
     const trimmed = apiKey.trim();
@@ -1240,15 +1261,15 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   // src/api/providers/anthropic.ts
   var ANTHROPIC_MODELS = [
     {
-      id: "claude-opus-4-7",
-      name: "Claude Opus 4.7",
+      id: "claude-opus-4-8",
+      name: "Claude Opus 4.8",
       description: "Flagship model - Most intelligent, best for complex agents and coding",
       contextWindow: 1e6,
       isDefault: false
     },
     {
-      id: "claude-sonnet-4-6",
-      name: "Claude Sonnet 4.6",
+      id: "claude-sonnet-5",
+      name: "Claude Sonnet 5",
       description: "Standard model - Best combination of speed and intelligence, recommended for most tasks",
       contextWindow: 1e6,
       isDefault: true
@@ -1605,15 +1626,16 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
             "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */,
             statusCode
           );
-        case 429:
+        case 429: {
           const retryMatch = errorMessage.match(/try again in (\d+)/i);
-          const retryAfter = retryMatch ? parseInt(retryMatch[1], 10) : void 0;
+          const retryAfterSeconds = retryMatch ? parseInt(retryMatch[1], 10) : void 0;
           return new LLMError(
-            `OpenAI API Error (429): Rate limit exceeded. ${retryAfter ? `Please try again in ${retryAfter} seconds.` : "Please try again later."}`,
+            `OpenAI API Error (429): Rate limit exceeded. ${retryAfterSeconds ? `Please try again in ${retryAfterSeconds} seconds.` : "Please try again later."}`,
             "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */,
             statusCode,
-            retryAfter
+            retryAfterSeconds !== void 0 ? retryAfterSeconds * 1e3 : void 0
           );
+        }
         case 500:
           return new LLMError(
             "OpenAI API Error (500): Server error. The OpenAI API is experiencing issues. Please try again later.",
@@ -1652,23 +1674,23 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   // src/api/providers/google.ts
   var GOOGLE_MODELS = [
     {
-      id: "gemini-3.1-pro-preview",
-      name: "Gemini 3.1 Pro",
-      description: "Flagship model - Advanced reasoning and agentic capabilities",
-      contextWindow: 1e6,
-      isDefault: false
-    },
-    {
-      id: "gemini-3-flash-preview",
-      name: "Gemini 3 Flash",
-      description: "Standard model - Frontier-class performance at lower cost, recommended for most tasks",
+      id: "gemini-3.5-flash",
+      name: "Gemini 3.5 Flash",
+      description: "Flagship model - Most intelligent, frontier performance on agentic and coding tasks, recommended for most tasks",
       contextWindow: 1e6,
       isDefault: true
     },
     {
       id: "gemini-3.1-flash-lite",
       name: "Gemini 3.1 Flash-Lite",
-      description: "Economy model - GA workhorse optimized for low-latency, high-volume tasks",
+      description: "Standard model - Frontier-class performance rivaling larger models at a fraction of the cost",
+      contextWindow: 1e6,
+      isDefault: false
+    },
+    {
+      id: "gemini-2.5-flash-lite",
+      name: "Gemini 2.5 Flash-Lite",
+      description: "Economy model - Fastest and most budget-friendly for low-latency, high-volume tasks",
       contextWindow: 1e6,
       isDefault: false
     }
@@ -1755,7 +1777,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       if (!geminiResponse.candidates || geminiResponse.candidates.length === 0) {
         const keys = Object.keys(geminiResponse);
         throw new LLMError(
-          `No candidates in Gemini response. Response keys: [${keys.join(", ")}]${geminiResponse.error ? `. Error: ${geminiResponse.error.message}` : ""}`,
+          `No candidates in Gemini response. Response keys: [${keys.join(", ")}]`,
           "INVALID_REQUEST" /* INVALID_REQUEST */
         );
       }
@@ -2121,8 +2143,13 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   async function loadProviderConfig() {
     await migrateLegacyStorage();
     const providerId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_PROVIDER) || DEFAULTS.provider;
-    const modelId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_MODEL) || DEFAULT_MODELS[providerId];
+    const savedModelId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_MODEL);
     const apiKey = await figma.clientStorage.getAsync(STORAGE_KEYS.apiKey(providerId));
+    const isKnownModel = savedModelId ? providers[providerId].models.some((m) => m.id === savedModelId) : false;
+    const modelId = isKnownModel && savedModelId ? savedModelId : DEFAULT_MODELS[providerId];
+    if (savedModelId && !isKnownModel) {
+      await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_MODEL, modelId);
+    }
     return { providerId, modelId, apiKey };
   }
   async function saveProviderConfig(providerId, modelId, apiKey) {
@@ -2136,7 +2163,594 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     await figma.clientStorage.deleteAsync(STORAGE_KEYS.apiKey(providerId));
   }
 
+  // src/core/consistency-engine.ts
+  var _ComponentConsistencyEngine = class _ComponentConsistencyEngine {
+    constructor(config = {}) {
+      this.cache = /* @__PURE__ */ new Map();
+      this.designSystemsKnowledge = null;
+      this.knowledgeLoadPromise = null;
+      this.config = __spreadValues({
+        enableCaching: true,
+        enableMCPIntegration: true,
+        mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp",
+        consistencyThreshold: 0.95
+      }, config);
+    }
+    /**
+     * Generate a deterministic hash for a component based on its structure
+     */
+    generateComponentHash(context, tokens) {
+      var _a, _b;
+      const hashInput = {
+        name: context.name,
+        type: context.type,
+        hierarchy: this.normalizeHierarchy(context.hierarchy),
+        frameStructure: context.frameStructure,
+        detectedStyles: context.detectedStyles,
+        tokenFingerprint: this.generateTokenFingerprint(tokens),
+        // Editing the component description must invalidate the cached analysis
+        // (the description feeds the audit's description checks and prompts).
+        existingDescription: context.existingDescription || "",
+        // Don't include dynamic context that could vary
+        staticProperties: {
+          hasInteractiveElements: ((_a = context.additionalContext) == null ? void 0 : _a.hasInteractiveElements) || false,
+          componentFamily: ((_b = context.additionalContext) == null ? void 0 : _b.componentFamily) || "generic"
+        }
+      };
+      return this.createHash(JSON.stringify(hashInput));
+    }
+    /**
+     * Get cached analysis if available and valid
+     */
+    getCachedAnalysis(hash) {
+      if (!this.config.enableCaching) return null;
+      const cached = this.cache.get(hash);
+      if (!cached) return null;
+      const isExpired = Date.now() - cached.timestamp > 24 * 60 * 60 * 1e3;
+      if (isExpired) {
+        this.cache.delete(hash);
+        return null;
+      }
+      console.log("\u2705 Using cached analysis for component hash:", hash);
+      return cached;
+    }
+    /**
+     * Cache analysis result
+     */
+    cacheAnalysis(hash, result) {
+      var _a;
+      if (!this.config.enableCaching) return;
+      this.cache.set(hash, {
+        hash,
+        result,
+        timestamp: Date.now(),
+        mcpKnowledgeVersion: ((_a = this.designSystemsKnowledge) == null ? void 0 : _a.version) || "1.0.0"
+      });
+      console.log("\u{1F4BE} Cached analysis for component hash:", hash);
+    }
+    /**
+    * Load design systems knowledge from MCP server.
+    *
+    * Memoized: the knowledge is loaded once (in the background at plugin init)
+    * and reused for KNOWLEDGE_TTL_MS. Without the guard, every Analyze click
+    * re-ran an MCP connectivity check plus four knowledge queries (~1-5s of
+    * fixed network latency per analysis). Concurrent callers share one in-flight
+    * load instead of racing.
+    */
+    async loadDesignSystemsKnowledge() {
+      const knowledge = this.designSystemsKnowledge;
+      if (knowledge && Date.now() - knowledge.lastUpdated < _ComponentConsistencyEngine.KNOWLEDGE_TTL_MS) {
+        return;
+      }
+      if (this.knowledgeLoadPromise) {
+        return this.knowledgeLoadPromise;
+      }
+      const load = this.doLoadDesignSystemsKnowledge();
+      this.knowledgeLoadPromise = load;
+      try {
+        await load;
+      } finally {
+        this.knowledgeLoadPromise = null;
+      }
+    }
+    async doLoadDesignSystemsKnowledge() {
+      if (!this.config.enableMCPIntegration) {
+        console.log("\u{1F4DA} MCP integration disabled, using fallback knowledge");
+        this.loadFallbackKnowledge();
+        return;
+      }
+      try {
+        console.log("\u{1F504} Loading design systems knowledge from MCP...");
+        const connectivityTest = await this.testMCPConnectivity();
+        if (!connectivityTest) {
+          console.warn("\u26A0\uFE0F MCP server not accessible, using fallback knowledge");
+          this.loadFallbackKnowledge();
+          return;
+        }
+        const [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge] = await Promise.allSettled([
+          this.queryMCP("component analysis best practices"),
+          this.queryMCP("design token naming conventions and patterns"),
+          this.queryMCP("design system accessibility requirements"),
+          this.queryMCP("design system component scoring methodology")
+        ]);
+        this.designSystemsKnowledge = {
+          version: "1.0.0",
+          components: this.processComponentKnowledge(
+            componentKnowledge.status === "fulfilled" ? componentKnowledge.value : null
+          ),
+          tokens: this.processKnowledgeContent(
+            tokenKnowledge.status === "fulfilled" ? tokenKnowledge.value : null
+          ),
+          accessibility: this.processKnowledgeContent(
+            accessibilityKnowledge.status === "fulfilled" ? accessibilityKnowledge.value : null
+          ),
+          scoring: this.processKnowledgeContent(
+            scoringKnowledge.status === "fulfilled" ? scoringKnowledge.value : null
+          ),
+          lastUpdated: Date.now()
+        };
+        const successfulQueries = [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge].filter((result) => result.status === "fulfilled").length;
+        if (successfulQueries > 0) {
+          console.log(`\u2705 Design systems knowledge loaded successfully (${successfulQueries}/4 queries successful)`);
+        } else {
+          console.warn("\u26A0\uFE0F All MCP queries failed, using fallback knowledge");
+          this.loadFallbackKnowledge();
+        }
+      } catch (error) {
+        console.warn("\u26A0\uFE0F Failed to load design systems knowledge:", error);
+        this.loadFallbackKnowledge();
+      }
+    }
+    /**
+    * Test MCP server connectivity using MCP initialization instead of health endpoint
+    */
+    async testMCPConnectivity() {
+      var _a, _b;
+      try {
+        console.log("\u{1F517} Testing MCP server connectivity...");
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("Connectivity test timeout")), 5e3)
+        );
+        const initPayload = {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: { roots: { listChanged: true } },
+            clientInfo: { name: "figmalint", version: "2.0.0" }
+          }
+        };
+        if (!this.config.mcpServerUrl) {
+          throw new Error("MCP server URL not configured");
+        }
+        const fetchPromise = fetch(this.config.mcpServerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(initPayload)
+        });
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (response.ok) {
+          const data = await response.json();
+          if ((_b = (_a = data.result) == null ? void 0 : _a.serverInfo) == null ? void 0 : _b.name) {
+            console.log(`\u2705 MCP server accessible: ${data.result.serverInfo.name}`);
+            return true;
+          }
+        }
+        console.warn(`\u26A0\uFE0F MCP server returned ${response.status}`);
+        return false;
+      } catch (error) {
+        console.warn("\u26A0\uFE0F MCP server connectivity test failed:", error);
+        return false;
+      }
+    }
+    /**
+     * Query the design systems MCP server using proper JSON-RPC protocol
+     */
+    async queryMCP(query) {
+      try {
+        console.log(`\u{1F50D} Querying MCP for: "${query}"`);
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("MCP query timeout")), 5e3)
+        );
+        if (!this.config.mcpServerUrl) {
+          throw new Error("MCP server URL not configured");
+        }
+        const searchPayload = {
+          jsonrpc: "2.0",
+          id: Math.floor(Math.random() * 1e3) + 2,
+          // Random ID > 1 (1 is used for init)
+          method: "tools/call",
+          params: {
+            name: "search_design_knowledge",
+            arguments: {
+              query,
+              limit: 5,
+              category: "components"
+            }
+          }
+        };
+        const fetchPromise = fetch(this.config.mcpServerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(searchPayload)
+        });
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (!response.ok) {
+          throw new Error(`MCP query failed: ${response.status} ${response.statusText}`);
+        }
+        const result = await response.json();
+        console.log(`\u2705 MCP query successful for: "${query}"`);
+        if (result.result && result.result.content) {
+          return {
+            results: result.result.content.map((item) => ({
+              title: item.title || "Design System Knowledge",
+              content: item.content || item.description || "Knowledge content",
+              category: "design-systems"
+            }))
+          };
+        }
+        return { results: [] };
+      } catch (error) {
+        console.warn(`\u26A0\uFE0F MCP query failed for "${query}":`, error);
+        return this.getFallbackKnowledgeForQuery(query);
+      }
+    }
+    /**
+     * Create deterministic analysis prompt with MCP knowledge
+     */
+    createDeterministicPrompt(context) {
+      const basePrompt = this.createBasePrompt(context);
+      const mcpGuidance = this.getMCPGuidance(context);
+      const scoringCriteria = this.getScoringCriteria(context);
+      return `${basePrompt}
+
+**CONSISTENCY REQUIREMENTS:**
+- Use DETERMINISTIC analysis based on the exact component structure provided
+- Apply CONSISTENT scoring criteria for identical components
+- Follow established design system patterns and conventions
+- Provide REPRODUCIBLE results for the same input
+
+**DESIGN SYSTEMS GUIDANCE:**
+${mcpGuidance}
+
+**SCORING METHODOLOGY:**
+${scoringCriteria}
+
+**DETERMINISTIC SETTINGS:**
+- Analysis must be based solely on the provided component structure
+- Scores must be calculated using objective criteria
+- Recommendations must follow established design system patterns
+- Response format must be exactly as specified (JSON only)
+
+**RESPONSE FORMAT (JSON only - no explanatory text):**
+{
+  "component": "Component name and purpose",
+  "description": "Detailed component description based on structure analysis",
+  "score": {
+    "overall": 85,
+    "breakdown": {
+      "structure": 90,
+      "tokens": 80,
+      "accessibility": 85,
+      "consistency": 90
+    }
+  },
+  "props": [...],
+  "states": [...],
+  "slots": [...],
+  "variants": {...},
+  "usage": "Usage guidelines",
+  "accessibility": {...},
+  "tokens": {...},
+  "audit": {...},
+  "mcpReadiness": {...}
+}`;
+    }
+    /**
+     * Validate analysis result for consistency
+     */
+    validateAnalysisConsistency(result, context) {
+      var _a, _b, _c, _d, _e;
+      const issues = [];
+      if (!((_a = result.metadata) == null ? void 0 : _a.component)) issues.push("Missing component name");
+      if (!((_b = result.metadata) == null ? void 0 : _b.description)) issues.push("Missing component description");
+      if (!this.isValidScore((_d = (_c = result.metadata) == null ? void 0 : _c.mcpReadiness) == null ? void 0 : _d.score)) {
+        issues.push("Invalid or missing MCP readiness score");
+      }
+      const family = (_e = context.additionalContext) == null ? void 0 : _e.componentFamily;
+      if (family && !this.validateComponentFamilyConsistency(result, family)) {
+        issues.push(`Inconsistent analysis for ${family} component family`);
+      }
+      if (!this.validateTokenRecommendations(result.tokens)) {
+        issues.push("Inconsistent token recommendations");
+      }
+      if (issues.length > 0) {
+        console.warn("\u26A0\uFE0F Analysis consistency issues found:", issues);
+        return false;
+      }
+      return true;
+    }
+    /**
+     * Apply consistency corrections to analysis result
+     */
+    applyConsistencyCorrections(result, context) {
+      var _a;
+      const corrected = __spreadValues({}, result);
+      if ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) {
+        corrected.metadata = this.applyComponentFamilyCorrections(
+          corrected.metadata,
+          context.additionalContext.componentFamily
+        );
+      }
+      corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
+      corrected.metadata.mcpReadiness = this.ensureConsistentScoring(
+        corrected.metadata.mcpReadiness || {},
+        context
+      );
+      return corrected;
+    }
+    // Private helper methods
+    normalizeHierarchy(hierarchy) {
+      return hierarchy.map((item) => ({
+        name: item.name.toLowerCase().trim(),
+        type: item.type,
+        depth: item.depth
+      }));
+    }
+    generateTokenFingerprint(tokens) {
+      const fingerprint = tokens.map((token) => `${token.type}:${token.isToken}:${token.source}`).sort().join("|");
+      return this.createHash(fingerprint);
+    }
+    createHash(input) {
+      let hash = 0;
+      if (input.length === 0) return hash.toString();
+      for (let i = 0; i < input.length; i++) {
+        const char = input.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash).toString(36);
+    }
+    createBasePrompt(context) {
+      var _a, _b, _c, _d;
+      return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
+
+**Component Analysis Context:**
+- Component Name: ${context.name}
+- Component Type: ${context.type}
+- Layer Structure: ${JSON.stringify(context.hierarchy, null, 2)}
+- Frame Structure: ${JSON.stringify(context.frameStructure)}
+- Detected Styles: ${JSON.stringify(context.detectedStyles)}
+- Component Family: ${((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic"}
+- Interactive Elements: ${((_b = context.additionalContext) == null ? void 0 : _b.hasInteractiveElements) || false}
+- Design Patterns: ${((_d = (_c = context.additionalContext) == null ? void 0 : _c.designPatterns) == null ? void 0 : _d.join(", ")) || "none"}`;
+    }
+    getMCPGuidance(context) {
+      var _a;
+      if (!this.designSystemsKnowledge) {
+        return this.getFallbackGuidance(context);
+      }
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const guidance = this.designSystemsKnowledge.components[family] || this.designSystemsKnowledge.components.generic;
+      return guidance || this.getFallbackGuidance(context);
+    }
+    getScoringCriteria(_context) {
+      var _a;
+      if (!((_a = this.designSystemsKnowledge) == null ? void 0 : _a.scoring)) {
+        return this.getFallbackScoringCriteria();
+      }
+      return this.designSystemsKnowledge.scoring;
+    }
+    processComponentKnowledge(knowledge) {
+      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
+        console.log("\u{1F4DD} No component knowledge available, using defaults");
+        return this.getDefaultComponentKnowledge();
+      }
+      const processed = {};
+      knowledge.results.forEach((result) => {
+        if (result.title && result.content) {
+          const componentType = this.extractComponentType(result.title);
+          processed[componentType] = result.content;
+        }
+      });
+      const defaults = this.getDefaultComponentKnowledge();
+      return __spreadValues(__spreadValues({}, defaults), processed);
+    }
+    extractComponentType(title) {
+      const titleLower = title.toLowerCase();
+      if (titleLower.includes("button")) return "button";
+      if (titleLower.includes("avatar")) return "avatar";
+      if (titleLower.includes("input") || titleLower.includes("field")) return "input";
+      if (titleLower.includes("card")) return "card";
+      if (titleLower.includes("badge") || titleLower.includes("tag")) return "badge";
+      return "generic";
+    }
+    processKnowledgeContent(knowledge) {
+      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
+        return "";
+      }
+      return knowledge.results.map((result) => result.content).filter((content) => content).join("\n\n");
+    }
+    getDefaultComponentKnowledge() {
+      return {
+        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
+        avatar: "Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
+        card: "Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
+        badge: "Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
+        input: "Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
+        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
+      };
+    }
+    getFallbackKnowledgeForQuery(query) {
+      return {
+        results: [
+          {
+            title: `Fallback guidance for ${query}`,
+            content: this.getFallbackContentForQuery(query),
+            category: "fallback"
+          }
+        ]
+      };
+    }
+    getFallbackContentForQuery(query) {
+      if (query.includes("component analysis")) {
+        return "Components should follow consistent naming, use design tokens, implement proper states, and maintain accessibility standards.";
+      }
+      if (query.includes("token")) {
+        return "Design tokens should use semantic naming patterns like semantic-color-primary, spacing-md-16px, and text-size-lg-18px.";
+      }
+      if (query.includes("accessibility")) {
+        return "Ensure WCAG 2.1 AA compliance with proper ARIA labels, keyboard support, and color contrast.";
+      }
+      if (query.includes("scoring")) {
+        return "Score components based on structure (25%), token usage (25%), accessibility (25%), and consistency (25%).";
+      }
+      return "Follow established design system best practices for consistency and scalability.";
+    }
+    getFallbackGuidance(context) {
+      var _a;
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const guidanceMap = {
+        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
+        avatar: "Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
+        card: "Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
+        badge: "Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
+        input: "Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
+      };
+      return guidanceMap[family] || guidanceMap.generic;
+    }
+    getFallbackScoringCriteria() {
+      return `
+    **MCP Readiness Scoring (0-100):**
+    - **Structure (25%)**: Clear hierarchy, logical organization, proper nesting
+    - **Tokens (25%)**: Design token usage vs hard-coded values
+    - **Accessibility (25%)**: WCAG compliance, keyboard support, ARIA labels
+    - **Consistency (25%)**: Naming conventions, pattern adherence, scalability
+
+    **Score Calculation:**
+    - 90-100: Production ready, comprehensive implementation
+    - 80-89: Good implementation, minor improvements needed
+    - 70-79: Solid foundation, some important gaps
+    - 60-69: Basic implementation, significant improvements needed
+    - Below 60: Major issues, substantial rework required
+    `;
+    }
+    loadFallbackKnowledge() {
+      this.designSystemsKnowledge = {
+        version: "1.0.0-fallback",
+        components: {
+          button: "Button components require comprehensive state management",
+          avatar: "Avatar components should support size variants and interactive states",
+          card: "Card components need consistent spacing and content hierarchy",
+          badge: "Badge components should use semantic colors for status indication",
+          input: "Input components require comprehensive accessibility and validation",
+          generic: "Generic components should follow basic design system principles"
+        },
+        tokens: "Use semantic token naming: semantic-color-primary, spacing-md-16px, text-size-lg-18px",
+        accessibility: "Ensure WCAG 2.1 AA compliance with proper ARIA labels and keyboard support",
+        scoring: this.getFallbackScoringCriteria(),
+        lastUpdated: Date.now()
+      };
+    }
+    isValidScore(score) {
+      return typeof score === "number" && score >= 0 && score <= 100;
+    }
+    validateComponentFamilyConsistency(result, family) {
+      const metadata = result.metadata;
+      switch (family) {
+        case "button":
+          return this.validateButtonComponent(metadata);
+        case "avatar":
+          return this.validateAvatarComponent(metadata);
+        case "input":
+          return this.validateInputComponent(metadata);
+        default:
+          return true;
+      }
+    }
+    validateButtonComponent(metadata) {
+      var _a;
+      const hasInteractiveStates = (_a = metadata.states) == null ? void 0 : _a.some(
+        (state) => ["hover", "focus", "active", "disabled"].includes(state.toLowerCase())
+      );
+      return hasInteractiveStates || false;
+    }
+    validateAvatarComponent(metadata) {
+      var _a, _b, _c;
+      const hasSizeVariants = ((_b = (_a = metadata.variants) == null ? void 0 : _a.size) == null ? void 0 : _b.length) > 0;
+      const hasSizeProps = (_c = metadata.props) == null ? void 0 : _c.some(
+        (prop) => prop.name.toLowerCase().includes("size")
+      );
+      return hasSizeVariants || hasSizeProps || false;
+    }
+    validateInputComponent(metadata) {
+      var _a;
+      const hasFormStates = (_a = metadata.states) == null ? void 0 : _a.some(
+        (state) => ["focus", "error", "disabled", "filled"].includes(state.toLowerCase())
+      );
+      return hasFormStates || false;
+    }
+    validateTokenRecommendations(tokens) {
+      var _a;
+      const hasSemanticColors = (_a = tokens.colors) == null ? void 0 : _a.some(
+        (token) => token.name.includes("semantic-") || token.name.includes("primary") || token.name.includes("secondary")
+      );
+      return hasSemanticColors !== false;
+    }
+    applyComponentFamilyCorrections(metadata, family) {
+      var _a, _b, _c;
+      const corrected = __spreadValues({}, metadata);
+      switch (family) {
+        case "button":
+          if (!((_a = corrected.states) == null ? void 0 : _a.includes("hover"))) {
+            corrected.states = [...corrected.states || [], "hover", "focus", "active", "disabled"];
+          }
+          break;
+        case "avatar":
+          if (!((_b = corrected.variants) == null ? void 0 : _b.size) && !((_c = corrected.props) == null ? void 0 : _c.some((p) => p.name.includes("size")))) {
+            corrected.variants = __spreadProps(__spreadValues({}, corrected.variants), { size: ["small", "medium", "large"] });
+          }
+          break;
+      }
+      return corrected;
+    }
+    applyTokenConsistencyCorrections(tokens) {
+      if (!tokens) return tokens;
+      const corrected = __spreadValues({}, tokens);
+      return corrected;
+    }
+    ensureConsistentScoring(mcpReadiness, _context) {
+      return __spreadProps(__spreadValues({}, mcpReadiness), {
+        score: mcpReadiness.score || 0
+      });
+    }
+  };
+  /** Knowledge is refreshed at most this often; every Analyze click awaits it. */
+  _ComponentConsistencyEngine.KNOWLEDGE_TTL_MS = 30 * 60 * 1e3;
+  var ComponentConsistencyEngine = _ComponentConsistencyEngine;
+  var consistencyEngine = new ComponentConsistencyEngine({
+    enableCaching: true,
+    enableMCPIntegration: true,
+    mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
+  });
+
   // src/fixes/naming-fixer.ts
+  var NamingStrategy = /* @__PURE__ */ ((NamingStrategy2) => {
+    NamingStrategy2["SEMANTIC"] = "semantic";
+    NamingStrategy2["BEM"] = "bem";
+    NamingStrategy2["PREFIX_BASED"] = "prefix-based";
+    NamingStrategy2["CAMEL_CASE"] = "camelCase";
+    NamingStrategy2["KEBAB_CASE"] = "kebab-case";
+    NamingStrategy2["SNAKE_CASE"] = "snake_case";
+    return NamingStrategy2;
+  })(NamingStrategy || {});
   var GENERIC_NAMES = /^(Frame|Rectangle|Ellipse|Group|Vector|Line|Polygon|Star|Text|Component|Instance|Slice|Boolean|Union|Subtract|Intersect|Exclude)\s*\d*$/i;
   var NUMBERED_SUFFIX = /\s+\d+$/;
   var COMPONENT_PREFIXES = {
@@ -2509,6 +3123,20 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     }
     return COMPONENT_PREFIXES[layerType] || "layer";
   }
+  function suggestBEMName(node, parentName, modifier) {
+    const layerType = detectLayerType(node);
+    const elementName = COMPONENT_PREFIXES[layerType] || "element";
+    let bemName = "";
+    if (parentName) {
+      bemName = `${toKebabCase(parentName)}__${elementName}`;
+    } else {
+      bemName = elementName;
+    }
+    if (modifier) {
+      bemName += `--${toKebabCase(modifier)}`;
+    }
+    return bemName;
+  }
   function generateIconName(node) {
     const name = node.name.toLowerCase();
     const meaningfulPart = name.replace(GENERIC_NAMES, "").replace(/[_\-\s]+/g, "-").replace(/^-|-$/g, "").trim();
@@ -2648,6 +3276,92 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       return false;
     }
   }
+  function batchRename(nodes, strategy, options = {}) {
+    const result = {
+      success: true,
+      renamed: 0,
+      skipped: 0,
+      errors: [],
+      previews: []
+    };
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      try {
+        let newName;
+        switch (strategy) {
+          case "semantic" /* SEMANTIC */:
+            newName = suggestLayerName(node);
+            break;
+          case "bem" /* BEM */:
+            newName = suggestBEMName(node, options.parentName);
+            break;
+          case "prefix-based" /* PREFIX_BASED */:
+            const layerType = detectLayerType(node);
+            const prefix = options.prefix || COMPONENT_PREFIXES[layerType];
+            newName = `${prefix}-${toKebabCase(node.name)}`;
+            break;
+          case "camelCase" /* CAMEL_CASE */:
+            newName = toCamelCase(suggestLayerName(node));
+            break;
+          case "kebab-case" /* KEBAB_CASE */:
+            newName = toKebabCase(suggestLayerName(node));
+            break;
+          case "snake_case" /* SNAKE_CASE */:
+            newName = toSnakeCase(suggestLayerName(node));
+            break;
+          default:
+            newName = suggestLayerName(node);
+        }
+        const preview = {
+          nodeId: node.id,
+          currentName: node.name,
+          newName,
+          layerType: detectLayerType(node),
+          willChange: node.name !== newName
+        };
+        result.previews.push(preview);
+        if (!options.dryRun && preview.willChange) {
+          const renamed = renameLayer(node, newName);
+          if (renamed) {
+            result.renamed++;
+          } else {
+            result.skipped++;
+          }
+        } else if (!preview.willChange) {
+          result.skipped++;
+        }
+      } catch (error) {
+        result.errors.push(`Failed to process node ${node.id}: ${String(error)}`);
+        result.success = false;
+      }
+    }
+    return result;
+  }
+  function applyNamingConvention(node, convention, options = {}) {
+    var _a;
+    const maxDepth = (_a = options.maxDepth) != null ? _a : 10;
+    const nodesToRename = [];
+    function collectNodes(currentNode, depth) {
+      if (depth > maxDepth) {
+        return;
+      }
+      const shouldInclude = options.onlyGeneric ? isGenericName(currentNode.name) : true;
+      if (shouldInclude) {
+        nodesToRename.push(currentNode);
+      }
+      if ("children" in currentNode && currentNode.type !== "INSTANCE") {
+        for (let i = 0; i < currentNode.children.length; i++) {
+          collectNodes(currentNode.children[i], depth + 1);
+        }
+      }
+    }
+    collectNodes(node, 0);
+    return batchRename(nodesToRename, convention.strategy, {
+      prefix: convention.prefix,
+      parentName: node.name,
+      dryRun: options.dryRun
+    });
+  }
   function previewRename(node, newName) {
     return {
       nodeId: node.id,
@@ -2659,6 +3373,23 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   }
   function toKebabCase(str) {
     return str.replace(/([a-z])([A-Z])/g, "$1-$2").replace(/[\s_]+/g, "-").replace(/[^a-zA-Z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  }
+  function toCamelCase(str) {
+    const kebab = toKebabCase(str);
+    const parts = kebab.split("-");
+    let result = "";
+    for (let i = 0; i < parts.length; i++) {
+      const word = parts[i];
+      if (i === 0) {
+        result += word;
+      } else {
+        result += word.charAt(0).toUpperCase() + word.slice(1);
+      }
+    }
+    return result;
+  }
+  function toSnakeCase(str) {
+    return toKebabCase(str).replace(/-/g, "_");
   }
 
   // src/fixes/token-fixer.ts
@@ -2825,79 +3556,181 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const filtered = allImported.filter((v) => v.resolvedType === resolvedType);
     return { variables: filtered, collectionNames };
   }
+  var resolvedVariableCachePromise = null;
+  var resolvedVariableCacheBuiltAt = 0;
+  var RESOLVED_VARIABLE_CACHE_TTL_MS = 3e4;
+  function getResolvedVariableCache() {
+    const now = Date.now();
+    if (resolvedVariableCachePromise && now - resolvedVariableCacheBuiltAt < RESOLVED_VARIABLE_CACHE_TTL_MS) {
+      return resolvedVariableCachePromise;
+    }
+    resolvedVariableCacheBuiltAt = now;
+    const promise = buildResolvedVariableCache().catch((error) => {
+      if (resolvedVariableCachePromise === promise) {
+        resolvedVariableCachePromise = null;
+      }
+      throw error;
+    });
+    resolvedVariableCachePromise = promise;
+    return promise;
+  }
+  async function buildResolvedVariableCache() {
+    const cache = {
+      colorEntries: [],
+      colorByHex: /* @__PURE__ */ new Map(),
+      floatEntries: [],
+      floatByValue: /* @__PURE__ */ new Map(),
+      matchMemo: /* @__PURE__ */ new Map()
+    };
+    const [localColorVars, localFloatVars, localCollections] = await Promise.all([
+      figma.variables.getLocalVariablesAsync("COLOR"),
+      figma.variables.getLocalVariablesAsync("FLOAT"),
+      figma.variables.getLocalVariableCollectionsAsync()
+    ]);
+    const collectionMap = /* @__PURE__ */ new Map();
+    for (const collection of localCollections) {
+      collectionMap.set(collection.id, collection);
+    }
+    const resolveColorEntry = async (variable, collectionName, value, isLibrary) => {
+      if (!value) return null;
+      const resolved = await resolveVariableValue(value);
+      if (!resolved || typeof resolved === "number") return null;
+      const aliasDepth = await countAliasDepth(value);
+      return {
+        variableId: variable.id,
+        variableName: variable.name,
+        collectionName,
+        isLibrary,
+        aliasDepth,
+        color: resolved,
+        hex: rgbToHex(resolved.r, resolved.g, resolved.b)
+      };
+    };
+    const resolveFloatEntry = async (variable, collectionName, value, isLibrary) => {
+      if (value === void 0) return null;
+      const resolved = await resolveVariableValue(value);
+      if (typeof resolved !== "number") return null;
+      const aliasDepth = await countAliasDepth(value);
+      return {
+        variableId: variable.id,
+        variableName: variable.name,
+        collectionName,
+        isLibrary,
+        aliasDepth,
+        value: resolved
+      };
+    };
+    const defaultModeValue = (variable, collection) => variable.valuesByMode[collection.modes[0].modeId];
+    const localColorPromises = localColorVars.map((variable) => {
+      const collection = collectionMap.get(variable.variableCollectionId);
+      if (!collection) return Promise.resolve(null);
+      return resolveColorEntry(variable, collection.name, defaultModeValue(variable, collection), false);
+    });
+    const localFloatPromises = localFloatVars.map((variable) => {
+      const collection = collectionMap.get(variable.variableCollectionId);
+      if (!collection) return Promise.resolve(null);
+      return resolveFloatEntry(variable, collection.name, defaultModeValue(variable, collection), false);
+    });
+    const libraryColorPromises = [];
+    const libraryFloatPromises = [];
+    try {
+      const { variables: libColorVars, collectionNames: colorCollectionNames } = await getLibraryVariables("COLOR");
+      const { variables: libFloatVars, collectionNames: floatCollectionNames } = await getLibraryVariables("FLOAT");
+      const resolveLibraryEntry = (variable, collectionNames, resolver) => figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId).then((varCollection) => {
+        if (!varCollection) return null;
+        return resolver(
+          variable,
+          collectionNames.get(variable.variableCollectionId) || varCollection.name,
+          defaultModeValue(variable, varCollection),
+          true
+        );
+      });
+      for (const variable of libColorVars) {
+        libraryColorPromises.push(
+          resolveLibraryEntry(variable, colorCollectionNames, resolveColorEntry).catch(() => null)
+        );
+      }
+      for (const variable of libFloatVars) {
+        libraryFloatPromises.push(
+          resolveLibraryEntry(variable, floatCollectionNames, resolveFloatEntry).catch(() => null)
+        );
+      }
+    } catch (libError) {
+      console.warn("Library variable indexing failed:", libError);
+    }
+    const [localColorEntries, libraryColorEntries, localFloatEntries, libraryFloatEntries] = await Promise.all([
+      Promise.all(localColorPromises),
+      Promise.all(libraryColorPromises),
+      Promise.all(localFloatPromises),
+      Promise.all(libraryFloatPromises)
+    ]);
+    for (const entry of [...localColorEntries, ...libraryColorEntries]) {
+      if (!entry) continue;
+      cache.colorEntries.push(entry);
+      const bucket = cache.colorByHex.get(entry.hex);
+      if (bucket) {
+        bucket.push(entry);
+      } else {
+        cache.colorByHex.set(entry.hex, [entry]);
+      }
+    }
+    for (const entry of [...localFloatEntries, ...libraryFloatEntries]) {
+      if (!entry) continue;
+      cache.floatEntries.push(entry);
+      const bucket = cache.floatByValue.get(entry.value);
+      if (bucket) {
+        bucket.push(entry);
+      } else {
+        cache.floatByValue.set(entry.value, [entry]);
+      }
+    }
+    return cache;
+  }
+  function sortSuggestions(suggestions) {
+    return suggestions.sort((a, b) => {
+      const depthDiff = (b.aliasDepth || 0) - (a.aliasDepth || 0);
+      if (depthDiff !== 0) return depthDiff;
+      return b.matchScore - a.matchScore;
+    });
+  }
+  function copySuggestions(suggestions) {
+    return suggestions.map((s) => __spreadValues({}, s));
+  }
   async function findMatchingColorVariable(hexColor, tolerance = 0) {
     try {
       const targetRgb = hexToRgb(hexColor);
       if (!targetRgb) {
         return [];
       }
+      const cache = await getResolvedVariableCache();
+      const normalizedHex = rgbToHex(targetRgb.r, targetRgb.g, targetRgb.b);
+      const memoKey = `color:${normalizedHex}:${tolerance}`;
+      const memoized = cache.matchMemo.get(memoKey);
+      if (memoized) {
+        return copySuggestions(memoized);
+      }
+      const candidates = tolerance === 0 ? cache.colorByHex.get(normalizedHex) || [] : cache.colorEntries;
       const suggestions = [];
       const seenVariableIds = /* @__PURE__ */ new Set();
-      const colorVariables = await figma.variables.getLocalVariablesAsync("COLOR");
-      const collections = await figma.variables.getLocalVariableCollectionsAsync();
-      const collectionMap = /* @__PURE__ */ new Map();
-      for (const collection of collections) {
-        collectionMap.set(collection.id, collection);
-      }
-      for (const variable of colorVariables) {
-        const collection = collectionMap.get(variable.variableCollectionId);
-        if (!collection) continue;
-        const modeId = collection.modes[0].modeId;
-        const value = variable.valuesByMode[modeId];
-        if (!value) continue;
-        const resolved = await resolveVariableValue(value);
-        if (!resolved || typeof resolved === "number") continue;
-        const varColor = resolved;
-        const matchScore = calculateColorMatchScore(targetRgb, varColor);
+      for (const entry of candidates) {
+        if (entry.isLibrary && seenVariableIds.has(entry.variableId)) continue;
+        const matchScore = calculateColorMatchScore(targetRgb, entry.color);
         if (matchScore >= 1 - tolerance) {
-          const aliasDepth = await countAliasDepth(value);
-          seenVariableIds.add(variable.id);
+          seenVariableIds.add(entry.variableId);
           suggestions.push({
-            variableId: variable.id,
-            variableName: variable.name,
-            collectionName: collection.name,
-            value: rgbToHex(varColor.r, varColor.g, varColor.b),
+            variableId: entry.variableId,
+            variableName: entry.variableName,
+            collectionName: entry.collectionName,
+            value: entry.hex,
             matchScore,
             type: "color",
-            aliasDepth
+            aliasDepth: entry.aliasDepth
           });
         }
       }
-      try {
-        const { variables: libColorVars, collectionNames } = await getLibraryVariables("COLOR");
-        for (const variable of libColorVars) {
-          if (seenVariableIds.has(variable.id)) continue;
-          const varCollection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
-          if (!varCollection) continue;
-          const modeId = varCollection.modes[0].modeId;
-          const value = variable.valuesByMode[modeId];
-          if (!value) continue;
-          const resolved = await resolveVariableValue(value);
-          if (!resolved || typeof resolved === "number") continue;
-          const varColor = resolved;
-          const matchScore = calculateColorMatchScore(targetRgb, varColor);
-          if (matchScore >= 1 - tolerance) {
-            const aliasDepth = await countAliasDepth(value);
-            seenVariableIds.add(variable.id);
-            suggestions.push({
-              variableId: variable.id,
-              variableName: variable.name,
-              collectionName: collectionNames.get(variable.variableCollectionId) || varCollection.name,
-              value: rgbToHex(varColor.r, varColor.g, varColor.b),
-              matchScore,
-              type: "color",
-              aliasDepth
-            });
-          }
-        }
-      } catch (libError) {
-        console.warn("Library variable search failed for colors:", libError);
-      }
-      return suggestions.sort((a, b) => {
-        const depthDiff = (b.aliasDepth || 0) - (a.aliasDepth || 0);
-        if (depthDiff !== 0) return depthDiff;
-        return b.matchScore - a.matchScore;
-      });
+      sortSuggestions(suggestions);
+      cache.matchMemo.set(memoKey, suggestions);
+      return copySuggestions(suggestions);
     } catch (error) {
       console.error("Error finding matching color variable:", error);
       return [];
@@ -2905,73 +3738,35 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   }
   async function findMatchingSpacingVariable(pixelValue, tolerance = 0) {
     try {
+      const cache = await getResolvedVariableCache();
+      const memoKey = `float:${pixelValue}:${tolerance}`;
+      const memoized = cache.matchMemo.get(memoKey);
+      if (memoized) {
+        return copySuggestions(memoized);
+      }
+      const candidates = tolerance === 0 ? cache.floatByValue.get(pixelValue) || [] : cache.floatEntries;
       const suggestions = [];
       const seenVariableIds = /* @__PURE__ */ new Set();
-      const numberVariables = await figma.variables.getLocalVariablesAsync("FLOAT");
-      const collections = await figma.variables.getLocalVariableCollectionsAsync();
-      const collectionMap = /* @__PURE__ */ new Map();
-      for (const collection of collections) {
-        collectionMap.set(collection.id, collection);
-      }
-      for (const variable of numberVariables) {
-        const collection = collectionMap.get(variable.variableCollectionId);
-        if (!collection) continue;
-        const modeId = collection.modes[0].modeId;
-        const rawValue = variable.valuesByMode[modeId];
-        const resolved = await resolveVariableValue(rawValue);
-        if (typeof resolved !== "number") continue;
-        const value = resolved;
-        const difference = Math.abs(value - pixelValue);
+      for (const entry of candidates) {
+        if (entry.isLibrary && seenVariableIds.has(entry.variableId)) continue;
+        const difference = Math.abs(entry.value - pixelValue);
         if (difference <= tolerance) {
           const matchScore = difference === 0 ? 1 : 1 - difference / (tolerance || 1);
-          const aliasDepth = await countAliasDepth(rawValue);
-          seenVariableIds.add(variable.id);
+          seenVariableIds.add(entry.variableId);
           suggestions.push({
-            variableId: variable.id,
-            variableName: variable.name,
-            collectionName: collection.name,
-            value: `${value}px`,
+            variableId: entry.variableId,
+            variableName: entry.variableName,
+            collectionName: entry.collectionName,
+            value: `${entry.value}px`,
             matchScore,
             type: "number",
-            aliasDepth
+            aliasDepth: entry.aliasDepth
           });
         }
       }
-      try {
-        const { variables: libNumberVars, collectionNames } = await getLibraryVariables("FLOAT");
-        for (const variable of libNumberVars) {
-          if (seenVariableIds.has(variable.id)) continue;
-          const varCollection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
-          if (!varCollection) continue;
-          const modeId = varCollection.modes[0].modeId;
-          const rawValue = variable.valuesByMode[modeId];
-          const resolved = await resolveVariableValue(rawValue);
-          if (typeof resolved !== "number") continue;
-          const value = resolved;
-          const difference = Math.abs(value - pixelValue);
-          if (difference <= tolerance) {
-            const matchScore = difference === 0 ? 1 : 1 - difference / (tolerance || 1);
-            const aliasDepth = await countAliasDepth(rawValue);
-            seenVariableIds.add(variable.id);
-            suggestions.push({
-              variableId: variable.id,
-              variableName: variable.name,
-              collectionName: collectionNames.get(variable.variableCollectionId) || varCollection.name,
-              value: `${value}px`,
-              matchScore,
-              type: "number",
-              aliasDepth
-            });
-          }
-        }
-      } catch (libError) {
-        console.warn("Library variable search failed for spacing:", libError);
-      }
-      return suggestions.sort((a, b) => {
-        const depthDiff = (b.aliasDepth || 0) - (a.aliasDepth || 0);
-        if (depthDiff !== 0) return depthDiff;
-        return b.matchScore - a.matchScore;
-      });
+      sortSuggestions(suggestions);
+      cache.matchMemo.set(memoKey, suggestions);
+      return copySuggestions(suggestions);
     } catch (error) {
       console.error("Error finding matching spacing variable:", error);
       return [];
@@ -3289,10 +4084,10 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const isContainerByName = containerPatterns.some((pattern) => nodeName.includes(pattern));
     const isContainerByStructure = await analyzeContainerStructure(node);
     const isContainer = isContainerByName || isContainerByStructure;
-    console.log(`\u{1F50D} [CONTAINER DETECTION] ${node.name}:`);
-    console.log(`  Name-based: ${isContainerByName}`);
-    console.log(`  Structure-based: ${isContainerByStructure}`);
-    console.log(`  Final result: ${isContainer}`);
+    debugLog(`\u{1F50D} [CONTAINER DETECTION] ${node.name}:`);
+    debugLog(`  Name-based: ${isContainerByName}`);
+    debugLog(`  Structure-based: ${isContainerByStructure}`);
+    debugLog(`  Final result: ${isContainer}`);
     if (nodeName.includes("avatar") || nodeName.includes("profile")) {
       context.componentFamily = "avatar";
       context.possibleUseCase = "User representation, often clickable for profile access or dropdown menus";
@@ -3358,10 +4153,10 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     }
     const childInstances = node.children.filter((child) => child.type === "INSTANCE");
     if (childInstances.length === 0) {
-      console.log(`\u{1F50D} [STRUCTURE] No child instances found in ${node.name}`);
+      debugLog(`\u{1F50D} [STRUCTURE] No child instances found in ${node.name}`);
       return false;
     }
-    console.log(`\u{1F50D} [STRUCTURE] Analyzing ${node.name} with ${childInstances.length} child instances`);
+    debugLog(`\u{1F50D} [STRUCTURE] Analyzing ${node.name} with ${childInstances.length} child instances`);
     const instanceGroups = /* @__PURE__ */ new Map();
     await Promise.all(childInstances.map(async (instance) => {
       try {
@@ -3374,10 +4169,10 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           instanceGroups.get(componentName).push(instance);
         }
       } catch (error) {
-        console.log(`\u26A0\uFE0F [STRUCTURE] Could not access main component for instance:`, error);
+        debugLog(`\u26A0\uFE0F [STRUCTURE] Could not access main component for instance:`, error);
       }
     }));
-    console.log(`\u{1F50D} [STRUCTURE] Instance groups:`, Array.from(instanceGroups.entries()).map(([name, instances]) => `${name}: ${instances.length}`));
+    debugLog(`\u{1F50D} [STRUCTURE] Instance groups:`, Array.from(instanceGroups.entries()).map(([name, instances]) => `${name}: ${instances.length}`));
     const hasRepeatedComponents = Array.from(instanceGroups.values()).some((group) => group.length > 1);
     const hasOrganizationalComponents = Array.from(instanceGroups.keys()).some((name) => {
       const lowerName = name.toLowerCase();
@@ -3390,11 +4185,11 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const instanceRatio = childInstances.length / node.children.length;
     const isInstanceHeavy = instanceRatio > 0.6;
     const hasCollectionPattern = instanceGroups.size >= 2 && hasRepeatedComponents;
-    console.log(`\u{1F50D} [STRUCTURE] Analysis for ${node.name}:`);
-    console.log(`  Repeated components: ${hasRepeatedComponents}`);
-    console.log(`  Organizational components: ${hasOrganizationalComponents}`);
-    console.log(`  Instance ratio: ${instanceRatio.toFixed(2)} (${isInstanceHeavy ? "high" : "low"})`);
-    console.log(`  Collection pattern: ${hasCollectionPattern}`);
+    debugLog(`\u{1F50D} [STRUCTURE] Analysis for ${node.name}:`);
+    debugLog(`  Repeated components: ${hasRepeatedComponents}`);
+    debugLog(`  Organizational components: ${hasOrganizationalComponents}`);
+    debugLog(`  Instance ratio: ${instanceRatio.toFixed(2)} (${isInstanceHeavy ? "high" : "low"})`);
+    debugLog(`  Collection pattern: ${hasCollectionPattern}`);
     const isContainer = hasRepeatedComponents || hasOrganizationalComponents || isInstanceHeavy && instanceGroups.size >= 2;
     return isContainer;
   }
@@ -3553,7 +4348,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       return lowerSlot.length > 2 && !["text", "label", "content"].includes(lowerSlot) && // Too generic
       !structuralTerms.some((term) => lowerSlot.includes(term));
     });
-    console.log(`\u{1F50D} [SLOTS] Detected ${filteredSlots.length} legitimate content slots from ${slots.length} candidates:`, filteredSlots);
+    debugLog(`\u{1F50D} [SLOTS] Detected ${filteredSlots.length} legitimate content slots from ${slots.length} candidates:`, filteredSlots);
     return filteredSlots;
   }
   function hasFillsInNode(node) {
@@ -3613,15 +4408,15 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   }
   async function extractActualComponentProperties(node, selectedNode) {
     const actualProperties = [];
-    console.log("\u{1F50D} [DEBUG] Starting property extraction for node:", node.name, "type:", node.type);
-    console.log("\u{1F50D} [DEBUG] Originally selected node:", selectedNode == null ? void 0 : selectedNode.name, "type:", selectedNode == null ? void 0 : selectedNode.type);
+    debugLog("\u{1F50D} [DEBUG] Starting property extraction for node:", node.name, "type:", node.type);
+    debugLog("\u{1F50D} [DEBUG] Originally selected node:", selectedNode == null ? void 0 : selectedNode.name, "type:", selectedNode == null ? void 0 : selectedNode.type);
     if (selectedNode && selectedNode.type === "INSTANCE") {
       const instance = selectedNode;
-      console.log("\u{1F50D} [DEBUG] Extracting from selected instance componentProperties...");
+      debugLog("\u{1F50D} [DEBUG] Extracting from selected instance componentProperties...");
       try {
         if ("componentProperties" in instance && instance.componentProperties) {
           const instanceProps = instance.componentProperties;
-          console.log("\u{1F50D} [DEBUG] Found componentProperties on selected instance:", Object.keys(instanceProps));
+          debugLog("\u{1F50D} [DEBUG] Found componentProperties on selected instance:", Object.keys(instanceProps));
           const mainComponent = await instance.getMainComponentAsync();
           if (mainComponent && mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
             const componentSet = mainComponent.parent;
@@ -3629,14 +4424,14 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
             try {
               if ("componentPropertyDefinitions" in componentSet) {
                 propertyDefinitions = componentSet.componentPropertyDefinitions;
-                console.log("\u{1F50D} [DEBUG] Got componentPropertyDefinitions from component set");
+                debugLog("\u{1F50D} [DEBUG] Got componentPropertyDefinitions from component set");
               }
             } catch (error) {
-              console.log("\u{1F50D} [DEBUG] Could not access componentPropertyDefinitions, using instance properties only");
+              debugLog("\u{1F50D} [DEBUG] Could not access componentPropertyDefinitions, using instance properties only");
             }
             for (const propName in instanceProps) {
               const instanceProp = instanceProps[propName];
-              console.log(`\u{1F50D} [DEBUG] Processing instance property "${propName}":`, instanceProp);
+              debugLog(`\u{1F50D} [DEBUG] Processing instance property "${propName}":`, instanceProp);
               let displayName = propName;
               let values = [];
               let currentValue = "";
@@ -3650,7 +4445,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
               }
               if (propertyDefinitions && propertyDefinitions[propName]) {
                 const propDef = propertyDefinitions[propName];
-                console.log(`\u{1F50D} [DEBUG] Found property definition for "${propName}":`, propDef);
+                debugLog(`\u{1F50D} [DEBUG] Found property definition for "${propName}":`, propDef);
                 switch (propDef.type) {
                   case "VARIANT":
                     values = propDef.variantOptions || [];
@@ -3672,7 +4467,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
                     values = [currentValue || "Property value"];
                 }
               } else {
-                console.log(`\u{1F50D} [DEBUG] No property definition for "${propName}", inferring from value`);
+                debugLog(`\u{1F50D} [DEBUG] No property definition for "${propName}", inferring from value`);
                 if (currentValue === "true" || currentValue === "false") {
                   values = ["true", "false"];
                 } else {
@@ -3684,70 +4479,70 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
                 values,
                 default: currentValue || values[0] || "default"
               });
-              console.log(`\u{1F50D} [DEBUG] Added instance property:`, { name: displayName, values, default: currentValue });
+              debugLog(`\u{1F50D} [DEBUG] Added instance property:`, { name: displayName, values, default: currentValue });
             }
             if (actualProperties.length > 0) {
-              console.log(`\u{1F50D} [DEBUG] Successfully extracted ${actualProperties.length} properties from selected instance`);
+              debugLog(`\u{1F50D} [DEBUG] Successfully extracted ${actualProperties.length} properties from selected instance`);
               return actualProperties;
             }
           }
         }
       } catch (error) {
-        console.log("\u{1F50D} [DEBUG] Could not extract from instance componentProperties:", error);
+        debugLog("\u{1F50D} [DEBUG] Could not extract from instance componentProperties:", error);
       }
     }
     if (node.type === "COMPONENT_SET") {
       const componentSet = node;
-      console.log("\u{1F50D} [DEBUG] Attempting to access componentPropertyDefinitions...");
+      debugLog("\u{1F50D} [DEBUG] Attempting to access componentPropertyDefinitions...");
       try {
         if ("componentPropertyDefinitions" in componentSet) {
-          console.log("\u{1F50D} [DEBUG] componentPropertyDefinitions property exists on componentSet");
+          debugLog("\u{1F50D} [DEBUG] componentPropertyDefinitions property exists on componentSet");
           const propertyDefinitions = componentSet.componentPropertyDefinitions;
-          console.log("\u{1F50D} [DEBUG] Raw componentPropertyDefinitions:", propertyDefinitions);
-          console.log("\u{1F50D} [DEBUG] Type of componentPropertyDefinitions:", typeof propertyDefinitions);
+          debugLog("\u{1F50D} [DEBUG] Raw componentPropertyDefinitions:", propertyDefinitions);
+          debugLog("\u{1F50D} [DEBUG] Type of componentPropertyDefinitions:", typeof propertyDefinitions);
           if (propertyDefinitions && typeof propertyDefinitions === "object") {
             const propKeys = Object.keys(propertyDefinitions);
-            console.log("\u{1F50D} [DEBUG] Found componentPropertyDefinitions with keys:", propKeys);
+            debugLog("\u{1F50D} [DEBUG] Found componentPropertyDefinitions with keys:", propKeys);
             for (const propName in propertyDefinitions) {
               const prop = propertyDefinitions[propName];
-              console.log(`\u{1F50D} [DEBUG] Processing property "${propName}":`, prop);
+              debugLog(`\u{1F50D} [DEBUG] Processing property "${propName}":`, prop);
               let displayName = propName;
               let values = [];
               let defaultValue = "";
               if (propName.includes("#")) {
                 displayName = propName.split("#")[0];
-                console.log(`\u{1F50D} [DEBUG] Cleaned display name: "${displayName}" from "${propName}"`);
+                debugLog(`\u{1F50D} [DEBUG] Cleaned display name: "${displayName}" from "${propName}"`);
               }
               switch (prop.type) {
                 case "VARIANT":
                   values = prop.variantOptions || [];
                   defaultValue = String(prop.defaultValue) || values[0] || "default";
-                  console.log(`\u{1F50D} [DEBUG] VARIANT property "${displayName}": values=${values}, default=${defaultValue}`);
+                  debugLog(`\u{1F50D} [DEBUG] VARIANT property "${displayName}": values=${values}, default=${defaultValue}`);
                   break;
                 case "BOOLEAN":
                   values = ["true", "false"];
                   defaultValue = prop.defaultValue ? "true" : "false";
-                  console.log(`\u{1F50D} [DEBUG] BOOLEAN property "${displayName}": default=${defaultValue}`);
+                  debugLog(`\u{1F50D} [DEBUG] BOOLEAN property "${displayName}": default=${defaultValue}`);
                   break;
                 case "TEXT":
                   values = [String(prop.defaultValue || "Text content")];
                   defaultValue = String(prop.defaultValue || "Text content");
-                  console.log(`\u{1F50D} [DEBUG] TEXT property "${displayName}": value=${defaultValue}`);
+                  debugLog(`\u{1F50D} [DEBUG] TEXT property "${displayName}": value=${defaultValue}`);
                   break;
                 case "INSTANCE_SWAP":
                   if (prop.preferredValues && Array.isArray(prop.preferredValues)) {
                     values = prop.preferredValues.map((v) => {
-                      console.log(`\u{1F50D} [DEBUG] INSTANCE_SWAP preferred value:`, v);
+                      debugLog(`\u{1F50D} [DEBUG] INSTANCE_SWAP preferred value:`, v);
                       return v.key || v.name || "Component instance";
                     });
                   } else {
                     values = ["Component instance"];
                   }
                   defaultValue = values[0] || "Component instance";
-                  console.log(`\u{1F50D} [DEBUG] INSTANCE_SWAP property "${displayName}": values=${values}, default=${defaultValue}`);
+                  debugLog(`\u{1F50D} [DEBUG] INSTANCE_SWAP property "${displayName}": values=${values}, default=${defaultValue}`);
                   break;
                 default:
-                  console.log(`\u{1F50D} [DEBUG] Unknown property type "${prop.type}" for "${displayName}"`);
+                  debugLog(`\u{1F50D} [DEBUG] Unknown property type "${prop.type}" for "${displayName}"`);
                   values = ["Property value"];
                   defaultValue = "Default";
               }
@@ -3756,29 +4551,29 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
                 values,
                 default: defaultValue
               });
-              console.log(`\u{1F50D} [DEBUG] Added property:`, { name: displayName, values, default: defaultValue });
+              debugLog(`\u{1F50D} [DEBUG] Added property:`, { name: displayName, values, default: defaultValue });
             }
           } else {
-            console.log("\u{1F50D} [DEBUG] componentPropertyDefinitions is not a valid object:", propertyDefinitions);
+            debugLog("\u{1F50D} [DEBUG] componentPropertyDefinitions is not a valid object:", propertyDefinitions);
           }
         } else {
-          console.log("\u{1F50D} [DEBUG] componentPropertyDefinitions property does not exist on componentSet");
+          debugLog("\u{1F50D} [DEBUG] componentPropertyDefinitions property does not exist on componentSet");
         }
       } catch (error) {
         console.error("\u{1F50D} [ERROR] Could not access componentPropertyDefinitions:", error);
         console.error("\u{1F50D} [ERROR] Error stack:", error instanceof Error ? error.stack : "No stack trace");
       }
       if (actualProperties.length === 0) {
-        console.log("\u{1F50D} [DEBUG] No properties found, trying variantGroupProperties fallback...");
+        debugLog("\u{1F50D} [DEBUG] No properties found, trying variantGroupProperties fallback...");
         try {
           const variantProps = componentSet.variantGroupProperties;
-          console.log("\u{1F50D} [DEBUG] variantGroupProperties:", variantProps);
+          debugLog("\u{1F50D} [DEBUG] variantGroupProperties:", variantProps);
           if (variantProps) {
             const variantKeys = Object.keys(variantProps);
-            console.log("\u{1F50D} [DEBUG] Found variantGroupProperties with keys:", variantKeys);
+            debugLog("\u{1F50D} [DEBUG] Found variantGroupProperties with keys:", variantKeys);
             for (const propName in variantProps) {
               const prop = variantProps[propName];
-              console.log(`\u{1F50D} [DEBUG] Processing variant property "${propName}":`, prop);
+              debugLog(`\u{1F50D} [DEBUG] Processing variant property "${propName}":`, prop);
               actualProperties.push({
                 name: propName,
                 values: prop.values,
@@ -3786,20 +4581,20 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
               });
             }
           } else {
-            console.log("\u{1F50D} [DEBUG] variantGroupProperties is null/undefined");
+            debugLog("\u{1F50D} [DEBUG] variantGroupProperties is null/undefined");
           }
         } catch (error) {
           console.warn("\u{1F50D} [WARN] Component set has errors, cannot access variantGroupProperties:", error);
         }
       }
       if (actualProperties.length === 0 && componentSet.children.length > 0) {
-        console.log("\u{1F50D} [DEBUG] Analyzing variant structure to infer properties...");
+        debugLog("\u{1F50D} [DEBUG] Analyzing variant structure to infer properties...");
         const propertyPatterns = /* @__PURE__ */ new Map();
         const layerVisibilityPatterns = /* @__PURE__ */ new Map();
         componentSet.children.forEach((variant, index) => {
           if (variant.type === "COMPONENT") {
             const variantName = variant.name;
-            console.log(`\u{1F50D} [DEBUG] Analyzing variant ${index}: ${variantName}`);
+            debugLog(`\u{1F50D} [DEBUG] Analyzing variant ${index}: ${variantName}`);
             const pairs = variantName.split(",").map((s) => s.trim());
             pairs.forEach((pair) => {
               const [key, value] = pair.split("=").map((s) => s.trim());
@@ -3844,28 +4639,28 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
                 values: ["true", "false"],
                 default: "false"
               });
-              console.log(`\u{1F50D} [DEBUG] Inferred boolean property from visibility: ${propertyName}`);
+              debugLog(`\u{1F50D} [DEBUG] Inferred boolean property from visibility: ${propertyName}`);
             }
           }
         });
-        console.log(`\u{1F50D} [DEBUG] Inferred ${actualProperties.length} properties from variant analysis`);
+        debugLog(`\u{1F50D} [DEBUG] Inferred ${actualProperties.length} properties from variant analysis`);
       }
       if (actualProperties.length === 0) {
-        console.log("\u{1F50D} [DEBUG] All Figma APIs failed, using comprehensive structural analysis...");
+        debugLog("\u{1F50D} [DEBUG] All Figma APIs failed, using comprehensive structural analysis...");
         const structuralProperties = extractPropertiesFromStructuralAnalysis(componentSet);
-        console.log("\u{1F50D} [DEBUG] Properties from structural analysis:", structuralProperties);
+        debugLog("\u{1F50D} [DEBUG] Properties from structural analysis:", structuralProperties);
         actualProperties.push(...structuralProperties);
       }
     } else if (node.type === "COMPONENT") {
       const component = node;
-      console.log("\u{1F50D} [DEBUG] Processing COMPONENT node:", component.name);
+      debugLog("\u{1F50D} [DEBUG] Processing COMPONENT node:", component.name);
       try {
         if ("componentPropertyDefinitions" in component) {
           const propertyDefinitions = component.componentPropertyDefinitions;
-          console.log("\u{1F50D} [DEBUG] Component componentPropertyDefinitions:", propertyDefinitions);
+          debugLog("\u{1F50D} [DEBUG] Component componentPropertyDefinitions:", propertyDefinitions);
           if (propertyDefinitions && typeof propertyDefinitions === "object") {
             const propKeys = Object.keys(propertyDefinitions);
-            console.log("\u{1F50D} [DEBUG] Found componentPropertyDefinitions on component with keys:", propKeys);
+            debugLog("\u{1F50D} [DEBUG] Found componentPropertyDefinitions on component with keys:", propKeys);
             for (const propName in propertyDefinitions) {
               const prop = propertyDefinitions[propName];
               let displayName = propName;
@@ -3903,14 +4698,14 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
             }
           }
         } else {
-          console.log("\u{1F50D} [DEBUG] componentPropertyDefinitions does not exist on component");
+          debugLog("\u{1F50D} [DEBUG] componentPropertyDefinitions does not exist on component");
         }
       } catch (error) {
         console.warn("\u{1F50D} [WARN] Could not access componentPropertyDefinitions on component:", error);
       }
       if (component.parent && component.parent.type === "COMPONENT_SET") {
         const componentSet = component.parent;
-        console.log("\u{1F50D} [DEBUG] Component is part of a component set, getting variant properties...");
+        debugLog("\u{1F50D} [DEBUG] Component is part of a component set, getting variant properties...");
         try {
           const variantProps = componentSet.variantGroupProperties;
           if (variantProps) {
@@ -3931,14 +4726,14 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       }
     } else if (node.type === "INSTANCE") {
       const instance = node;
-      console.log("\u{1F50D} [DEBUG] Processing INSTANCE node (fallback \u2014 Priority 1 may have been skipped)");
+      debugLog("\u{1F50D} [DEBUG] Processing INSTANCE node (fallback \u2014 Priority 1 may have been skipped)");
       if (actualProperties.length === 0) {
         try {
           const mainComponent = await instance.getMainComponentAsync();
           if (mainComponent) {
             if (mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
               const componentSet = mainComponent.parent;
-              console.log("\u{1F50D} [DEBUG] Instance fallback: extracting from parent component set:", componentSet.name);
+              debugLog("\u{1F50D} [DEBUG] Instance fallback: extracting from parent component set:", componentSet.name);
               try {
                 if ("componentPropertyDefinitions" in componentSet) {
                   const propertyDefinitions = componentSet.componentPropertyDefinitions;
@@ -3978,7 +4773,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
                       }
                       actualProperties.push({ name: displayName, values, default: defaultValue });
                     }
-                    console.log(`\u{1F50D} [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from component set`);
+                    debugLog(`\u{1F50D} [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from component set`);
                   }
                 }
               } catch (error) {
@@ -4004,7 +4799,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
                 }
               }
             } else {
-              console.log("\u{1F50D} [DEBUG] Instance fallback: extracting from standalone main component");
+              debugLog("\u{1F50D} [DEBUG] Instance fallback: extracting from standalone main component");
               try {
                 if ("componentPropertyDefinitions" in mainComponent) {
                   const propertyDefinitions = mainComponent.componentPropertyDefinitions;
@@ -4040,7 +4835,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
                       }
                       actualProperties.push({ name: displayName, values, default: defaultValue });
                     }
-                    console.log(`\u{1F50D} [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from main component`);
+                    debugLog(`\u{1F50D} [DEBUG] Instance fallback: extracted ${actualProperties.length} properties from main component`);
                   }
                 }
               } catch (error) {
@@ -4059,12 +4854,12 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         uniqueProperties.push(prop);
       }
     });
-    console.log(`\u{1F50D} [DEBUG] Final result: Extracted ${uniqueProperties.length} unique properties:`, uniqueProperties.map((p) => ({ name: p.name, valueCount: p.values.length, default: p.default })));
+    debugLog(`\u{1F50D} [DEBUG] Final result: Extracted ${uniqueProperties.length} unique properties:`, uniqueProperties.map((p) => ({ name: p.name, valueCount: p.values.length, default: p.default })));
     return uniqueProperties;
   }
   function extractPropertiesFromStructuralAnalysis(componentSet) {
     const properties = [];
-    console.log("\u{1F50D} [STRUCTURAL] Starting comprehensive structural analysis of component set:", componentSet.name);
+    debugLog("\u{1F50D} [STRUCTURAL] Starting comprehensive structural analysis of component set:", componentSet.name);
     const variantProperties = extractPropertiesFromVariantNames(componentSet);
     properties.push(...variantProperties);
     const allChildNames = /* @__PURE__ */ new Set();
@@ -4073,10 +4868,10 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const booleanIndicators = /* @__PURE__ */ new Set();
     componentSet.children.forEach((variant) => {
       if (variant.type === "COMPONENT") {
-        console.log(`\u{1F50D} [STRUCTURAL] Analyzing variant: ${variant.name}`);
+        debugLog(`\u{1F50D} [STRUCTURAL] Analyzing variant: ${variant.name}`);
         const traverseNode = (node, depth = 0) => {
           const indent = "  ".repeat(depth);
-          console.log(`\u{1F50D} [STRUCTURAL] ${indent}Found child: ${node.name} (type: ${node.type})`);
+          debugLog(`\u{1F50D} [STRUCTURAL] ${indent}Found child: ${node.name} (type: ${node.type})`);
           allChildNames.add(node.name);
           if (node.type === "TEXT") {
             textLayers.add(node.name);
@@ -4093,11 +4888,11 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         traverseNode(variant);
       }
     });
-    console.log("\u{1F50D} [STRUCTURAL] Analysis results:");
-    console.log("\u{1F50D} [STRUCTURAL] - All child names:", Array.from(allChildNames));
-    console.log("\u{1F50D} [STRUCTURAL] - Text layers:", Array.from(textLayers));
-    console.log("\u{1F50D} [STRUCTURAL] - Instance layers:", Array.from(instanceLayers));
-    console.log("\u{1F50D} [STRUCTURAL] - Boolean indicators:", Array.from(booleanIndicators));
+    debugLog("\u{1F50D} [STRUCTURAL] Analysis results:");
+    debugLog("\u{1F50D} [STRUCTURAL] - All child names:", Array.from(allChildNames));
+    debugLog("\u{1F50D} [STRUCTURAL] - Text layers:", Array.from(textLayers));
+    debugLog("\u{1F50D} [STRUCTURAL] - Instance layers:", Array.from(instanceLayers));
+    debugLog("\u{1F50D} [STRUCTURAL] - Boolean indicators:", Array.from(booleanIndicators));
     textLayers.forEach((textLayerName) => {
       const cleanName = textLayerName.replace(/\s*(layer|text|label)?\s*/gi, "").trim();
       if (cleanName && !properties.find((p) => p.name.toLowerCase() === cleanName.toLowerCase())) {
@@ -4106,7 +4901,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           values: ["Text content"],
           default: "Label"
         });
-        console.log(`\u{1F50D} [STRUCTURAL] Added TEXT property: ${cleanName}`);
+        debugLog(`\u{1F50D} [STRUCTURAL] Added TEXT property: ${cleanName}`);
       }
     });
     instanceLayers.forEach((instanceLayerName) => {
@@ -4117,7 +4912,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           values: ["Component instance"],
           default: "Default component"
         });
-        console.log(`\u{1F50D} [STRUCTURAL] Added INSTANCE_SWAP property: ${cleanName}`);
+        debugLog(`\u{1F50D} [STRUCTURAL] Added INSTANCE_SWAP property: ${cleanName}`);
       }
     });
     const commonBooleanPatterns = [
@@ -4145,7 +4940,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           values: ["true", "false"],
           default: "false"
         });
-        console.log(`\u{1F50D} [STRUCTURAL] Added BOOLEAN property: ${propertyName}`);
+        debugLog(`\u{1F50D} [STRUCTURAL] Added BOOLEAN property: ${propertyName}`);
       }
     });
     const componentName = componentSet.name.toLowerCase();
@@ -4181,11 +4976,11 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
             values,
             default: defaultValue
           });
-          console.log(`\u{1F50D} [STRUCTURAL] Added common ${type} property: ${name}`);
+          debugLog(`\u{1F50D} [STRUCTURAL] Added common ${type} property: ${name}`);
         }
       });
     }
-    console.log(`\u{1F50D} [STRUCTURAL] Final structural analysis result: ${properties.length} properties found`);
+    debugLog(`\u{1F50D} [STRUCTURAL] Final structural analysis result: ${properties.length} properties found`);
     return properties;
   }
   async function extractActualComponentStates(node) {
@@ -4239,13 +5034,18 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     });
     return uniqueStates;
   }
+  var ANALYSIS_TOTAL_STEPS = 4;
+  function reportAnalysisProgress(step, label) {
+    sendMessageToUI("analysis-progress", { step, total: ANALYSIS_TOTAL_STEPS, label });
+  }
   async function processEnhancedAnalysis(context, apiKey, model, options = {}, providerId = "anthropic") {
-    console.log("\u{1F3AF} Starting enhanced component analysis...");
+    debugLog("\u{1F3AF} Starting enhanced component analysis...");
     const selectedNode = figma.currentPage.selection[0];
     const node = options.node || selectedNode;
     if (!node) {
       throw new Error("No node selected");
     }
+    reportAnalysisProgress(1, "Extracting component data from Figma");
     const actualProperties = await extractActualComponentProperties(node, selectedNode);
     const actualStates = await extractActualComponentStates(node);
     const tokens = await extractDesignTokensFromNode(node);
@@ -4260,34 +5060,52 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       }
     }
     context.existingDescription = componentDescription;
-    console.log(`\u{1F4CA} [ANALYSIS] Extracted from Figma API:`);
-    console.log(`  Properties: ${actualProperties.length}`);
-    console.log(`  States: ${actualStates.length}`);
-    console.log(`  Tokens: ${Object.keys(tokens).length} categories`);
-    console.log(`  Description: ${componentDescription ? "Present" : "Missing"}`);
-    const mcpServerUrl = options.mcpServerUrl || "http://localhost:3000/mcp";
-    const useMCP = options.useMCP !== false && mcpServerUrl;
+    debugLog(`\u{1F4CA} [ANALYSIS] Extracted from Figma API:`);
+    debugLog(`  Properties: ${actualProperties.length}`);
+    debugLog(`  States: ${actualStates.length}`);
+    debugLog(`  Tokens: ${Object.keys(tokens).length} categories`);
+    debugLog(`  Description: ${componentDescription ? "Present" : "Missing"}`);
+    const allTokensForHash = [
+      ...tokens.colors,
+      ...tokens.spacing,
+      ...tokens.typography,
+      ...tokens.effects,
+      ...tokens.borders
+    ];
+    const componentHash = consistencyEngine.generateComponentHash(context, allTokensForHash);
+    if (!options.bypassCache) {
+      const cached = consistencyEngine.getCachedAnalysis(componentHash);
+      if (cached) {
+        console.log("\u2705 Returning cached analysis (component unchanged)");
+        return __spreadProps(__spreadValues({}, cached.result), { fromCache: true });
+      }
+    }
+    const mcpServerUrl = options.mcpServerUrl || "https://design-systems-mcp.southleft-llc.workers.dev/mcp";
+    const useMCP = options.useMCP !== false && options.enableMCPEnhancement !== false && !!mcpServerUrl;
     let analysisResult;
     if (useMCP) {
-      console.log(`\u{1F504} Using hybrid LLM + MCP approach (${providerId})...`);
+      debugLog(`\u{1F504} Using hybrid LLM + MCP approach (${providerId})...`);
+      reportAnalysisProgress(2, "Analyzing with AI");
       const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
-      const llmResponse = await callProvider(providerId, apiKey, {
-        prompt: llmPrompt,
-        model,
-        maxTokens: 4096,
-        temperature: 0.1
-      });
+      const [llmResponse, mcpEnhancements] = await Promise.all([
+        callProvider(providerId, apiKey, {
+          prompt: llmPrompt,
+          model,
+          maxTokens: 4096,
+          temperature: 0.1
+        }),
+        getMCPBestPractices(context, mcpServerUrl, {})
+      ]);
       const llmData = extractJSONFromResponse(llmResponse.content);
       if (!llmData) {
         throw new Error("Failed to extract JSON from LLM response");
       }
-      let mcpEnhancements = null;
-      try {
-        mcpEnhancements = await getMCPBestPractices(context, mcpServerUrl, llmData);
-        console.log("\u2705 MCP enhancements received");
-      } catch (mcpError) {
-        console.warn("\u26A0\uFE0F MCP enhancement failed, continuing with LLM data only:", mcpError);
+      if (mcpEnhancements == null ? void 0 : mcpEnhancements.success) {
+        debugLog("\u2705 MCP enhancements received");
+      } else {
+        console.warn("\u26A0\uFE0F MCP enhancement unavailable, continuing with LLM data only");
       }
+      reportAnalysisProgress(3, "Applying design-system guidance");
       analysisResult = mergClaudeAndMCPResults(llmData, mcpEnhancements, {
         node,
         context,
@@ -4297,7 +5115,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         componentDescription
       });
     } else {
-      console.log(`\u{1F4DD} Using ${providerId}-only analysis...`);
+      debugLog(`\u{1F4DD} Using ${providerId}-only analysis...`);
+      reportAnalysisProgress(2, "Analyzing with AI");
       const prompt = createEnhancedMetadataPrompt(context);
       const llmFallbackResponse = await callProvider(providerId, apiKey, {
         prompt,
@@ -4310,8 +5129,44 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         throw new Error("Failed to extract JSON from response");
       }
     }
+    reportAnalysisProgress(4, "Building audit results");
     const filteredData = filterDevelopmentRecommendations(analysisResult);
-    return await processAnalysisResult(filteredData, context, options);
+    const result = await processAnalysisResult(filteredData, context, options, {
+      actualProperties,
+      actualStates,
+      tokens,
+      componentDescription
+    });
+    consistencyEngine.cacheAnalysis(componentHash, result);
+    return result;
+  }
+  function serializeHierarchy(hierarchy, maxDepth = 4, maxChildrenPerNode = 12) {
+    const lines = [];
+    const countNodes = (nodes) => {
+      let count = 0;
+      for (const n of nodes) {
+        count += 1 + (n.children ? countNodes(n.children) : 0);
+      }
+      return count;
+    };
+    const walk = (nodes, depth) => {
+      const indent = "  ".repeat(depth);
+      for (const n of nodes.slice(0, maxChildrenPerNode)) {
+        lines.push(`${indent}${n.type} "${n.name}"`);
+        if (n.children && n.children.length > 0) {
+          if (depth + 1 < maxDepth) {
+            walk(n.children, depth + 1);
+          } else {
+            lines.push(`${indent}  \u2026 ${countNodes(n.children)} nested layers omitted`);
+          }
+        }
+      }
+      if (nodes.length > maxChildrenPerNode) {
+        lines.push(`${indent}\u2026 ${nodes.length - maxChildrenPerNode} more siblings omitted`);
+      }
+    };
+    walk(hierarchy, 0);
+    return lines.join("\n");
   }
   function createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription) {
     var _a;
@@ -4339,7 +5194,7 @@ ${actualProperties.length > 10 ? `... and ${actualProperties.length - 10} more p
 - AI suggestions: ${tokens.summary.aiSuggestions}
 
 **Component Structure:**
-${JSON.stringify(context.hierarchy.slice(0, 3), null, 2)}
+${serializeHierarchy(context.hierarchy)}
 
 **TASK:** Analyze this Figma component and provide:
 1. Component name and description based on actual structure
@@ -4534,7 +5389,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       // Limit recommendations
     };
   }
-  function generatePropertyCheatSheet(properties, componentName) {
+  function generatePropertyCheatSheet(properties, _componentName) {
     const cheatSheet = [];
     const sizeProps = properties.filter(
       (p) => p.name.toLowerCase().includes("size") || p.values.some((v) => ["small", "medium", "large"].includes(v.toLowerCase()))
@@ -4561,28 +5416,57 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     }
     return cheatSheet.slice(0, 5);
   }
-  async function processAnalysisResult(filteredData, context, options) {
-    var _a, _b, _c;
-    try {
-      console.log("\u{1F504} Processing analysis result...");
-      console.log("\u{1F4CA} Filtered data received:", JSON.stringify(filteredData, null, 2).substring(0, 500) + "...");
-      const selection = figma.currentPage.selection;
-      let node = null;
-      if (selection.length > 0) {
-        node = selection[0];
-      } else {
-        throw new Error("No component selected");
+  async function enrichTokensWithMatches(tokens) {
+    var _a, _b;
+    const categories = ["colors", "spacing", "typography", "effects", "borders"];
+    for (const category of categories) {
+      for (const token of tokens[category]) {
+        if (token.source !== "hard-coded" || !((_a = token.context) == null ? void 0 : _a.nodeId) || !((_b = token.context) == null ? void 0 : _b.property)) continue;
+        try {
+          const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(token.context.property);
+          if (isColorProperty) {
+            const matches = await findMatchingColorVariable(token.value || "", 0.1);
+            token.context.hasMatchingToken = matches.length > 0;
+          } else {
+            const pixelValue = parseFloat(token.value || "0");
+            if (!isNaN(pixelValue)) {
+              const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
+              token.context.hasMatchingToken = matches.length > 0;
+            } else {
+              token.context.hasMatchingToken = false;
+            }
+          }
+        } catch (e) {
+          token.context.hasMatchingToken = false;
+        }
       }
-      const actualProperties = await extractActualComponentProperties(node, node);
-      const actualStates = await extractActualComponentStates(node);
-      let componentDescription = "";
-      if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
-        componentDescription = node.description || "";
-      } else if (node.type === "INSTANCE") {
-        const instance = node;
-        const mainComponent = await instance.getMainComponentAsync();
-        if (mainComponent) {
-          componentDescription = mainComponent.description || "";
+    }
+  }
+  async function processAnalysisResult(filteredData, context, options, preExtracted) {
+    var _a, _b, _c, _d, _e;
+    try {
+      debugLog("\u{1F504} Processing analysis result...");
+      let node = options.node || null;
+      if (!node) {
+        const selection = figma.currentPage.selection;
+        if (selection.length > 0) {
+          node = selection[0];
+        } else {
+          throw new Error("No component selected");
+        }
+      }
+      const actualProperties = (_a = preExtracted == null ? void 0 : preExtracted.actualProperties) != null ? _a : await extractActualComponentProperties(node, node);
+      const actualStates = (_b = preExtracted == null ? void 0 : preExtracted.actualStates) != null ? _b : await extractActualComponentStates(node);
+      let componentDescription = (_c = preExtracted == null ? void 0 : preExtracted.componentDescription) != null ? _c : "";
+      if ((preExtracted == null ? void 0 : preExtracted.componentDescription) === void 0) {
+        if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+          componentDescription = node.description || "";
+        } else if (node.type === "INSTANCE") {
+          const instance = node;
+          const mainComponent = await instance.getMainComponentAsync();
+          if (mainComponent) {
+            componentDescription = mainComponent.description || "";
+          }
         }
       }
       let tokens = {
@@ -4600,30 +5484,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         }
       };
       if (options.includeTokenAnalysis !== false) {
-        tokens = await extractDesignTokensFromNode(node);
-        const categories = ["colors", "spacing", "typography", "effects", "borders"];
-        for (const category of categories) {
-          for (const token of tokens[category]) {
-            if (token.source !== "hard-coded" || !((_a = token.context) == null ? void 0 : _a.nodeId) || !((_b = token.context) == null ? void 0 : _b.property)) continue;
-            try {
-              const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(token.context.property);
-              if (isColorProperty) {
-                const matches = await findMatchingColorVariable(token.value || "", 0.1);
-                token.context.hasMatchingToken = matches.length > 0;
-              } else {
-                const pixelValue = parseFloat(token.value || "0");
-                if (!isNaN(pixelValue)) {
-                  const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
-                  token.context.hasMatchingToken = matches.length > 0;
-                } else {
-                  token.context.hasMatchingToken = false;
-                }
-              }
-            } catch (e) {
-              token.context.hasMatchingToken = false;
-            }
-          }
-        }
+        tokens = (_d = preExtracted == null ? void 0 : preExtracted.tokens) != null ? _d : await extractDesignTokensFromNode(node);
+        await enrichTokensWithMatches(tokens);
       }
       const metadata = {
         component: filteredData.component || context.name || "Component",
@@ -4675,9 +5537,9 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           componentDescription
         })
       };
-      console.log("\u{1F4E4} Sending to UI - metadata.props:", (_c = metadata.props) == null ? void 0 : _c.length);
-      console.log("\u{1F4E4} Sending to UI - metadata.states:", metadata.states);
-      console.log("\u{1F4E4} Sending to UI - metadata.mcpReadiness:", metadata.mcpReadiness);
+      debugLog("\u{1F4E4} Sending to UI - metadata.props:", (_e = metadata.props) == null ? void 0 : _e.length);
+      debugLog("\u{1F4E4} Sending to UI - metadata.states:", metadata.states);
+      debugLog("\u{1F4E4} Sending to UI - metadata.mcpReadiness:", metadata.mcpReadiness);
       const audit = await createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription);
       const recommendations = (filteredData.recommendedProperties || []).map((rec) => ({
         name: rec.name || "",
@@ -4685,10 +5547,10 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         description: rec.description || "",
         examples: rec.examples || []
       })).filter((rec) => rec.name);
-      console.log(`\u{1F4A1} AI-generated property recommendations: ${recommendations.length}`);
+      debugLog(`\u{1F4A1} AI-generated property recommendations: ${recommendations.length}`);
       const namingIssues = analyzeNamingIssues(node, 5);
-      console.log(`\u{1F4DB} Found ${namingIssues.length} naming issues`);
-      console.log("\u2705 Analysis result processed successfully");
+      debugLog(`\u{1F4DB} Found ${namingIssues.length} naming issues`);
+      debugLog("\u2705 Analysis result processed successfully");
       return {
         metadata,
         tokens,
@@ -4703,7 +5565,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       throw error;
     }
   }
-  async function createAuditResults(filteredData, context, node, actualProperties, actualStates, tokens, componentDescription) {
+  async function createAuditResults(_filteredData, _context, node, actualProperties, actualStates, _tokens, componentDescription) {
     var _a;
     let parentHasDescription = false;
     let parentDescription = "";
@@ -5195,10 +6057,10 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         deduplicated.push(patternMessage);
       }
     });
-    console.log(`\u{1F50D} [DEDUP] Reduced ${items.length} items to ${deduplicated.length}`);
+    debugLog(`\u{1F50D} [DEDUP] Reduced ${items.length} items to ${deduplicated.length}`);
     if (items.length !== deduplicated.length) {
-      console.log(`\u{1F50D} [DEDUP] Original:`, items);
-      console.log(`\u{1F50D} [DEDUP] Deduplicated:`, deduplicated);
+      debugLog(`\u{1F50D} [DEDUP] Original:`, items);
+      debugLog(`\u{1F50D} [DEDUP] Deduplicated:`, deduplicated);
     }
     return deduplicated;
   }
@@ -5252,7 +6114,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       }
     }
     const componentBaseName = node.name.split("/")[0].trim().toLowerCase();
-    const allFrames = page.findAll((n) => n.type === "FRAME");
+    const allFrames = page.findAllWithCriteria({ types: ["FRAME"] });
     const results = [];
     for (const frame of allFrames) {
       if (frame.id === componentId) continue;
@@ -5318,554 +6180,9 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     return false;
   }
 
-  // src/core/consistency-engine.ts
-  var ComponentConsistencyEngine = class {
-    constructor(config = {}) {
-      this.cache = /* @__PURE__ */ new Map();
-      this.designSystemsKnowledge = null;
-      this.config = __spreadValues({
-        enableCaching: true,
-        enableMCPIntegration: true,
-        mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp",
-        consistencyThreshold: 0.95
-      }, config);
-    }
-    /**
-     * Generate a deterministic hash for a component based on its structure
-     */
-    generateComponentHash(context, tokens) {
-      var _a, _b;
-      const hashInput = {
-        name: context.name,
-        type: context.type,
-        hierarchy: this.normalizeHierarchy(context.hierarchy),
-        frameStructure: context.frameStructure,
-        detectedStyles: context.detectedStyles,
-        tokenFingerprint: this.generateTokenFingerprint(tokens),
-        // Don't include dynamic context that could vary
-        staticProperties: {
-          hasInteractiveElements: ((_a = context.additionalContext) == null ? void 0 : _a.hasInteractiveElements) || false,
-          componentFamily: ((_b = context.additionalContext) == null ? void 0 : _b.componentFamily) || "generic"
-        }
-      };
-      return this.createHash(JSON.stringify(hashInput));
-    }
-    /**
-     * Get cached analysis if available and valid
-     */
-    getCachedAnalysis(hash) {
-      if (!this.config.enableCaching) return null;
-      const cached = this.cache.get(hash);
-      if (!cached) return null;
-      const isExpired = Date.now() - cached.timestamp > 24 * 60 * 60 * 1e3;
-      if (isExpired) {
-        this.cache.delete(hash);
-        return null;
-      }
-      console.log("\u2705 Using cached analysis for component hash:", hash);
-      return cached;
-    }
-    /**
-     * Cache analysis result
-     */
-    cacheAnalysis(hash, result) {
-      var _a;
-      if (!this.config.enableCaching) return;
-      this.cache.set(hash, {
-        hash,
-        result,
-        timestamp: Date.now(),
-        mcpKnowledgeVersion: ((_a = this.designSystemsKnowledge) == null ? void 0 : _a.version) || "1.0.0"
-      });
-      console.log("\u{1F4BE} Cached analysis for component hash:", hash);
-    }
-    /**
-    * Load design systems knowledge from MCP server
-    */
-    async loadDesignSystemsKnowledge() {
-      if (!this.config.enableMCPIntegration) {
-        console.log("\u{1F4DA} MCP integration disabled, using fallback knowledge");
-        this.loadFallbackKnowledge();
-        return;
-      }
-      try {
-        console.log("\u{1F504} Loading design systems knowledge from MCP...");
-        const connectivityTest = await this.testMCPConnectivity();
-        if (!connectivityTest) {
-          console.warn("\u26A0\uFE0F MCP server not accessible, using fallback knowledge");
-          this.loadFallbackKnowledge();
-          return;
-        }
-        const [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge] = await Promise.allSettled([
-          this.queryMCP("component analysis best practices"),
-          this.queryMCP("design token naming conventions and patterns"),
-          this.queryMCP("design system accessibility requirements"),
-          this.queryMCP("design system component scoring methodology")
-        ]);
-        this.designSystemsKnowledge = {
-          version: "1.0.0",
-          components: this.processComponentKnowledge(
-            componentKnowledge.status === "fulfilled" ? componentKnowledge.value : null
-          ),
-          tokens: this.processKnowledgeContent(
-            tokenKnowledge.status === "fulfilled" ? tokenKnowledge.value : null
-          ),
-          accessibility: this.processKnowledgeContent(
-            accessibilityKnowledge.status === "fulfilled" ? accessibilityKnowledge.value : null
-          ),
-          scoring: this.processKnowledgeContent(
-            scoringKnowledge.status === "fulfilled" ? scoringKnowledge.value : null
-          ),
-          lastUpdated: Date.now()
-        };
-        const successfulQueries = [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge].filter((result) => result.status === "fulfilled").length;
-        if (successfulQueries > 0) {
-          console.log(`\u2705 Design systems knowledge loaded successfully (${successfulQueries}/4 queries successful)`);
-        } else {
-          console.warn("\u26A0\uFE0F All MCP queries failed, using fallback knowledge");
-          this.loadFallbackKnowledge();
-        }
-      } catch (error) {
-        console.warn("\u26A0\uFE0F Failed to load design systems knowledge:", error);
-        this.loadFallbackKnowledge();
-      }
-    }
-    /**
-    * Test MCP server connectivity using MCP initialization instead of health endpoint
-    */
-    async testMCPConnectivity() {
-      var _a, _b;
-      try {
-        console.log("\u{1F517} Testing MCP server connectivity...");
-        const timeoutPromise = new Promise(
-          (_, reject) => setTimeout(() => reject(new Error("Connectivity test timeout")), 5e3)
-        );
-        const initPayload = {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: {
-            protocolVersion: "2024-11-05",
-            capabilities: { roots: { listChanged: true } },
-            clientInfo: { name: "figmalint", version: "2.0.0" }
-          }
-        };
-        if (!this.config.mcpServerUrl) {
-          throw new Error("MCP server URL not configured");
-        }
-        const fetchPromise = fetch(this.config.mcpServerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(initPayload)
-        });
-        const response = await Promise.race([fetchPromise, timeoutPromise]);
-        if (response.ok) {
-          const data = await response.json();
-          if ((_b = (_a = data.result) == null ? void 0 : _a.serverInfo) == null ? void 0 : _b.name) {
-            console.log(`\u2705 MCP server accessible: ${data.result.serverInfo.name}`);
-            return true;
-          }
-        }
-        console.warn(`\u26A0\uFE0F MCP server returned ${response.status}`);
-        return false;
-      } catch (error) {
-        console.warn("\u26A0\uFE0F MCP server connectivity test failed:", error);
-        return false;
-      }
-    }
-    /**
-     * Query the design systems MCP server using proper JSON-RPC protocol
-     */
-    async queryMCP(query) {
-      try {
-        console.log(`\u{1F50D} Querying MCP for: "${query}"`);
-        const timeoutPromise = new Promise(
-          (_, reject) => setTimeout(() => reject(new Error("MCP query timeout")), 5e3)
-        );
-        if (!this.config.mcpServerUrl) {
-          throw new Error("MCP server URL not configured");
-        }
-        const searchPayload = {
-          jsonrpc: "2.0",
-          id: Math.floor(Math.random() * 1e3) + 2,
-          // Random ID > 1 (1 is used for init)
-          method: "tools/call",
-          params: {
-            name: "search_design_knowledge",
-            arguments: {
-              query,
-              limit: 5,
-              category: "components"
-            }
-          }
-        };
-        const fetchPromise = fetch(this.config.mcpServerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(searchPayload)
-        });
-        const response = await Promise.race([fetchPromise, timeoutPromise]);
-        if (!response.ok) {
-          throw new Error(`MCP query failed: ${response.status} ${response.statusText}`);
-        }
-        const result = await response.json();
-        console.log(`\u2705 MCP query successful for: "${query}"`);
-        if (result.result && result.result.content) {
-          return {
-            results: result.result.content.map((item) => ({
-              title: item.title || "Design System Knowledge",
-              content: item.content || item.description || "Knowledge content",
-              category: "design-systems"
-            }))
-          };
-        }
-        return { results: [] };
-      } catch (error) {
-        console.warn(`\u26A0\uFE0F MCP query failed for "${query}":`, error);
-        return this.getFallbackKnowledgeForQuery(query);
-      }
-    }
-    /**
-     * Create deterministic analysis prompt with MCP knowledge
-     */
-    createDeterministicPrompt(context) {
-      const basePrompt = this.createBasePrompt(context);
-      const mcpGuidance = this.getMCPGuidance(context);
-      const scoringCriteria = this.getScoringCriteria(context);
-      return `${basePrompt}
-
-**CONSISTENCY REQUIREMENTS:**
-- Use DETERMINISTIC analysis based on the exact component structure provided
-- Apply CONSISTENT scoring criteria for identical components
-- Follow established design system patterns and conventions
-- Provide REPRODUCIBLE results for the same input
-
-**DESIGN SYSTEMS GUIDANCE:**
-${mcpGuidance}
-
-**SCORING METHODOLOGY:**
-${scoringCriteria}
-
-**DETERMINISTIC SETTINGS:**
-- Analysis must be based solely on the provided component structure
-- Scores must be calculated using objective criteria
-- Recommendations must follow established design system patterns
-- Response format must be exactly as specified (JSON only)
-
-**RESPONSE FORMAT (JSON only - no explanatory text):**
-{
-  "component": "Component name and purpose",
-  "description": "Detailed component description based on structure analysis",
-  "score": {
-    "overall": 85,
-    "breakdown": {
-      "structure": 90,
-      "tokens": 80,
-      "accessibility": 85,
-      "consistency": 90
-    }
-  },
-  "props": [...],
-  "states": [...],
-  "slots": [...],
-  "variants": {...},
-  "usage": "Usage guidelines",
-  "accessibility": {...},
-  "tokens": {...},
-  "audit": {...},
-  "mcpReadiness": {...}
-}`;
-    }
-    /**
-     * Validate analysis result for consistency
-     */
-    validateAnalysisConsistency(result, context) {
-      var _a, _b, _c, _d, _e;
-      const issues = [];
-      if (!((_a = result.metadata) == null ? void 0 : _a.component)) issues.push("Missing component name");
-      if (!((_b = result.metadata) == null ? void 0 : _b.description)) issues.push("Missing component description");
-      if (!this.isValidScore((_d = (_c = result.metadata) == null ? void 0 : _c.mcpReadiness) == null ? void 0 : _d.score)) {
-        issues.push("Invalid or missing MCP readiness score");
-      }
-      const family = (_e = context.additionalContext) == null ? void 0 : _e.componentFamily;
-      if (family && !this.validateComponentFamilyConsistency(result, family)) {
-        issues.push(`Inconsistent analysis for ${family} component family`);
-      }
-      if (!this.validateTokenRecommendations(result.tokens)) {
-        issues.push("Inconsistent token recommendations");
-      }
-      if (issues.length > 0) {
-        console.warn("\u26A0\uFE0F Analysis consistency issues found:", issues);
-        return false;
-      }
-      return true;
-    }
-    /**
-     * Apply consistency corrections to analysis result
-     */
-    applyConsistencyCorrections(result, context) {
-      var _a;
-      const corrected = __spreadValues({}, result);
-      if ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) {
-        corrected.metadata = this.applyComponentFamilyCorrections(
-          corrected.metadata,
-          context.additionalContext.componentFamily
-        );
-      }
-      corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
-      corrected.metadata.mcpReadiness = this.ensureConsistentScoring(
-        corrected.metadata.mcpReadiness || {},
-        context
-      );
-      return corrected;
-    }
-    // Private helper methods
-    normalizeHierarchy(hierarchy) {
-      return hierarchy.map((item) => ({
-        name: item.name.toLowerCase().trim(),
-        type: item.type,
-        depth: item.depth
-      }));
-    }
-    generateTokenFingerprint(tokens) {
-      const fingerprint = tokens.map((token) => `${token.type}:${token.isToken}:${token.source}`).sort().join("|");
-      return this.createHash(fingerprint);
-    }
-    createHash(input) {
-      let hash = 0;
-      if (input.length === 0) return hash.toString();
-      for (let i = 0; i < input.length; i++) {
-        const char = input.charCodeAt(i);
-        hash = (hash << 5) - hash + char;
-        hash = hash & hash;
-      }
-      return Math.abs(hash).toString(36);
-    }
-    createBasePrompt(context) {
-      var _a, _b, _c, _d;
-      return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
-
-**Component Analysis Context:**
-- Component Name: ${context.name}
-- Component Type: ${context.type}
-- Layer Structure: ${JSON.stringify(context.hierarchy, null, 2)}
-- Frame Structure: ${JSON.stringify(context.frameStructure)}
-- Detected Styles: ${JSON.stringify(context.detectedStyles)}
-- Component Family: ${((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic"}
-- Interactive Elements: ${((_b = context.additionalContext) == null ? void 0 : _b.hasInteractiveElements) || false}
-- Design Patterns: ${((_d = (_c = context.additionalContext) == null ? void 0 : _c.designPatterns) == null ? void 0 : _d.join(", ")) || "none"}`;
-    }
-    getMCPGuidance(context) {
-      var _a;
-      if (!this.designSystemsKnowledge) {
-        return this.getFallbackGuidance(context);
-      }
-      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
-      const guidance = this.designSystemsKnowledge.components[family] || this.designSystemsKnowledge.components.generic;
-      return guidance || this.getFallbackGuidance(context);
-    }
-    getScoringCriteria(context) {
-      var _a;
-      if (!((_a = this.designSystemsKnowledge) == null ? void 0 : _a.scoring)) {
-        return this.getFallbackScoringCriteria();
-      }
-      return this.designSystemsKnowledge.scoring;
-    }
-    processComponentKnowledge(knowledge) {
-      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
-        console.log("\u{1F4DD} No component knowledge available, using defaults");
-        return this.getDefaultComponentKnowledge();
-      }
-      const processed = {};
-      knowledge.results.forEach((result) => {
-        if (result.title && result.content) {
-          const componentType = this.extractComponentType(result.title);
-          processed[componentType] = result.content;
-        }
-      });
-      const defaults = this.getDefaultComponentKnowledge();
-      return __spreadValues(__spreadValues({}, defaults), processed);
-    }
-    extractComponentType(title) {
-      const titleLower = title.toLowerCase();
-      if (titleLower.includes("button")) return "button";
-      if (titleLower.includes("avatar")) return "avatar";
-      if (titleLower.includes("input") || titleLower.includes("field")) return "input";
-      if (titleLower.includes("card")) return "card";
-      if (titleLower.includes("badge") || titleLower.includes("tag")) return "badge";
-      return "generic";
-    }
-    processKnowledgeContent(knowledge) {
-      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
-        return "";
-      }
-      return knowledge.results.map((result) => result.content).filter((content) => content).join("\n\n");
-    }
-    getDefaultComponentKnowledge() {
-      return {
-        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
-        avatar: "Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
-        card: "Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
-        badge: "Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
-        input: "Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
-        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).",
-        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
-      };
-    }
-    getFallbackKnowledgeForQuery(query) {
-      return {
-        results: [
-          {
-            title: `Fallback guidance for ${query}`,
-            content: this.getFallbackContentForQuery(query),
-            category: "fallback"
-          }
-        ]
-      };
-    }
-    getFallbackContentForQuery(query) {
-      if (query.includes("component analysis")) {
-        return "Components should follow consistent naming, use design tokens, implement proper states, and maintain accessibility standards.";
-      }
-      if (query.includes("token")) {
-        return "Design tokens should use semantic naming patterns like semantic-color-primary, spacing-md-16px, and text-size-lg-18px.";
-      }
-      if (query.includes("accessibility")) {
-        return "Ensure WCAG 2.1 AA compliance with proper ARIA labels, keyboard support, and color contrast.";
-      }
-      if (query.includes("scoring")) {
-        return "Score components based on structure (25%), token usage (25%), accessibility (25%), and consistency (25%).";
-      }
-      return "Follow established design system best practices for consistency and scalability.";
-    }
-    getFallbackGuidance(context) {
-      var _a;
-      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
-      const guidanceMap = {
-        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
-        avatar: "Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
-        card: "Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
-        badge: "Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
-        input: "Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
-        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
-      };
-      return guidanceMap[family] || guidanceMap.generic;
-    }
-    getFallbackScoringCriteria() {
-      return `
-    **MCP Readiness Scoring (0-100):**
-    - **Structure (25%)**: Clear hierarchy, logical organization, proper nesting
-    - **Tokens (25%)**: Design token usage vs hard-coded values
-    - **Accessibility (25%)**: WCAG compliance, keyboard support, ARIA labels
-    - **Consistency (25%)**: Naming conventions, pattern adherence, scalability
-
-    **Score Calculation:**
-    - 90-100: Production ready, comprehensive implementation
-    - 80-89: Good implementation, minor improvements needed
-    - 70-79: Solid foundation, some important gaps
-    - 60-69: Basic implementation, significant improvements needed
-    - Below 60: Major issues, substantial rework required
-    `;
-    }
-    loadFallbackKnowledge() {
-      this.designSystemsKnowledge = {
-        version: "1.0.0-fallback",
-        components: {
-          button: "Button components require comprehensive state management",
-          avatar: "Avatar components should support size variants and interactive states",
-          card: "Card components need consistent spacing and content hierarchy",
-          badge: "Badge components should use semantic colors for status indication",
-          input: "Input components require comprehensive accessibility and validation",
-          generic: "Generic components should follow basic design system principles"
-        },
-        tokens: "Use semantic token naming: semantic-color-primary, spacing-md-16px, text-size-lg-18px",
-        accessibility: "Ensure WCAG 2.1 AA compliance with proper ARIA labels and keyboard support",
-        scoring: this.getFallbackScoringCriteria(),
-        lastUpdated: Date.now()
-      };
-    }
-    isValidScore(score) {
-      return typeof score === "number" && score >= 0 && score <= 100;
-    }
-    validateComponentFamilyConsistency(result, family) {
-      const metadata = result.metadata;
-      switch (family) {
-        case "button":
-          return this.validateButtonComponent(metadata);
-        case "avatar":
-          return this.validateAvatarComponent(metadata);
-        case "input":
-          return this.validateInputComponent(metadata);
-        default:
-          return true;
-      }
-    }
-    validateButtonComponent(metadata) {
-      var _a;
-      const hasInteractiveStates = (_a = metadata.states) == null ? void 0 : _a.some(
-        (state) => ["hover", "focus", "active", "disabled"].includes(state.toLowerCase())
-      );
-      return hasInteractiveStates || false;
-    }
-    validateAvatarComponent(metadata) {
-      var _a, _b, _c;
-      const hasSizeVariants = ((_b = (_a = metadata.variants) == null ? void 0 : _a.size) == null ? void 0 : _b.length) > 0;
-      const hasSizeProps = (_c = metadata.props) == null ? void 0 : _c.some(
-        (prop) => prop.name.toLowerCase().includes("size")
-      );
-      return hasSizeVariants || hasSizeProps || false;
-    }
-    validateInputComponent(metadata) {
-      var _a;
-      const hasFormStates = (_a = metadata.states) == null ? void 0 : _a.some(
-        (state) => ["focus", "error", "disabled", "filled"].includes(state.toLowerCase())
-      );
-      return hasFormStates || false;
-    }
-    validateTokenRecommendations(tokens) {
-      var _a;
-      const hasSemanticColors = (_a = tokens.colors) == null ? void 0 : _a.some(
-        (token) => token.name.includes("semantic-") || token.name.includes("primary") || token.name.includes("secondary")
-      );
-      return hasSemanticColors !== false;
-    }
-    applyComponentFamilyCorrections(metadata, family) {
-      var _a, _b, _c;
-      const corrected = __spreadValues({}, metadata);
-      switch (family) {
-        case "button":
-          if (!((_a = corrected.states) == null ? void 0 : _a.includes("hover"))) {
-            corrected.states = [...corrected.states || [], "hover", "focus", "active", "disabled"];
-          }
-          break;
-        case "avatar":
-          if (!((_b = corrected.variants) == null ? void 0 : _b.size) && !((_c = corrected.props) == null ? void 0 : _c.some((p) => p.name.includes("size")))) {
-            corrected.variants = __spreadProps(__spreadValues({}, corrected.variants), { size: ["small", "medium", "large"] });
-          }
-          break;
-      }
-      return corrected;
-    }
-    applyTokenConsistencyCorrections(tokens) {
-      if (!tokens) return tokens;
-      const corrected = __spreadValues({}, tokens);
-      return corrected;
-    }
-    ensureConsistentScoring(mcpReadiness, context) {
-      return __spreadProps(__spreadValues({}, mcpReadiness), {
-        score: mcpReadiness.score || 0
-      });
-    }
-  };
-  var consistency_engine_default = ComponentConsistencyEngine;
-
   // src/ui/message-handler.ts
   var storedApiKey = null;
-  var selectedModel = "claude-sonnet-4-6";
+  var selectedModel = "claude-sonnet-5";
   var selectedProvider = "anthropic";
   function isValidApiKeyFormat(apiKey, provider = selectedProvider) {
     const trimmed = (apiKey == null ? void 0 : apiKey.trim()) || "";
@@ -5882,11 +6199,8 @@ ${scoringCriteria}
   }
   var lastAnalyzedMetadata = null;
   var lastAnalyzedNode = null;
-  var consistencyEngine = new consistency_engine_default({
-    enableCaching: true,
-    enableMCPIntegration: true,
-    mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
-  });
+  var activeAnalysisRequestId = null;
+  var LAST_ANALYSIS_STORAGE_KEY = "figmalint-last-analysis";
   async function handleUIMessage(msg) {
     const { type, data } = msg;
     console.log("Received message:", type, data);
@@ -5937,6 +6251,28 @@ ${scoringCriteria}
           break;
         case "add-component-property":
           await handleAddComponentProperty(data);
+          break;
+        case "cancel-analysis":
+          activeAnalysisRequestId = null;
+          sendMessageToUI("analysis-cancelled", {});
+          break;
+        case "restore-last-analysis":
+          await handleRestoreLastAnalysis();
+          break;
+        case "refresh-tokens":
+          await handleRefreshTokens();
+          break;
+        case "preview-naming-strategy":
+          await handlePreviewNamingStrategy(data);
+          break;
+        case "apply-naming-strategy":
+          await handleApplyNamingStrategy(data);
+          break;
+        case "preview-batch-fix":
+          await handlePreviewBatchFix(data);
+          break;
+        case "generate-instance-sheet":
+          await handleGenerateInstanceSheet(data);
           break;
         default:
           console.warn("Unknown message type:", type);
@@ -6026,6 +6362,9 @@ ${scoringCriteria}
   }
   async function handleEnhancedAnalyze(options) {
     var _a, _b;
+    const requestId = options.requestId || `analysis-${Date.now()}`;
+    activeAnalysisRequestId = requestId;
+    const isStale = () => activeAnalysisRequestId !== requestId;
     try {
       if (!storedApiKey) {
         const providerName = getProvider(selectedProvider).name;
@@ -6040,7 +6379,6 @@ ${scoringCriteria}
         return;
       }
       let selectedNode = selection[0];
-      const originalSelectedNode = selectedNode;
       if (selectedNode.type === "INSTANCE") {
         const instance = selectedNode;
         try {
@@ -6105,14 +6443,20 @@ ${scoringCriteria}
       }
       await consistencyEngine.loadDesignSystemsKnowledge();
       const componentContext = await extractComponentContext(selectedNode);
-      const enhancedOptions = __spreadValues({
+      const enhancedOptions = __spreadProps(__spreadValues({
         enableMCPEnhancement: true,
         // Enable MCP enhancement by default
         batchMode: options.batchMode || false,
         enableAudit: options.enableAudit !== false,
         // Enable by default
         includeTokenAnalysis: options.includeTokenAnalysis !== false
-      }, options);
+      }, options), {
+        // Override with any user-specified options
+        // Always analyze the resolved node (instance → main component, variant →
+        // component set, child layer → analyzable ancestor) — the raw selection
+        // may point at a node we deliberately walked away from above.
+        node: selectedNode
+      });
       figma.notify("Performing enhanced analysis with design systems knowledge...", { timeout: 3e3 });
       const result = await processEnhancedAnalysis(
         componentContext,
@@ -6121,17 +6465,159 @@ ${scoringCriteria}
         enhancedOptions,
         selectedProvider
       );
+      if (isStale()) {
+        console.log("\u2139\uFE0F Dropping analysis result \u2014 cancelled or superseded");
+        return;
+      }
       lastAnalyzedMetadata = result.metadata;
       lastAnalyzedNode = selectedNode;
-      sendMessageToUI("enhanced-analysis-result", __spreadProps(__spreadValues({}, result), {
-        analyzedNodeId: selectedNode.id
-      }));
-      figma.notify("Enhanced analysis complete! Check the results panel.", { timeout: 3e3 });
+      const payload = __spreadProps(__spreadValues({}, result), {
+        analyzedNodeId: selectedNode.id,
+        analyzedNode: {
+          id: selectedNode.id,
+          name: selectedNode.name,
+          type: selectedNode.type
+        },
+        analyzedAt: Date.now(),
+        fromCache: result.fromCache === true
+      });
+      sendMessageToUI("enhanced-analysis-result", payload);
+      figma.notify(
+        result.fromCache ? "Loaded cached analysis (component unchanged)." : "Enhanced analysis complete! Check the results panel.",
+        { timeout: 3e3 }
+      );
+      try {
+        await figma.clientStorage.setAsync(LAST_ANALYSIS_STORAGE_KEY, payload);
+      } catch (storageError) {
+        console.warn("Could not persist last analysis:", storageError);
+      }
     } catch (error) {
       console.error("Error during enhanced analysis:", error);
+      if (isStale()) return;
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
       figma.notify(`Analysis failed: ${errorMessage}`, { error: true });
-      sendMessageToUI("analysis-error", { error: errorMessage });
+      const structured = error instanceof LLMError ? { code: error.code, statusCode: error.statusCode, retryAfterMs: error.retryAfter } : {};
+      sendMessageToUI("analysis-error", __spreadValues({
+        error: errorMessage,
+        provider: selectedProvider
+      }, structured));
+    } finally {
+      if (activeAnalysisRequestId === requestId) {
+        activeAnalysisRequestId = null;
+      }
+    }
+  }
+  function toNamingStrategy(value) {
+    const strategies = Object.values(NamingStrategy);
+    return strategies.includes(value || "") ? value : "semantic" /* SEMANTIC */;
+  }
+  function resolveNamingTarget() {
+    const last = lastAnalyzedNode;
+    if (last && !last.removed) return last;
+    const selected = figma.currentPage.selection[0];
+    if (!selected) {
+      throw new Error("No component selected. Analyze a component first.");
+    }
+    return selected;
+  }
+  async function handlePreviewNamingStrategy(data) {
+    try {
+      const node = resolveNamingTarget();
+      const strategy = toNamingStrategy(data == null ? void 0 : data.strategy);
+      const result = applyNamingConvention(
+        node,
+        { strategy, prefix: data == null ? void 0 : data.prefix },
+        // Semantic renames only fix generic names; convention strategies
+        // (BEM/kebab/…) reformat every layer.
+        { dryRun: true, onlyGeneric: strategy === "semantic" /* SEMANTIC */ }
+      );
+      sendMessageToUI("naming-strategy-preview", {
+        strategy,
+        previews: result.previews.filter((p) => p.willChange),
+        errors: result.errors
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("naming-strategy-preview", { strategy: data == null ? void 0 : data.strategy, previews: [], errors: [errorMessage] });
+    }
+  }
+  async function handleApplyNamingStrategy(data) {
+    try {
+      const node = resolveNamingTarget();
+      const strategy = toNamingStrategy(data == null ? void 0 : data.strategy);
+      const result = applyNamingConvention(
+        node,
+        { strategy, prefix: data == null ? void 0 : data.prefix },
+        { dryRun: false, onlyGeneric: strategy === "semantic" /* SEMANTIC */ }
+      );
+      sendMessageToUI("naming-strategy-applied", {
+        strategy,
+        renamed: result.renamed,
+        skipped: result.skipped,
+        errors: result.errors
+      });
+      figma.notify(`Renamed ${result.renamed} layer${result.renamed === 1 ? "" : "s"} (${strategy})`, { timeout: 3e3 });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("naming-strategy-applied", { strategy: data == null ? void 0 : data.strategy, renamed: 0, skipped: 0, errors: [errorMessage] });
+    }
+  }
+  async function handlePreviewBatchFix(data) {
+    const resolutions = {};
+    try {
+      for (const fix of (data == null ? void 0 : data.fixes) || []) {
+        if (!fix.propertyPath || !fix.newValue) continue;
+        const key = `${fix.newValue}|${fix.propertyPath}`;
+        if (key in resolutions) continue;
+        try {
+          const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(fix.propertyPath);
+          let matches;
+          if (isColorProperty) {
+            matches = await findMatchingColorVariable(fix.newValue, 0.1);
+          } else {
+            const pixelValue = parseFloat(fix.newValue);
+            matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2);
+          }
+          resolutions[key] = matches.length > 0 ? {
+            tokenId: matches[0].variableId,
+            tokenName: matches[0].variableName,
+            collectionName: matches[0].collectionName
+          } : null;
+        } catch (e) {
+          resolutions[key] = null;
+        }
+      }
+      sendMessageToUI("batch-fix-preview", { resolutions });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("batch-fix-preview", { resolutions, error: errorMessage });
+    }
+  }
+  async function handleRestoreLastAnalysis() {
+    try {
+      const saved = await figma.clientStorage.getAsync(LAST_ANALYSIS_STORAGE_KEY);
+      if (!saved) {
+        sendMessageToUI("restore-unavailable", {});
+        return;
+      }
+      sendMessageToUI("enhanced-analysis-result", __spreadProps(__spreadValues({}, saved), { restored: true }));
+    } catch (error) {
+      console.warn("Could not restore last analysis:", error);
+      sendMessageToUI("restore-unavailable", {});
+    }
+  }
+  async function handleRefreshTokens() {
+    try {
+      const node = lastAnalyzedNode && !lastAnalyzedNode.removed ? lastAnalyzedNode : figma.currentPage.selection[0];
+      if (!node) {
+        throw new Error("No component to refresh. Select the component and re-analyze.");
+      }
+      const tokens = await extractDesignTokensFromNode(node);
+      await enrichTokensWithMatches(tokens);
+      sendMessageToUI("tokens-refreshed", { tokens, analyzedNodeId: node.id });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("tokens-refresh-error", { error: errorMessage });
     }
   }
   async function handleAnalyzeComponent() {
@@ -6173,7 +6659,9 @@ ${scoringCriteria}
           });
           const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
           const enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
-          let result = await processAnalysisResult(enhancedData, componentContext, { batchMode: true });
+          let result = await processAnalysisResult(enhancedData, componentContext, { batchMode: true, node }, {
+            tokens: tokenAnalysis
+          });
           const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
           if (!isConsistent) {
             result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
@@ -6289,22 +6777,9 @@ ${scoringCriteria}
       if (node.parent === figma.currentPage) {
         return true;
       }
-      const allPages = figma.root.children.filter((child) => child.type === "PAGE");
-      const currentPage = figma.currentPage;
-      if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
-        return findNodeInPage(currentPage, node.id);
-      }
       return false;
     } catch (error) {
       console.warn("Error checking node page:", error);
-      return false;
-    }
-  }
-  function findNodeInPage(page, nodeId) {
-    try {
-      const allNodes = page.findAll();
-      return allNodes.some((node) => node.id === nodeId);
-    } catch (error) {
       return false;
     }
   }
@@ -6495,6 +6970,7 @@ ${hasComponentContext ? "Since you have context about their current component, p
 Respond naturally and helpfully to the user's question.`;
   }
   async function initializePlugin() {
+    var _a;
     try {
       const config = await loadProviderConfig();
       selectedProvider = config.providerId;
@@ -6514,6 +6990,44 @@ Respond naturally and helpfully to the user's question.`;
         });
       }
       console.log(`Plugin initialized with provider: ${selectedProvider}, model: ${selectedModel}`);
+      const notifySelectionChange = () => {
+        const selection = figma.currentPage.selection;
+        const components = selection.filter((node) => isValidNodeForAnalysis(node)).map((node) => ({ id: node.id, name: node.name, type: node.type }));
+        const hasAnalyzableAncestor = (node) => {
+          let ancestor = node.parent;
+          while (ancestor && "type" in ancestor) {
+            const sceneAncestor = ancestor;
+            if (isValidNodeForAnalysis(sceneAncestor)) return true;
+            ancestor = ancestor.parent;
+          }
+          return false;
+        };
+        const first = selection[0];
+        const primary = first ? {
+          id: first.id,
+          name: first.name,
+          type: first.type,
+          isValid: isValidNodeForAnalysis(first) || hasAnalyzableAncestor(first)
+        } : null;
+        sendMessageToUI("batch-selection-update", {
+          components,
+          primary,
+          count: selection.length
+        });
+      };
+      figma.on("selectionchange", notifySelectionChange);
+      notifySelectionChange();
+      try {
+        const saved = await figma.clientStorage.getAsync(LAST_ANALYSIS_STORAGE_KEY);
+        if (saved && ((_a = saved.analyzedNode) == null ? void 0 : _a.name)) {
+          sendMessageToUI("last-analysis-available", {
+            nodeName: saved.analyzedNode.name,
+            analyzedAt: saved.analyzedAt || null
+          });
+        }
+      } catch (storageError) {
+        console.warn("Could not check for saved analysis:", storageError);
+      }
       console.log("\u{1F504} Initializing design systems knowledge...");
       consistencyEngine.loadDesignSystemsKnowledge().then(() => {
         console.log("\u2705 Design systems knowledge loaded successfully");
@@ -6700,7 +7214,11 @@ Respond naturally and helpfully to the user's question.`;
       const results = [];
       let successCount = 0;
       let errorCount = 0;
+      let processedCount = 0;
+      const totalFixes = data.fixes.length;
       for (const fix of data.fixes) {
+        processedCount++;
+        sendMessageToUI("batch-fix-progress", { current: processedCount, total: totalFixes });
         try {
           const node = await figma.getNodeByIdAsync(fix.nodeId);
           if (!node || !("type" in node)) {
@@ -6892,6 +7410,14 @@ Respond naturally and helpfully to the user's question.`;
       figma.notify(`Failed to update description: ${errorMessage}`, { error: true });
     }
   }
+  function propertyNameTokens(value) {
+    const stripped = String(value != null ? value : "").replace(/^(show|has|is|enable|with)(?=[A-Z_\- ])/i, "");
+    return stripped.replace(/([a-z0-9])([A-Z])/g, "$1 $2").split(/[^a-zA-Z0-9]+/).map((t) => t.toLowerCase()).filter((t) => t.length >= 3 && t !== "default");
+  }
+  function nameMatchesTokens(name, tokens) {
+    const nameLower = name.toLowerCase();
+    return tokens.some((t) => nameLower.includes(t));
+  }
   async function handleAddComponentProperty(data) {
     try {
       const { nodeId, propertyName, propertyType, defaultValue } = data;
@@ -6947,8 +7473,9 @@ Respond naturally and helpfully to the user's question.`;
           return;
         }
       }
+      const typeKey = propertyType.toLowerCase().replace(/[^a-z]/g, "");
       let figmaType;
-      switch (propertyType.toLowerCase()) {
+      switch (typeKey) {
         case "boolean":
           figmaType = "BOOLEAN";
           break;
@@ -6956,90 +7483,100 @@ Respond naturally and helpfully to the user's question.`;
           figmaType = "TEXT";
           break;
         case "slot":
+        case "instanceswap":
           figmaType = "INSTANCE_SWAP";
           break;
         case "variant":
-          if (targetNode.type === "COMPONENT_SET") {
-            figmaType = "VARIANT";
-          } else {
-            figmaType = "TEXT";
-          }
+          figmaType = "VARIANT";
           break;
         default:
           figmaType = "TEXT";
       }
-      targetNode.addComponentProperty(propertyName, figmaType, defaultValue);
-      let stagingNote = "";
-      if (figmaType === "VARIANT" && targetNode.type === "COMPONENT_SET" && data.variantOptions && data.variantOptions.length > 1) {
-        const componentSet = targetNode;
-        const existingChildren = [...componentSet.children];
-        const additionalOptions = data.variantOptions.slice(1);
-        const searchStr = `${propertyName}=${defaultValue}`;
-        const page = figma.currentPage;
-        let containerNode = componentSet;
-        while (containerNode.parent && containerNode.parent.type !== "PAGE") {
-          containerNode = containerNode.parent;
-        }
-        const absX = containerNode.absoluteTransform[0][2];
-        const absY = containerNode.absoluteTransform[1][2];
-        const stagingX = absX;
-        const stagingY = absY + containerNode.height + 50;
-        const section = figma.createSection();
-        section.name = `FigmaLint: ${propertyName} Variants`;
-        page.appendChild(section);
-        section.x = stagingX;
-        section.y = stagingY;
-        const label = figma.createText();
-        await figma.loadFontAsync({ family: "Inter", style: "Medium" });
-        label.fontName = { family: "Inter", style: "Medium" };
-        label.characters = `New "${propertyName}" variants \u2014 drag into the ComponentSet`;
-        label.fontSize = 14;
-        label.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
-        section.appendChild(label);
-        label.x = 24;
-        label.y = 24;
-        const padding = 24;
-        const childGap = 32;
-        let currentY = label.y + label.height + 24;
-        let maxWidth = label.width + padding * 2;
-        for (const option of additionalOptions) {
-          const replaceStr = `${propertyName}=${option}`;
-          const optionLabel = figma.createText();
-          await figma.loadFontAsync({ family: "Inter", style: "Semi Bold" });
-          optionLabel.fontName = { family: "Inter", style: "Semi Bold" };
-          optionLabel.characters = `${propertyName}=${option}`;
-          optionLabel.fontSize = 12;
-          optionLabel.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.3, b: 0.9 } }];
-          section.appendChild(optionLabel);
-          optionLabel.x = padding;
-          optionLabel.y = currentY;
-          currentY += optionLabel.height + 12;
-          let rowX = padding;
-          let rowMaxHeight = 0;
-          for (const child of existingChildren) {
-            const clone = child.clone();
-            clone.name = clone.name.replace(searchStr, replaceStr);
-            section.appendChild(clone);
-            clone.x = rowX;
-            clone.y = currentY;
-            rowX += clone.width + childGap;
-            rowMaxHeight = Math.max(rowMaxHeight, clone.height);
-          }
-          maxWidth = Math.max(maxWidth, rowX - childGap + padding);
-          currentY += rowMaxHeight + childGap;
-        }
-        section.resizeWithoutConstraints(
-          Math.max(maxWidth, 400),
-          currentY + padding
-        );
-        stagingNote = ` \u2014 new variants created in staging section to the right`;
+      const variantRoots = targetNode.type === "COMPONENT_SET" ? targetNode.children.filter((c) => c.type === "COMPONENT") : [targetNode];
+      const matchTokens = [
+        ...propertyNameTokens(propertyName),
+        ...propertyNameTokens(defaultValue)
+      ];
+      if (figmaType === "VARIANT") {
+        sendMessageToUI("property-added", {
+          success: false,
+          propertyName,
+          message: `Variant and state properties aren't added automatically \u2014 each value needs a designed variant in the component set, so FigmaLint leaves that to you. Use this recommendation as guidance and add variants manually in Figma.`
+        });
+        return;
       }
+      let resolvedDefault = defaultValue;
+      let swapCandidateName = null;
+      if (figmaType === "INSTANCE_SWAP") {
+        let candidate = null;
+        for (const root of variantRoots) {
+          const instances = root.findAll((n) => n.type === "INSTANCE");
+          candidate = instances.find((inst) => nameMatchesTokens(inst.name, matchTokens)) || null;
+          if (candidate) break;
+        }
+        if (!candidate) {
+          sendMessageToUI("property-added", {
+            success: false,
+            propertyName,
+            message: `Couldn't add "${propertyName}": an instance-swap property has to control a nested instance, and no instance matching "${matchTokens.join('", "')}" exists in this component. Add the instance (e.g. an action button) first, then re-add the property.`
+          });
+          figma.notify(`No nested instance found for "${propertyName}"`, { error: true });
+          return;
+        }
+        const mainComponent = await candidate.getMainComponentAsync();
+        if (!mainComponent) {
+          sendMessageToUI("property-added", {
+            success: false,
+            propertyName,
+            message: `Couldn't add "${propertyName}": the matching instance "${candidate.name}" has no accessible main component.`
+          });
+          return;
+        }
+        resolvedDefault = mainComponent.id;
+        swapCandidateName = candidate.name;
+      }
+      if (figmaType === "BOOLEAN") {
+        resolvedDefault = /^(true|yes|on|1)$/i.test(String(defaultValue).trim());
+      }
+      const propertyKey = targetNode.addComponentProperty(propertyName, figmaType, resolvedDefault);
+      let boundLayerName = null;
+      let boundCount = 0;
+      for (const root of variantRoots) {
+        let match = null;
+        if (figmaType === "TEXT") {
+          match = root.findOne((n) => n.type === "TEXT" && nameMatchesTokens(n.name, matchTokens));
+        } else if (figmaType === "BOOLEAN") {
+          match = root.findOne((n) => nameMatchesTokens(n.name, matchTokens));
+        } else if (figmaType === "INSTANCE_SWAP" && swapCandidateName) {
+          match = root.findOne((n) => n.type === "INSTANCE" && n.name === swapCandidateName);
+        }
+        if (!match) continue;
+        const refs = __spreadValues({}, match.componentPropertyReferences || {});
+        if (figmaType === "BOOLEAN") {
+          refs.visible = propertyKey;
+        } else if (figmaType === "TEXT") {
+          refs.characters = propertyKey;
+        } else {
+          refs.mainComponent = propertyKey;
+        }
+        match.componentPropertyReferences = refs;
+        boundLayerName = match.name;
+        boundCount++;
+      }
+      let bindingNote;
+      if (boundCount > 0) {
+        const kind = figmaType === "BOOLEAN" ? "visibility" : figmaType === "TEXT" ? "text" : "swap target";
+        bindingNote = ` and bound to the ${kind} of "${boundLayerName}"${variantRoots.length > 1 ? ` in ${boundCount}/${variantRoots.length} variants` : ""}`;
+      } else {
+        bindingNote = `, but no layer matching "${matchTokens.join('", "')}" exists to bind it to \u2014 it will show as unused until you attach it to a layer (or create that layer first)`;
+      }
+      const sheetRefreshed = await maybeRefreshInstanceSheet(targetNode);
       sendMessageToUI("property-added", {
         success: true,
         propertyName,
-        message: `Property "${propertyName}" added successfully${stagingNote}`
+        message: `Property "${propertyName}" added${bindingNote}.${sheetRefreshed ? " The instance sheet was updated." : ""}`
       });
-      figma.notify(`Property "${propertyName}" added${stagingNote ? " (see staging section)" : ""}`, { timeout: 3e3 });
+      figma.notify(`Property "${propertyName}" added${boundCount > 0 ? " and bound" : " (unbound)"}`, { timeout: 3e3 });
     } catch (error) {
       console.error("Error adding component property:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -7051,16 +7588,246 @@ Respond naturally and helpfully to the user's question.`;
       figma.notify(`Failed to add property: ${errorMessage}`, { error: true });
     }
   }
+  function rectsOverlap(a, b, margin) {
+    return a.x < b.x + b.width + margin && a.x + a.width + margin > b.x && a.y < b.y + b.height + margin && a.y + a.height + margin > b.y;
+  }
+  async function handleGenerateInstanceSheet(data) {
+    var _a, _b;
+    try {
+      let base = null;
+      if (data == null ? void 0 : data.nodeId) {
+        base = await figma.getNodeByIdAsync(data.nodeId);
+      }
+      if (!base && lastAnalyzedNode && !lastAnalyzedNode.removed) {
+        base = lastAnalyzedNode;
+      }
+      if (!base) {
+        base = figma.currentPage.selection[0] || null;
+      }
+      let target = null;
+      if (base) {
+        if (base.type === "COMPONENT_SET") {
+          target = base;
+        } else if (base.type === "COMPONENT") {
+          target = ((_a = base.parent) == null ? void 0 : _a.type) === "COMPONENT_SET" ? base.parent : base;
+        } else if (base.type === "INSTANCE") {
+          const main = await base.getMainComponentAsync();
+          if (main) {
+            target = ((_b = main.parent) == null ? void 0 : _b.type) === "COMPONENT_SET" ? main.parent : main;
+          }
+        }
+      }
+      if (!target) {
+        throw new Error("Analyze a component first, then generate the instance sheet.");
+      }
+      const message = await buildInstanceSheet(target, { focus: true });
+      sendMessageToUI("instance-sheet-generated", { success: true, message });
+      figma.notify("Instance sheet generated", { timeout: 3e3 });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      sendMessageToUI("instance-sheet-generated", { success: false, message: errorMessage });
+      figma.notify(`Instance sheet failed: ${errorMessage}`, { error: true });
+    }
+  }
+  function instanceSheetName(target) {
+    return `${target.name} \u2014 instance sheet (FigmaLint)`;
+  }
+  async function maybeRefreshInstanceSheet(target) {
+    const existing = figma.currentPage.children.find((c) => c.name === instanceSheetName(target));
+    if (!existing) return false;
+    try {
+      await buildInstanceSheet(target, { focus: false });
+      return true;
+    } catch (error) {
+      console.warn("Could not refresh instance sheet:", error);
+      return false;
+    }
+  }
+  async function buildInstanceSheet(target, options) {
+    let sheet = null;
+    try {
+      const page = figma.currentPage;
+      const displayName = target.name;
+      const sheetName = instanceSheetName(target);
+      const source = target.type === "COMPONENT_SET" ? target.defaultVariant : target;
+      const defs = target.componentPropertyDefinitions;
+      const variantEntries = Object.entries(defs).filter(([, d]) => d.type === "VARIANT");
+      const boolEntries = Object.entries(defs).filter(([, d]) => d.type === "BOOLEAN");
+      const rowAxis = variantEntries[0] || null;
+      const colAxis = variantEntries.length > 1 ? variantEntries[1] : null;
+      const rowValues = rowAxis ? (rowAxis[1].variantOptions || []).map((v) => String(v)).slice(0, 12) : [];
+      const colValues = colAxis ? (colAxis[1].variantOptions || []).map((v) => String(v)).slice(0, 8) : [];
+      const labelFont = { family: "Inter", style: "Regular" };
+      const headerFont = { family: "Inter", style: "Semi Bold" };
+      await figma.loadFontAsync(labelFont);
+      await figma.loadFontAsync(headerFont);
+      const makeText = (chars, size, bold = false, shade = 0.45) => {
+        const t = figma.createText();
+        t.fontName = bold ? headerFont : labelFont;
+        t.fontSize = size;
+        t.characters = chars;
+        t.fills = [{ type: "SOLID", color: { r: shade, g: shade, b: shade } }];
+        return t;
+      };
+      const makeAutoFrame = (direction, spacing) => {
+        const f = figma.createFrame();
+        f.layoutMode = direction;
+        f.primaryAxisSizingMode = "AUTO";
+        f.counterAxisSizingMode = "AUTO";
+        f.itemSpacing = spacing;
+        f.fills = [];
+        f.counterAxisAlignItems = direction === "HORIZONTAL" ? "CENTER" : "MIN";
+        f.clipsContent = false;
+        return f;
+      };
+      const makeRowLabel = (chars) => {
+        const label = makeText(chars, 11);
+        label.textAutoResize = "HEIGHT";
+        label.resize(96, label.height);
+        return label;
+      };
+      let created = 0;
+      let unavailable = 0;
+      const makeDashCell = () => {
+        const cell = makeAutoFrame("VERTICAL", 6);
+        cell.appendChild(makeText("\u2014", 12, false, 0.7));
+        return cell;
+      };
+      const makeInstanceCell = (props, labelText) => {
+        const inst = source.createInstance();
+        try {
+          inst.setProperties(props);
+        } catch (e) {
+          inst.remove();
+          unavailable++;
+          return makeDashCell();
+        }
+        created++;
+        const cell = makeAutoFrame("VERTICAL", 6);
+        if (labelText) {
+          cell.appendChild(makeText(labelText, 10, false, 0.55));
+        }
+        cell.appendChild(inst);
+        return cell;
+      };
+      sheet = figma.createFrame();
+      sheet.name = sheetName;
+      sheet.layoutMode = "VERTICAL";
+      sheet.primaryAxisSizingMode = "AUTO";
+      sheet.counterAxisSizingMode = "AUTO";
+      sheet.itemSpacing = 28;
+      sheet.paddingLeft = 40;
+      sheet.paddingRight = 40;
+      sheet.paddingTop = 32;
+      sheet.paddingBottom = 40;
+      sheet.cornerRadius = 12;
+      sheet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+      sheet.strokes = [{ type: "SOLID", color: { r: 0.9, g: 0.9, b: 0.9 } }];
+      const header = makeAutoFrame("VERTICAL", 4);
+      header.appendChild(makeText(displayName, 18, true, 0.1));
+      header.appendChild(makeText("Instance sheet \xB7 generated by FigmaLint", 10, false, 0.55));
+      sheet.appendChild(header);
+      if (rowAxis && rowValues.length > 0) {
+        const section = makeAutoFrame("VERTICAL", 16);
+        section.appendChild(makeText(colAxis ? `${rowAxis[0]} \xD7 ${colAxis[0]}` : rowAxis[0], 13, true, 0.25));
+        for (const rowValue of rowValues) {
+          const row = makeAutoFrame("HORIZONTAL", 24);
+          row.appendChild(makeRowLabel(rowValue));
+          if (colAxis && colValues.length > 0) {
+            for (const colValue of colValues) {
+              row.appendChild(makeInstanceCell(
+                { [rowAxis[0]]: rowValue, [colAxis[0]]: colValue },
+                `${colAxis[0]}=${colValue}`
+              ));
+            }
+          } else {
+            row.appendChild(makeInstanceCell({ [rowAxis[0]]: rowValue }));
+          }
+          section.appendChild(row);
+        }
+        sheet.appendChild(section);
+      }
+      if (boolEntries.length > 0) {
+        const section = makeAutoFrame("VERTICAL", 16);
+        section.appendChild(makeText("Boolean properties", 13, true, 0.25));
+        for (const [key] of boolEntries.slice(0, 8)) {
+          const row = makeAutoFrame("HORIZONTAL", 24);
+          row.appendChild(makeRowLabel(key.split("#")[0]));
+          row.appendChild(makeInstanceCell({ [key]: true }, "true"));
+          row.appendChild(makeInstanceCell({ [key]: false }, "false"));
+          section.appendChild(row);
+        }
+        sheet.appendChild(section);
+      }
+      if (created === 0 && unavailable === 0) {
+        sheet.appendChild(makeInstanceCell({}));
+      }
+      let container = target;
+      while (container.parent && container.parent.type !== "PAGE") {
+        container = container.parent;
+      }
+      const previous = page.children.find((c) => c.name === sheetName && c.id !== sheet.id);
+      let targetX;
+      let targetY;
+      let replacedPrevious = false;
+      if (previous) {
+        targetX = previous.x;
+        targetY = previous.y;
+        previous.remove();
+        replacedPrevious = true;
+      } else {
+        targetY = container.y;
+        targetX = container.x + container.width + 120;
+        const margin = 80;
+        let guard = 0;
+        while (guard++ < 100) {
+          const rect = { x: targetX, y: targetY, width: sheet.width, height: sheet.height };
+          const hit = page.children.find(
+            (c) => c.id !== sheet.id && rectsOverlap(rect, { x: c.x, y: c.y, width: c.width, height: c.height }, margin)
+          );
+          if (!hit) break;
+          targetX = hit.x + hit.width + 120;
+        }
+      }
+      sheet.x = targetX;
+      sheet.y = targetY;
+      const docsFrame = page.children.find(
+        (c) => c.id !== sheet.id && c.id !== container.id && "children" in c && /docs?\b|sheet|spec|table|guide/i.test(c.name)
+      );
+      if (options.focus) {
+        figma.currentPage.selection = [sheet];
+        figma.viewport.scrollAndZoomIntoView([sheet]);
+      }
+      const parts = [
+        `Instance sheet generated with ${created} instance${created === 1 ? "" : "s"}.`
+      ];
+      if (unavailable > 0) {
+        parts.push(`${unavailable} combination${unavailable === 1 ? "" : "s"} don't exist in the set yet (shown as "\u2014").`);
+      }
+      if (replacedPrevious) {
+        parts.push("Replaced the previously generated sheet.");
+      }
+      if (docsFrame) {
+        parts.push(`Your existing "${docsFrame.name}" was left untouched \u2014 move rows over if you want them combined.`);
+      }
+      return parts.join(" ");
+    } catch (error) {
+      if (sheet && !sheet.removed) {
+        sheet.remove();
+      }
+      throw error;
+    }
+  }
 
   // src/code.ts
   var PLUGIN_WINDOW_SIZE = { width: 400, height: 700 };
   try {
     figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
-    console.log("\u2705 FigmaLint v2.0 - UI shown successfully");
+    console.log("\u2705 FigmaLint - UI shown successfully");
   } catch (error) {
     console.log("\u2139\uFE0F UI might already be shown in inspect panel:", error);
   }
   figma.ui.onmessage = handleUIMessage;
   initializePlugin();
-  console.log("\u{1F680} FigmaLint v2.0 initialized with modular architecture");
+  console.log("\u{1F680} FigmaLint initialized with modular architecture");
 })();

@@ -19,7 +19,6 @@ import {
   LLMResponse,
   LLMError,
   LLMErrorCode,
-  getModelsForProvider,
   detectProviderFromKey,
   DEFAULT_MODELS,
 } from './types';
@@ -349,8 +348,19 @@ export async function loadProviderConfig(): Promise<{
   await migrateLegacyStorage();
 
   const providerId = (await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_PROVIDER) as ProviderId) || DEFAULTS.provider;
-  const modelId = (await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_MODEL) as string) || DEFAULT_MODELS[providerId];
+  const savedModelId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_MODEL) as string | undefined;
   const apiKey = await figma.clientStorage.getAsync(STORAGE_KEYS.apiKey(providerId)) as string | null;
+
+  // A saved model may have been removed from the lineup in a plugin update
+  // (providers retire model IDs); fall back to the provider default so stored
+  // state never points at a model the UI no longer offers.
+  const isKnownModel = savedModelId
+    ? providers[providerId].models.some((m) => m.id === savedModelId)
+    : false;
+  const modelId = isKnownModel && savedModelId ? savedModelId : DEFAULT_MODELS[providerId];
+  if (savedModelId && !isKnownModel) {
+    await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_MODEL, modelId);
+  }
 
   return { providerId, modelId, apiKey };
 }

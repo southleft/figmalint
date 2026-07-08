@@ -271,18 +271,20 @@ class OpenAIProviderClass implements LLMProvider {
           statusCode
         );
 
-      case 429:
+      case 429: {
         // Rate limit exceeded
-        // Try to extract retry-after information from the error message
+        // Try to extract retry-after information from the error message.
+        // LLMError.retryAfter is in milliseconds (matching the Google provider).
         const retryMatch = errorMessage.match(/try again in (\d+)/i);
-        const retryAfter = retryMatch ? parseInt(retryMatch[1], 10) : undefined;
+        const retryAfterSeconds = retryMatch ? parseInt(retryMatch[1], 10) : undefined;
 
         return new LLMError(
-          `OpenAI API Error (429): Rate limit exceeded. ${retryAfter ? `Please try again in ${retryAfter} seconds.` : 'Please try again later.'}`,
+          `OpenAI API Error (429): Rate limit exceeded. ${retryAfterSeconds ? `Please try again in ${retryAfterSeconds} seconds.` : 'Please try again later.'}`,
           LLMErrorCode.RATE_LIMIT_EXCEEDED,
           statusCode,
-          retryAfter
+          retryAfterSeconds !== undefined ? retryAfterSeconds * 1000 : undefined
         );
+      }
 
       case 500:
         // Internal Server Error

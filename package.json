@@ -1,12 +1,13 @@
 {
   "name": "figmalint",
-  "version": "2.5.3",
+  "version": "2.6.0",
   "description": "FigmaLint - Component linting for Figma that audits design system compliance, MCP compatibility, accessibility, and generates developer handoff documentation.",
   "main": "dist/code.js",
   "scripts": {
     "build": "npm run bundle && npm run copy-assets",
-    "bundle": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --global-name='' --loader:.ts=ts",
+    "bundle": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --global-name='' --loader:.ts=ts --define:__DEBUG__=false",
     "dev": "npm run bundle -- --watch",
+    "dev:debug": "esbuild src/code.ts --bundle --outfile=dist/code.js --platform=neutral --target=es2017 --format=iife --global-name='' --loader:.ts=ts --define:__DEBUG__=true --watch",
     "copy-assets": "cp ui-enhanced.html dist/ && cp manifest.json dist/",
     "clean": "rm -rf dist",
     "test": "echo \"Error: no test specified\" && exit 1",

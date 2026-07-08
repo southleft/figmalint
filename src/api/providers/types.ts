@@ -34,12 +34,12 @@ export type ModelTier = 'flagship' | 'standard' | 'economy';
  * @example
  * ```typescript
  * const sonnetModel: LLMModel = {
- *   id: 'claude-sonnet-4-6',
- *   name: 'Claude Sonnet 4.5',
+ *   id: 'claude-sonnet-5',
+ *   name: 'Claude Sonnet 5',
  *   description: 'Balanced performance and cost, ideal for most design analysis tasks',
  *   tier: 'standard',
- *   contextWindow: 200000,
- *   maxOutputTokens: 8192
+ *   contextWindow: 1000000,
+ *   maxOutputTokens: 128000
  * };
  * ```
  */
@@ -77,7 +77,7 @@ export interface LLMModel {
  * ```typescript
  * const config: RequestConfig = {
  *   prompt: 'Analyze this component...',
- *   model: 'claude-sonnet-4-6',
+ *   model: 'claude-sonnet-5',
  *   maxTokens: 2048,
  *   temperature: 0.1
  * };
@@ -338,14 +338,14 @@ export type ProviderRegistry = Record<ProviderId, LLMProvider>;
  * Anthropic (Claude) models configuration
  *
  * Available models:
- * - Claude Opus 4.7: Flagship model for complex agents and coding
- * - Claude Sonnet 4.6: Standard balanced model (default)
+ * - Claude Opus 4.8: Flagship model for complex agents and coding
+ * - Claude Sonnet 5: Standard balanced model (default)
  * - Claude Haiku 4.5: Economy model for quick tasks
  */
 export const ANTHROPIC_MODELS: LLMModel[] = [
   {
-    id: 'claude-opus-4-7',
-    name: 'Claude Opus 4.7',
+    id: 'claude-opus-4-8',
+    name: 'Claude Opus 4.8',
     description: 'Flagship model - Most intelligent, best for complex agents and coding',
     tier: 'flagship',
     contextWindow: 1000000,
@@ -353,12 +353,12 @@ export const ANTHROPIC_MODELS: LLMModel[] = [
     isDefault: false,
   },
   {
-    id: 'claude-sonnet-4-6',
-    name: 'Claude Sonnet 4.6',
+    id: 'claude-sonnet-5',
+    name: 'Claude Sonnet 5',
     description: 'Standard model - Best combination of speed and intelligence, recommended for most tasks',
     tier: 'standard',
     contextWindow: 1000000,
-    maxOutputTokens: 64000,
+    maxOutputTokens: 128000,
     isDefault: true,
   },
   {
@@ -414,25 +414,16 @@ export const OPENAI_MODELS: LLMModel[] = [
  * Google (Gemini) models configuration
  *
  * Available models:
- * - Gemini 3.1 Pro: Flagship model with advanced reasoning
- * - Gemini 3 Flash: Standard frontier-class model (default)
- * - Gemini 3.1 Flash-Lite: Economy GA model for high-volume tasks
+ * - Gemini 3.5 Flash: Flagship GA model for agentic and coding tasks (default)
+ * - Gemini 3.1 Flash-Lite: Standard GA model, frontier-class at a fraction of the cost
+ * - Gemini 2.5 Flash-Lite: Economy GA model for high-volume tasks
  */
 export const GOOGLE_MODELS: LLMModel[] = [
   {
-    id: 'gemini-3.1-pro-preview',
-    name: 'Gemini 3.1 Pro',
-    description: 'Flagship model - Advanced reasoning and agentic capabilities',
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    description: 'Flagship model - Most intelligent, frontier performance on agentic and coding tasks, recommended for most tasks',
     tier: 'flagship',
-    contextWindow: 1000000,
-    maxOutputTokens: 64000,
-    isDefault: false,
-  },
-  {
-    id: 'gemini-3-flash-preview',
-    name: 'Gemini 3 Flash',
-    description: 'Standard model - Frontier-class performance at lower cost, recommended for most tasks',
-    tier: 'standard',
     contextWindow: 1000000,
     maxOutputTokens: 64000,
     isDefault: true,
@@ -440,7 +431,16 @@ export const GOOGLE_MODELS: LLMModel[] = [
   {
     id: 'gemini-3.1-flash-lite',
     name: 'Gemini 3.1 Flash-Lite',
-    description: 'Economy model - GA workhorse optimized for low-latency, high-volume tasks',
+    description: 'Standard model - Frontier-class performance rivaling larger models at a fraction of the cost',
+    tier: 'standard',
+    contextWindow: 1000000,
+    maxOutputTokens: 64000,
+    isDefault: false,
+  },
+  {
+    id: 'gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash-Lite',
+    description: 'Economy model - Fastest and most budget-friendly for low-latency, high-volume tasks',
     tier: 'economy',
     contextWindow: 1000000,
     maxOutputTokens: 64000,
@@ -456,9 +456,9 @@ export const GOOGLE_MODELS: LLMModel[] = [
  * Default models for each provider
  */
 export const DEFAULT_MODELS: Record<ProviderId, string> = {
-  anthropic: 'claude-sonnet-4-6',
+  anthropic: 'claude-sonnet-5',
   openai: 'gpt-5.4-mini',
-  google: 'gemini-3-flash-preview',
+  google: 'gemini-3.5-flash',
 };
 
 // =============================================================================

@@ -1,7 +1,8 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { DesignToken, TokenAnalysis, TokenCategory } from '../types';
-import { rgbToHex, getVariableName, getVariableValue, getDebugContext } from '../utils/figma-helpers';
+import { rgbToHex, getVariableName, getVariableValue, getDebugContext, clearVariableLookupCache } from '../utils/figma-helpers';
+import { DEBUG, debugLog } from '../utils/debug';
 
 /**
  * Check if a node has default variant frame styles
@@ -10,25 +11,17 @@ import { rgbToHex, getVariableName, getVariableValue, getDebugContext } from '..
  * - Corner Radius: 5px
  * - Stroke Weight: 1px
  * - Padding: 16px (all sides)
+ *
+ * @param isPartOfVariant - Optional precomputed in-variant flag (see
+ *   isNodeInVariant). When omitted, the ancestor chain is walked. The
+ *   traversal in extractDesignTokensFromNode computes this once per node
+ *   while descending instead of re-walking ancestors at every call site.
  */
-function hasDefaultVariantFrameStyles(node: SceneNode): boolean {
+function hasDefaultVariantFrameStyles(node: SceneNode, isPartOfVariant?: boolean): boolean {
   // First check if this node or any ancestor is part of a component set
-  let currentNode: SceneNode | null = node;
-  let isPartOfVariant = false;
-  
-  while (currentNode) {
-    if (currentNode.type === 'COMPONENT_SET') {
-      isPartOfVariant = true;
-      break;
-    }
-    if (currentNode.parent && currentNode.parent.type === 'COMPONENT_SET') {
-      isPartOfVariant = true;
-      break;
-    }
-    currentNode = currentNode.parent as SceneNode | null;
-  }
-  
-  if (!isPartOfVariant) {
+  const inVariant = isPartOfVariant !== undefined ? isPartOfVariant : isNodeInVariant(node);
+
+  if (!inVariant) {
     return false;
   }
   if (!('strokes' in node) || !('cornerRadius' in node) || !('strokeWeight' in node)) {
@@ -63,11 +56,14 @@ function hasDefaultVariantFrameStyles(node: SceneNode): boolean {
   // Only return true if ALL default values are present
   const hasAllDefaults = hasDefaultRadius && hasDefaultStrokeWeight && hasDefaultStroke && hasDefaultPadding;
   
-  if (hasAllDefaults) {
-    console.log(`🎯 [FILTER] Detected default variant frame styles in ${node.name} - filtering out`);
-    console.log(`   Type: ${node.type}, Parent: ${node.parent?.type}`);
-    console.log(`   Radius: ${node.cornerRadius}, Weight: ${node.strokeWeight}, Color: ${strokes.length > 0 ? rgbToHex(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b) : 'none'}`);
-    console.log(`   Padding: L=${node.paddingLeft}, R=${node.paddingRight}, T=${node.paddingTop}, B=${node.paddingBottom}`);
+  if (hasAllDefaults && DEBUG) {
+    debugLog(`🎯 [FILTER] Detected default variant frame styles in ${node.name} - filtering out`);
+    debugLog(`   Type: ${node.type}, Parent: ${node.parent?.type}`);
+    const strokeColor = strokes.length > 0 && strokes[0].type === 'SOLID'
+      ? rgbToHex(strokes[0].color.r, strokes[0].color.g, strokes[0].color.b)
+      : 'none';
+    debugLog(`   Radius: ${String(node.cornerRadius)}, Weight: ${String(node.strokeWeight)}, Color: ${strokeColor}`);
+    debugLog(`   Padding: L=${node.paddingLeft}, R=${node.paddingRight}, T=${node.paddingTop}, B=${node.paddingBottom}`);
   }
   
   return hasAllDefaults;
@@ -96,6 +92,10 @@ function isNodeInVariant(node: SceneNode): boolean {
  * Extract comprehensive design tokens from a Figma node
  */
 export async function extractDesignTokensFromNode(node: SceneNode): Promise<TokenAnalysis> {
+  // Fresh extraction: drop cached variable lookups so renames/edits are seen,
+  // while repeated ids within this extraction hit the cache.
+  clearVariableLookupCache();
+
   const colors: DesignToken[] = [];
   const spacing: DesignToken[] = [];
   const typography: DesignToken[] = [];
@@ -108,8 +108,17 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
   const effectSet = new Set<string>();
   const borderSet = new Set<string>();
 
-  async function traverseNode(currentNode: SceneNode): Promise<void> {
-    console.log('🔍 Analyzing node:', currentNode.name, 'Type:', currentNode.type);
+  /**
+   * @param inVariant - Whether currentNode or any ancestor is a COMPONENT_SET.
+   *   Computed once while descending instead of re-walking the ancestor chain
+   *   for every check on every node.
+   */
+  async function traverseNode(currentNode: SceneNode, inVariant: boolean): Promise<void> {
+    debugLog('🔍 Analyzing node:', currentNode.name, 'Type:', currentNode.type);
+
+    // Compute the default-variant-frame-style check once per node (it reads
+    // static node properties, so the result is stable for the whole visit).
+    const isDefaultVariantFrame = hasDefaultVariantFrameStyles(currentNode, inVariant);
 
     // Check for Figma Styles (Design Tokens)
     const stylePromises: Promise<void>[] = [];
@@ -213,38 +222,51 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     // Check for Figma Variables with comprehensive property checking
     if ('boundVariables' in currentNode && currentNode.boundVariables) {
       const boundVars = currentNode.boundVariables;
-      console.log(`🔍 [VARIABLES] Checking bound variables for ${currentNode.name}:`, Object.keys(boundVars));
+      if (DEBUG) {
+        debugLog(`🔍 [VARIABLES] Checking bound variables for ${currentNode.name}:`, Object.keys(boundVars));
+      }
 
       // Helper function to process variable arrays
       const processVariableArray = async (variables: any, propertyName: string, targetSet: Set<string>, targetArray: DesignToken[], tokenType: string) => {
         try {
           const varArray = Array.isArray(variables) ? variables : [variables];
+          const boundIds: string[] = [];
           for (const v of varArray) {
             if (v?.id && typeof v.id === 'string') {
-              const varName = await getVariableName(v.id);
-              console.log(`   🎯 Found ${propertyName} variable:`, varName);
-              if (varName && !targetSet.has(varName)) {
-                targetSet.add(varName);
+              boundIds.push(v.id);
+            }
+          }
+          if (boundIds.length === 0) return;
 
-                // Get actual value for color-related variables
-                let displayValue = varName;
-                if (tokenType === 'color' && (propertyName === 'fills' || propertyName === 'strokes')) {
-                  const actualValue = await getVariableValue(v.id, currentNode);
-                  if (actualValue && actualValue.startsWith('#')) {
-                    displayValue = actualValue;
-                  }
-                }
+          // Prefetch lookups in parallel (cached per id), then process
+          // sequentially in the original order so dedup and output ordering
+          // stay deterministic.
+          const isColorPaint = tokenType === 'color' && (propertyName === 'fills' || propertyName === 'strokes');
+          const lookups = await Promise.all(boundIds.map(async (id) => ({
+            varName: await getVariableName(id),
+            actualValue: isColorPaint ? await getVariableValue(id, currentNode) : null
+          })));
 
-                targetArray.push({
-                  name: varName,
-                  value: displayValue,
-                  type: `${propertyName}-variable`,
-                  isToken: true,
-                  isActualToken: true,
-                  source: 'figma-variable'
-                });
-                console.log(`   ✅ Added ${tokenType} token: ${varName} (value: ${displayValue})`);
+          for (const { varName, actualValue } of lookups) {
+            debugLog(`   🎯 Found ${propertyName} variable:`, varName);
+            if (varName && !targetSet.has(varName)) {
+              targetSet.add(varName);
+
+              // Use actual value for color-related variables
+              let displayValue = varName;
+              if (isColorPaint && actualValue && actualValue.startsWith('#')) {
+                displayValue = actualValue;
               }
+
+              targetArray.push({
+                name: varName,
+                value: displayValue,
+                type: `${propertyName}-variable`,
+                isToken: true,
+                isActualToken: true,
+                source: 'figma-variable'
+              });
+              debugLog(`   ✅ Added ${tokenType} token: ${varName} (value: ${displayValue})`);
             }
           }
         } catch (error) {
@@ -256,7 +278,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       const processSingleVariable = async (variable: any, propertyName: string, targetSet: Set<string>, targetArray: DesignToken[], tokenType: string) => {
         if (variable && typeof variable === 'object' && 'id' in variable && typeof variable.id === 'string') {
           const varName = await getVariableName(variable.id);
-          console.log(`   🎯 Found ${propertyName} variable:`, varName);
+          debugLog(`   🎯 Found ${propertyName} variable:`, varName);
           if (varName && !targetSet.has(varName)) {
             targetSet.add(varName);
             targetArray.push({
@@ -267,7 +289,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
               isActualToken: true,
               source: 'figma-variable'
             });
-            console.log(`   ✅ Added ${tokenType} token: ${varName}`);
+            debugLog(`   ✅ Added ${tokenType} token: ${varName}`);
           }
         }
       };
@@ -277,18 +299,18 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
 
       // Color-related variables
       if (boundVars.fills) {
-        console.log('   🎨 Processing fills variables...');
+        debugLog('   🎨 Processing fills variables...');
         variableProcessingPromises.push(processVariableArray(boundVars.fills, 'fills', colorSet, colors, 'color'));
       }
 
       if (boundVars.strokes) {
-        console.log('   🖊️ Processing strokes variables...');
+        debugLog('   🖊️ Processing strokes variables...');
         variableProcessingPromises.push(processVariableArray(boundVars.strokes, 'strokes', colorSet, colors, 'color'));
       }
 
       // Effects variables (shadows, blurs, etc.)
       if (boundVars.effects) {
-        console.log('   ✨ Processing effects variables...');
+        debugLog('   ✨ Processing effects variables...');
         variableProcessingPromises.push(processVariableArray(boundVars.effects, 'effects', effectSet, effects, 'effect'));
       }
 
@@ -297,7 +319,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       const strokeWeightProps = ['strokeWeight', 'strokeTopWeight', 'strokeRightWeight', 'strokeBottomWeight', 'strokeLeftWeight'] as const;
       strokeWeightProps.forEach(prop => {
         if ((boundVars as any)[prop]) {
-          console.log(`   📏 Processing ${prop} variable...`);
+          debugLog(`   📏 Processing ${prop} variable...`);
           variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, borderSet, borders, 'border'));
         }
       });
@@ -306,7 +328,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       const radiusProps = ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius'] as const;
       radiusProps.forEach(prop => {
         if ((boundVars as any)[prop]) {
-          console.log(`   🔄 Processing ${prop} variable...`);
+          debugLog(`   🔄 Processing ${prop} variable...`);
           variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, borderSet, borders, 'border'));
         }
       });
@@ -315,7 +337,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       const spacingProps = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'itemSpacing', 'counterAxisSpacing'] as const;
       spacingProps.forEach(prop => {
         if ((boundVars as any)[prop]) {
-          console.log(`   📐 Processing ${prop} variable...`);
+          debugLog(`   📐 Processing ${prop} variable...`);
           variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, spacingSet, spacing, 'spacing'));
         }
       });
@@ -324,14 +346,14 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       const sizeProps = ['width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight'] as const;
       sizeProps.forEach(prop => {
         if ((boundVars as any)[prop]) {
-          console.log(`   📦 Processing ${prop} variable...`);
+          debugLog(`   📦 Processing ${prop} variable...`);
           variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, spacingSet, spacing, 'size'));
         }
       });
 
       // Opacity variables (treating as effects for now)
       if (boundVars.opacity) {
-        console.log('   👻 Processing opacity variable...');
+        debugLog('   👻 Processing opacity variable...');
         variableProcessingPromises.push(processSingleVariable(boundVars.opacity, 'opacity', effectSet, effects, 'effect'));
       }
 
@@ -340,7 +362,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         const typographyProps = ['fontSize', 'lineHeight', 'letterSpacing', 'paragraphSpacing'] as const;
         typographyProps.forEach(prop => {
           if ((boundVars as any)[prop]) {
-            console.log(`   📝 Processing ${prop} variable...`);
+            debugLog(`   📝 Processing ${prop} variable...`);
             variableProcessingPromises.push(processSingleVariable((boundVars as any)[prop], prop, typographySet, typography, 'typography'));
           }
         });
@@ -349,7 +371,9 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       // Wait for all variable processing to complete
       await Promise.all(variableProcessingPromises);
 
-      console.log(`🔍 [VARIABLES] Total variables found for ${currentNode.name}: ${Object.keys(boundVars).length}`);
+      if (DEBUG) {
+        debugLog(`🔍 [VARIABLES] Total variables found for ${currentNode.name}: ${Object.keys(boundVars).length}`);
+      }
     }
 
     // Extract hard-coded values ONLY if no bound variables and no styles
@@ -359,13 +383,13 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     const hasFillStyle = 'fillStyleId' in currentNode && currentNode.fillStyleId;
 
     if ('fills' in currentNode && Array.isArray(currentNode.fills) && !hasFillStyle && !hasFillVariables) {
-      console.log(`🔍 [HARD-CODED] Checking fills for ${currentNode.name} (no variables, no style)`);
+      debugLog(`🔍 [HARD-CODED] Checking fills for ${currentNode.name} (no variables, no style)`);
       currentNode.fills.forEach((fill) => {
         if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
           const hex = rgbToHex(fill.color.r, fill.color.g, fill.color.b);
           const fillDedupKey = `${hex}:${currentNode.id}`;
           if (!colorSet.has(fillDedupKey)) {
-            console.log(`   ⚠️ Found hard-coded fill: ${hex}`);
+            debugLog(`   ⚠️ Found hard-coded fill: ${hex}`);
             colorSet.add(fillDedupKey);
 
             const debugContext = getDebugContext(currentNode);
@@ -388,9 +412,9 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         }
       });
     } else if (hasFillVariables) {
-      console.log(`🔍 [VARIABLES] ${currentNode.name} has fill variables - skipping hard-coded detection`);
+      debugLog(`🔍 [VARIABLES] ${currentNode.name} has fill variables - skipping hard-coded detection`);
     } else if (hasFillStyle) {
-      console.log(`🔍 [STYLES] ${currentNode.name} has fill style - skipping hard-coded detection`);
+      debugLog(`🔍 [STYLES] ${currentNode.name} has fill style - skipping hard-coded detection`);
     }
 
     // Extract stroke values ONLY if no bound variables and no styles
@@ -400,18 +424,18 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     const hasStrokeStyle = 'strokeStyleId' in currentNode && currentNode.strokeStyleId;
 
     if ('strokes' in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
-      console.log(`🔍 [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
+      debugLog(`🔍 [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
       
       // Skip if this node has default variant frame styles
-      if (hasDefaultVariantFrameStyles(currentNode)) {
-        console.log(`   🚫 Skipping default variant frame stroke colors`);
+      if (isDefaultVariantFrame) {
+        debugLog(`   🚫 Skipping default variant frame stroke colors`);
       } else {
         currentNode.strokes.forEach((stroke) => {
           if (stroke.type === 'SOLID' && stroke.visible !== false && stroke.color) {
             const hex = rgbToHex(stroke.color.r, stroke.color.g, stroke.color.b);
             const strokeDedupKey = `${hex}:${currentNode.id}`;
             if (!colorSet.has(strokeDedupKey)) {
-              console.log(`   ⚠️ Found hard-coded stroke: ${hex}`);
+              debugLog(`   ⚠️ Found hard-coded stroke: ${hex}`);
               colorSet.add(strokeDedupKey);
 
               const debugContext = getDebugContext(currentNode);
@@ -421,7 +445,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                 type: 'stroke',
                 isToken: false,
                 source: 'hard-coded',
-                isDefaultVariantStyle: hex.toUpperCase() === '#9747FF' && isNodeInVariant(currentNode),
+                isDefaultVariantStyle: hex.toUpperCase() === '#9747FF' && inVariant,
                 context: {
                   nodeType: currentNode.type,
                   nodeName: currentNode.name,
@@ -436,14 +460,14 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         });
       }
     } else if (hasStrokeVariables) {
-      console.log(`🔍 [VARIABLES] ${currentNode.name} has stroke variables - skipping hard-coded detection`);
+      debugLog(`🔍 [VARIABLES] ${currentNode.name} has stroke variables - skipping hard-coded detection`);
     } else if (hasStrokeStyle) {
-      console.log(`🔍 [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
+      debugLog(`🔍 [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
     }
 
     // Extract stroke weight only if there are visible strokes and no bound variable
     if ('strokeWeight' in currentNode && typeof currentNode.strokeWeight === 'number') {
-      console.log(`🔍 Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
+      debugLog(`🔍 Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
 
       const hasStrokes = 'strokes' in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
       const hasVisibleStrokes = hasStrokes && currentNode.strokes.some(stroke => stroke.visible !== false);
@@ -452,12 +476,14 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                                       (['strokeWeight', 'strokeTopWeight', 'strokeRightWeight', 'strokeBottomWeight', 'strokeLeftWeight'].some(prop =>
                                         (currentNode.boundVariables as any)[prop]));
 
-      const boundVarKeys = ('boundVariables' in currentNode && currentNode.boundVariables) ? Object.keys(currentNode.boundVariables) : [];
-      console.log(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}, boundVariable keys: [${boundVarKeys.join(', ')}]`);
+      if (DEBUG) {
+        const boundVarKeys = ('boundVariables' in currentNode && currentNode.boundVariables) ? Object.keys(currentNode.boundVariables) : [];
+        debugLog(`   Has strokes: ${hasStrokes}, Has visible strokes: ${hasVisibleStrokes}, Has strokeWeight variable: ${!!hasStrokeWeightVariable}, boundVariable keys: [${boundVarKeys.join(', ')}]`);
+      }
 
       if (hasStrokeWeightVariable) {
-        console.log(`   🔗 ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
-      } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !hasDefaultVariantFrameStyles(currentNode)) {
+        debugLog(`   🔗 ${currentNode.name} has strokeWeight bound to variable - skipping hard-coded detection`);
+      } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && !isDefaultVariantFrame) {
         
         const strokeWeightValue = `${currentNode.strokeWeight}px`;
         // Get the color of the first visible stroke
@@ -469,7 +495,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
 
         const swDedupKey = `${strokeWeightValue}:${currentNode.id}`;
         if (!borderSet.has(swDedupKey)) {
-          console.log(`   ✅ Adding stroke weight: ${strokeWeightValue}`);
+          debugLog(`   ✅ Adding stroke weight: ${strokeWeightValue}`);
           borderSet.add(swDedupKey);
 
           const debugContext = getDebugContext(currentNode);
@@ -480,7 +506,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             isToken: false,
             source: 'hard-coded',
             strokeColor: strokeColor,
-            isDefaultVariantStyle: currentNode.strokeWeight === 1 && strokeColor?.toUpperCase() === '#9747FF' && isNodeInVariant(currentNode),
+            isDefaultVariantStyle: currentNode.strokeWeight === 1 && strokeColor?.toUpperCase() === '#9747FF' && inVariant,
             context: {
               nodeType: currentNode.type,
               nodeName: currentNode.name,
@@ -492,8 +518,8 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             }
           });
         }
-      } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && hasDefaultVariantFrameStyles(currentNode)) {
-        console.log(`   🚫 Skipping default variant frame stroke weight`);
+      } else if (currentNode.strokeWeight > 0 && hasVisibleStrokes && isDefaultVariantFrame) {
+        debugLog(`   🚫 Skipping default variant frame stroke weight`);
       }
     }
 
@@ -504,18 +530,18 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                                 (currentNode.boundVariables as any)[prop]));
 
     if ('cornerRadius' in currentNode && typeof currentNode.cornerRadius === 'number' && !hasRadiusVariables) {
-      console.log(`🔍 [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
+      debugLog(`🔍 [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
       
       // Skip if this node has default variant frame styles
-      if (hasDefaultVariantFrameStyles(currentNode)) {
-        console.log(`   🚫 Skipping default variant frame corner radius`);
+      if (isDefaultVariantFrame) {
+        debugLog(`   🚫 Skipping default variant frame corner radius`);
       } else {
         const radius = currentNode.cornerRadius;
         if (radius > 0) {
           const radiusValue = `${radius}px`;
           const crDedupKey = `${radiusValue}:${currentNode.id}`;
           if (!borderSet.has(crDedupKey)) {
-            console.log(`   ⚠️ Found hard-coded corner radius: ${radiusValue}`);
+            debugLog(`   ⚠️ Found hard-coded corner radius: ${radiusValue}`);
             borderSet.add(crDedupKey);
 
             const debugContext = getDebugContext(currentNode);
@@ -525,7 +551,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
               type: 'corner-radius',
               isToken: false,
               source: 'hard-coded',
-              isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
+              isDefaultVariantStyle: radius === 5 && inVariant,
               context: {
                 nodeType: currentNode.type,
                 nodeName: currentNode.name,
@@ -539,16 +565,16 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         }
       }
     } else if (hasRadiusVariables) {
-      console.log(`🔍 [VARIABLES] ${currentNode.name} has radius variables - skipping hard-coded detection`);
+      debugLog(`🔍 [VARIABLES] ${currentNode.name} has radius variables - skipping hard-coded detection`);
     }
 
     // Also check for individual corner radius properties if they exist
     if (!hasRadiusVariables && 'topLeftRadius' in currentNode) {
-      console.log(`🔍 [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
+      debugLog(`🔍 [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
       
       // Skip if this node has default variant frame styles
-      if (hasDefaultVariantFrameStyles(currentNode)) {
-        console.log(`   🚫 Skipping default variant frame individual corner radii`);
+      if (isDefaultVariantFrame) {
+        debugLog(`   🚫 Skipping default variant frame individual corner radii`);
       } else {
         const radiusProps = [
         { prop: 'topLeftRadius', name: 'top-left' },
@@ -564,7 +590,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
             const radiusValue = `${radius}px`;
             const irDedupKey = `${radiusValue}:${currentNode.id}:${prop}`;
             if (!borderSet.has(irDedupKey)) {
-              console.log(`   ⚠️ Found hard-coded ${name} radius: ${radiusValue}`);
+              debugLog(`   ⚠️ Found hard-coded ${name} radius: ${radiusValue}`);
               borderSet.add(irDedupKey);
 
               const debugContext = getDebugContext(currentNode);
@@ -574,7 +600,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                 type: `${name}-radius`,
                 isToken: false,
                 source: 'hard-coded',
-                isDefaultVariantStyle: radius === 5 && isNodeInVariant(currentNode),
+                isDefaultVariantStyle: radius === 5 && inVariant,
                 context: {
                   nodeType: currentNode.type,
                   nodeName: currentNode.name,
@@ -598,7 +624,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                                  (currentNode.boundVariables as any)[prop]));
 
     if ('paddingLeft' in currentNode && typeof currentNode.paddingLeft === 'number' && !hasPaddingVariables) {
-      console.log(`🔍 [HARD-CODED] Checking padding for ${currentNode.name} (no variables)`);
+      debugLog(`🔍 [HARD-CODED] Checking padding for ${currentNode.name} (no variables)`);
       const frame = currentNode as FrameNode;
       const paddings = [
         { value: frame.paddingLeft, name: 'left' },
@@ -610,13 +636,13 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       paddings.forEach((padding) => {
         const padDedupKey = `${padding.value}:${currentNode.id}:${padding.name}`;
         if (typeof padding.value === 'number' && padding.value > 1 && !spacingSet.has(padDedupKey)) {
-          console.log(`   ⚠️ Found hard-coded padding-${padding.name}: ${padding.value}px`);
+          debugLog(`   ⚠️ Found hard-coded padding-${padding.name}: ${padding.value}px`);
           spacingSet.add(padDedupKey);
 
           const debugContext = getDebugContext(currentNode);
           // Check if this is a default variant style (16px padding in a variant)
-          const isDefaultVariantPadding = padding.value === 16 && isNodeInVariant(currentNode) &&
-                                          hasDefaultVariantFrameStyles(currentNode);
+          const isDefaultVariantPadding = padding.value === 16 && inVariant &&
+                                          isDefaultVariantFrame;
           
           spacing.push({
             name: `hard-coded-padding-${padding.name}-${padding.value}`,
@@ -637,18 +663,22 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
         }
       });
     } else if (hasPaddingVariables) {
-      console.log(`🔍 [VARIABLES] ${currentNode.name} has padding variables - skipping hard-coded detection`);
+      debugLog(`🔍 [VARIABLES] ${currentNode.name} has padding variables - skipping hard-coded detection`);
     }
 
-    // Traverse children
+    // Traverse children.
+    // NOTE: kept sequential on purpose — token names (`hard-coded-fill-N`)
+    // and name-keyed dedup depend on push order, so parallelizing siblings
+    // (whose async Figma lookups resolve in nondeterministic order) would
+    // make the extraction output nondeterministic.
     if ('children' in currentNode) {
       for (const child of currentNode.children) {
-        await traverseNode(child);
+        await traverseNode(child, inVariant || child.type === 'COMPONENT_SET');
       }
     }
   }
 
-  await traverseNode(node);
+  await traverseNode(node, isNodeInVariant(node));
   return analyzeTokensConsistently({ colors, spacing, typography, effects, borders });
 }
 

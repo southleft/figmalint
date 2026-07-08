@@ -8,7 +8,7 @@ const PLUGIN_WINDOW_SIZE = { width: 400, height: 700 };
 // Plugin initialization
 try {
   figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
-  console.log('✅ FigmaLint v2.0 - UI shown successfully');
+  console.log('✅ FigmaLint - UI shown successfully');
 } catch (error) {
   console.log('ℹ️ UI might already be shown in inspect panel:', error);
 }
@@ -19,4 +19,4 @@ figma.ui.onmessage = handleUIMessage;
 // Initialize plugin
 initializePlugin();
 
-console.log('🚀 FigmaLint v2.0 initialized with modular architecture');
+console.log('🚀 FigmaLint initialized with modular architecture');

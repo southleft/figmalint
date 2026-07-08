@@ -381,6 +381,9 @@ export async function createColorVariable(
       b: rgb.b
     });
 
+    // New local variable: resolved-variable index is now stale
+    clearLocalVariableCache();
+
     return {
       success: true,
       variable
@@ -426,6 +429,9 @@ export async function createSpacingVariable(
     // Set the value for the default mode
     const modeId = collection.modes[0].modeId;
     variable.setValueForMode(modeId, pixelValue);
+
+    // New local variable: resolved-variable index is now stale
+    clearLocalVariableCache();
 
     return {
       success: true,
@@ -475,11 +481,25 @@ let libraryVariableCache: Variable[] | null = null;
 let libraryCollectionCache: Map<string, string> | null = null; // variableCollectionId -> collection name (with library prefix)
 
 /**
- * Clear the library variable cache (call when plugin session resets)
+ * Clear the library variable cache (call when plugin session resets).
+ * Also clears the resolved local-variable cache, since the resolved index
+ * embeds library entries and must never outlive the library cache.
  */
 export function clearLibraryVariableCache(): void {
   libraryVariableCache = null;
   libraryCollectionCache = null;
+  clearLocalVariableCache();
+}
+
+/**
+ * Clear the resolved local/library variable index and memoized match results.
+ * Called automatically when a new variable is created via this module, and by
+ * clearLibraryVariableCache(). Applied fixes only *bind* existing variables,
+ * so they do not require invalidation.
+ */
+export function clearLocalVariableCache(): void {
+  resolvedVariableCachePromise = null;
+  resolvedVariableCacheBuiltAt = 0;
 }
 
 /**
@@ -540,6 +560,239 @@ async function getLibraryVariables(
   return { variables: filtered, collectionNames };
 }
 
+// ---------------------------------------------------------------------------
+// Resolved-variable session cache
+//
+// findMatchingColorVariable / findMatchingSpacingVariable used to re-fetch all
+// local variables + collections and re-resolve every variable (alias chain +
+// alias-depth walk, each an awaited API call) on EVERY invocation — once per
+// hard-coded token during analysis and once per fix during batch fixes.
+//
+// Instead we resolve every local + library variable once per cache fill,
+// index the results by resolved value (hex string for colors, number for
+// floats), and memoize per (value, tolerance) match results. Applied fixes
+// only bind existing variables, so cached matches stay valid; creating a new
+// variable through this module invalidates the cache, and a small TTL picks
+// up variables created outside the plugin's control.
+// ---------------------------------------------------------------------------
+
+interface ResolvedVariableEntryBase {
+  variableId: string;
+  variableName: string;
+  collectionName: string;
+  /** Library entries are skipped when the same id already matched (mirrors
+   * the previous local-first, seen-id dedup behavior). */
+  isLibrary: boolean;
+  aliasDepth: number;
+}
+
+interface ResolvedColorEntry extends ResolvedVariableEntryBase {
+  color: { r: number; g: number; b: number };
+  hex: string;
+}
+
+interface ResolvedFloatEntry extends ResolvedVariableEntryBase {
+  value: number;
+}
+
+interface ResolvedVariableCache {
+  /** Local entries first (fetch order), then library entries — preserves the
+   * previous scan order so sorted results tie-break identically. */
+  colorEntries: ResolvedColorEntry[];
+  colorByHex: Map<string, ResolvedColorEntry[]>;
+  floatEntries: ResolvedFloatEntry[];
+  floatByValue: Map<number, ResolvedFloatEntry[]>;
+  /** Memoized, sorted match results keyed by `${kind}:${value}:${tolerance}`. */
+  matchMemo: Map<string, TokenSuggestion[]>;
+}
+
+let resolvedVariableCachePromise: Promise<ResolvedVariableCache> | null = null;
+let resolvedVariableCacheBuiltAt = 0;
+/** Local variables the user creates mid-session (outside this module) become
+ * visible after at most this long. Library entries reuse the session-wide
+ * library cache above, matching its original no-TTL lifecycle. */
+const RESOLVED_VARIABLE_CACHE_TTL_MS = 30_000;
+
+function getResolvedVariableCache(): Promise<ResolvedVariableCache> {
+  const now = Date.now();
+  if (resolvedVariableCachePromise && now - resolvedVariableCacheBuiltAt < RESOLVED_VARIABLE_CACHE_TTL_MS) {
+    return resolvedVariableCachePromise;
+  }
+  resolvedVariableCacheBuiltAt = now;
+  const promise = buildResolvedVariableCache().catch(error => {
+    // Don't cache a failed build; next call retries.
+    if (resolvedVariableCachePromise === promise) {
+      resolvedVariableCachePromise = null;
+    }
+    throw error;
+  });
+  resolvedVariableCachePromise = promise;
+  return promise;
+}
+
+async function buildResolvedVariableCache(): Promise<ResolvedVariableCache> {
+  const cache: ResolvedVariableCache = {
+    colorEntries: [],
+    colorByHex: new Map(),
+    floatEntries: [],
+    floatByValue: new Map(),
+    matchMemo: new Map()
+  };
+
+  const [localColorVars, localFloatVars, localCollections] = await Promise.all([
+    figma.variables.getLocalVariablesAsync('COLOR'),
+    figma.variables.getLocalVariablesAsync('FLOAT'),
+    figma.variables.getLocalVariableCollectionsAsync()
+  ]);
+
+  const collectionMap = new Map<string, VariableCollection>();
+  for (const collection of localCollections) {
+    collectionMap.set(collection.id, collection);
+  }
+
+  const resolveColorEntry = async (
+    variable: Variable,
+    collectionName: string,
+    value: VariableValue | undefined,
+    isLibrary: boolean
+  ): Promise<ResolvedColorEntry | null> => {
+    if (!value) return null;
+    const resolved = await resolveVariableValue(value);
+    if (!resolved || typeof resolved === 'number') return null;
+    const aliasDepth = await countAliasDepth(value);
+    return {
+      variableId: variable.id,
+      variableName: variable.name,
+      collectionName,
+      isLibrary,
+      aliasDepth,
+      color: resolved,
+      hex: rgbToHex(resolved.r, resolved.g, resolved.b)
+    };
+  };
+
+  const resolveFloatEntry = async (
+    variable: Variable,
+    collectionName: string,
+    value: VariableValue | undefined,
+    isLibrary: boolean
+  ): Promise<ResolvedFloatEntry | null> => {
+    if (value === undefined) return null;
+    const resolved = await resolveVariableValue(value);
+    if (typeof resolved !== 'number') return null;
+    const aliasDepth = await countAliasDepth(value);
+    return {
+      variableId: variable.id,
+      variableName: variable.name,
+      collectionName,
+      isLibrary,
+      aliasDepth,
+      value: resolved
+    };
+  };
+
+  const defaultModeValue = (variable: Variable, collection: VariableCollection): VariableValue | undefined =>
+    variable.valuesByMode[collection.modes[0].modeId];
+
+  // --- Local variables (resolved in parallel, order preserved) ---
+  const localColorPromises = localColorVars.map(variable => {
+    const collection = collectionMap.get(variable.variableCollectionId);
+    if (!collection) return Promise.resolve(null);
+    return resolveColorEntry(variable, collection.name, defaultModeValue(variable, collection), false);
+  });
+  const localFloatPromises = localFloatVars.map(variable => {
+    const collection = collectionMap.get(variable.variableCollectionId);
+    if (!collection) return Promise.resolve(null);
+    return resolveFloatEntry(variable, collection.name, defaultModeValue(variable, collection), false);
+  });
+
+  // --- Library variables (session-cached fetch; best-effort like before) ---
+  const libraryColorPromises: Promise<ResolvedColorEntry | null>[] = [];
+  const libraryFloatPromises: Promise<ResolvedFloatEntry | null>[] = [];
+  try {
+    // Sequential on purpose: the first call fills the session-level library
+    // cache, the second is then a cache hit (parallel cold calls would each
+    // run the full library import).
+    const { variables: libColorVars, collectionNames: colorCollectionNames } = await getLibraryVariables('COLOR');
+    const { variables: libFloatVars, collectionNames: floatCollectionNames } = await getLibraryVariables('FLOAT');
+
+    const resolveLibraryEntry = <T>(
+      variable: Variable,
+      collectionNames: Map<string, string>,
+      resolver: (variable: Variable, collectionName: string, value: VariableValue | undefined, isLibrary: boolean) => Promise<T | null>
+    ): Promise<T | null> =>
+      figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId).then(varCollection => {
+        if (!varCollection) return null;
+        return resolver(
+          variable,
+          collectionNames.get(variable.variableCollectionId) || varCollection.name,
+          defaultModeValue(variable, varCollection),
+          true
+        );
+      });
+
+    for (const variable of libColorVars) {
+      libraryColorPromises.push(
+        resolveLibraryEntry(variable, colorCollectionNames, resolveColorEntry).catch(() => null)
+      );
+    }
+    for (const variable of libFloatVars) {
+      libraryFloatPromises.push(
+        resolveLibraryEntry(variable, floatCollectionNames, resolveFloatEntry).catch(() => null)
+      );
+    }
+  } catch (libError) {
+    // Library indexing is best-effort; local results still cached
+    console.warn('Library variable indexing failed:', libError);
+  }
+
+  const [localColorEntries, libraryColorEntries, localFloatEntries, libraryFloatEntries] = await Promise.all([
+    Promise.all(localColorPromises),
+    Promise.all(libraryColorPromises),
+    Promise.all(localFloatPromises),
+    Promise.all(libraryFloatPromises)
+  ]);
+
+  for (const entry of [...localColorEntries, ...libraryColorEntries]) {
+    if (!entry) continue;
+    cache.colorEntries.push(entry);
+    const bucket = cache.colorByHex.get(entry.hex);
+    if (bucket) {
+      bucket.push(entry);
+    } else {
+      cache.colorByHex.set(entry.hex, [entry]);
+    }
+  }
+
+  for (const entry of [...localFloatEntries, ...libraryFloatEntries]) {
+    if (!entry) continue;
+    cache.floatEntries.push(entry);
+    const bucket = cache.floatByValue.get(entry.value);
+    if (bucket) {
+      bucket.push(entry);
+    } else {
+      cache.floatByValue.set(entry.value, [entry]);
+    }
+  }
+
+  return cache;
+}
+
+/** Sort matching the previous behavior: most semantic (deepest alias) first,
+ * then by match score. */
+function sortSuggestions(suggestions: TokenSuggestion[]): TokenSuggestion[] {
+  return suggestions.sort((a, b) => {
+    const depthDiff = (b.aliasDepth || 0) - (a.aliasDepth || 0);
+    if (depthDiff !== 0) return depthDiff;
+    return b.matchScore - a.matchScore;
+  });
+}
+
+/** Return defensive copies so callers can't mutate memoized results. */
+function copySuggestions(suggestions: TokenSuggestion[]): TokenSuggestion[] {
+  return suggestions.map(s => ({ ...s }));
+}
+
 /**
  * Find existing variables that match a given hex color.
  * Searches both local and published library variables.
@@ -558,98 +811,48 @@ export async function findMatchingColorVariable(
       return [];
     }
 
+    const cache = await getResolvedVariableCache();
+    const normalizedHex = rgbToHex(targetRgb.r, targetRgb.g, targetRgb.b);
+    const memoKey = `color:${normalizedHex}:${tolerance}`;
+    const memoized = cache.matchMemo.get(memoKey);
+    if (memoized) {
+      return copySuggestions(memoized);
+    }
+
+    // Exact matches (tolerance 0) require identical resolved floats, which
+    // implies identical rounded hex — the index lookup can't miss candidates.
+    // With tolerance, scan the (already resolved) entries; the score check
+    // below re-verifies every candidate either way.
+    const candidates = tolerance === 0
+      ? (cache.colorByHex.get(normalizedHex) || [])
+      : cache.colorEntries;
+
     const suggestions: TokenSuggestion[] = [];
     const seenVariableIds = new Set<string>();
 
-    // --- Search local variables ---
-    const colorVariables = await figma.variables.getLocalVariablesAsync('COLOR');
-    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    for (const entry of candidates) {
+      // Skip library entries whose id already matched (local variables win)
+      if (entry.isLibrary && seenVariableIds.has(entry.variableId)) continue;
 
-    const collectionMap = new Map<string, VariableCollection>();
-    for (const collection of collections) {
-      collectionMap.set(collection.id, collection);
-    }
-
-    for (const variable of colorVariables) {
-      const collection = collectionMap.get(variable.variableCollectionId);
-      if (!collection) continue;
-
-      const modeId = collection.modes[0].modeId;
-      const value = variable.valuesByMode[modeId];
-
-      if (!value) continue;
-
-      // Resolve aliases to get the actual color value
-      const resolved = await resolveVariableValue(value);
-      if (!resolved || typeof resolved === 'number') continue;
-
-      const varColor = resolved;
-      const matchScore = calculateColorMatchScore(targetRgb, varColor);
-
+      const matchScore = calculateColorMatchScore(targetRgb, entry.color);
       if (matchScore >= 1 - tolerance) {
-        const aliasDepth = await countAliasDepth(value);
-        seenVariableIds.add(variable.id);
+        seenVariableIds.add(entry.variableId);
         suggestions.push({
-          variableId: variable.id,
-          variableName: variable.name,
-          collectionName: collection.name,
-          value: rgbToHex(varColor.r, varColor.g, varColor.b),
+          variableId: entry.variableId,
+          variableName: entry.variableName,
+          collectionName: entry.collectionName,
+          value: entry.hex,
           matchScore,
           type: 'color',
-          aliasDepth
+          aliasDepth: entry.aliasDepth
         });
       }
     }
 
-    // --- Search library variables ---
-    try {
-      const { variables: libColorVars, collectionNames } = await getLibraryVariables('COLOR');
-
-      for (const variable of libColorVars) {
-        // Skip if already found as local variable
-        if (seenVariableIds.has(variable.id)) continue;
-
-        // Get the variable's collection to read default mode value
-        const varCollection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
-        if (!varCollection) continue;
-
-        const modeId = varCollection.modes[0].modeId;
-        const value = variable.valuesByMode[modeId];
-
-        if (!value) continue;
-
-        // Resolve aliases to get the actual color value
-        const resolved = await resolveVariableValue(value);
-        if (!resolved || typeof resolved === 'number') continue;
-
-        const varColor = resolved;
-        const matchScore = calculateColorMatchScore(targetRgb, varColor);
-
-        if (matchScore >= 1 - tolerance) {
-          const aliasDepth = await countAliasDepth(value);
-          seenVariableIds.add(variable.id);
-          suggestions.push({
-            variableId: variable.id,
-            variableName: variable.name,
-            collectionName: collectionNames.get(variable.variableCollectionId) || varCollection.name,
-            value: rgbToHex(varColor.r, varColor.g, varColor.b),
-            matchScore,
-            type: 'color',
-            aliasDepth
-          });
-        }
-      }
-    } catch (libError) {
-      // Library search is best-effort; local results still returned
-      console.warn('Library variable search failed for colors:', libError);
-    }
-
     // Sort by alias depth (most semantic first), then by match score
-    return suggestions.sort((a, b) => {
-      const depthDiff = (b.aliasDepth || 0) - (a.aliasDepth || 0);
-      if (depthDiff !== 0) return depthDiff;
-      return b.matchScore - a.matchScore;
-    });
+    sortSuggestions(suggestions);
+    cache.matchMemo.set(memoKey, suggestions);
+    return copySuggestions(suggestions);
   } catch (error) {
     console.error('Error finding matching color variable:', error);
     return [];
@@ -669,93 +872,46 @@ export async function findMatchingSpacingVariable(
   tolerance: number = 0
 ): Promise<TokenSuggestion[]> {
   try {
+    const cache = await getResolvedVariableCache();
+    const memoKey = `float:${pixelValue}:${tolerance}`;
+    const memoized = cache.matchMemo.get(memoKey);
+    if (memoized) {
+      return copySuggestions(memoized);
+    }
+
+    // Exact matches (tolerance 0) come straight from the value index; with
+    // tolerance, scan the (already resolved) entries.
+    const candidates = tolerance === 0
+      ? (cache.floatByValue.get(pixelValue) || [])
+      : cache.floatEntries;
+
     const suggestions: TokenSuggestion[] = [];
     const seenVariableIds = new Set<string>();
 
-    // --- Search local variables ---
-    const numberVariables = await figma.variables.getLocalVariablesAsync('FLOAT');
-    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    for (const entry of candidates) {
+      // Skip library entries whose id already matched (local variables win)
+      if (entry.isLibrary && seenVariableIds.has(entry.variableId)) continue;
 
-    const collectionMap = new Map<string, VariableCollection>();
-    for (const collection of collections) {
-      collectionMap.set(collection.id, collection);
-    }
-
-    for (const variable of numberVariables) {
-      const collection = collectionMap.get(variable.variableCollectionId);
-      if (!collection) continue;
-
-      const modeId = collection.modes[0].modeId;
-      const rawValue = variable.valuesByMode[modeId];
-
-      // Resolve aliases to get the actual number value
-      const resolved = await resolveVariableValue(rawValue);
-      if (typeof resolved !== 'number') continue;
-
-      const value = resolved;
-      const difference = Math.abs(value - pixelValue);
-
+      const difference = Math.abs(entry.value - pixelValue);
       if (difference <= tolerance) {
         const matchScore = difference === 0 ? 1 : 1 - (difference / (tolerance || 1));
-        const aliasDepth = await countAliasDepth(rawValue);
-        seenVariableIds.add(variable.id);
+        seenVariableIds.add(entry.variableId);
         suggestions.push({
-          variableId: variable.id,
-          variableName: variable.name,
-          collectionName: collection.name,
-          value: `${value}px`,
+          variableId: entry.variableId,
+          variableName: entry.variableName,
+          collectionName: entry.collectionName,
+          value: `${entry.value}px`,
           matchScore,
           type: 'number',
-          aliasDepth
+          aliasDepth: entry.aliasDepth
         });
       }
     }
 
-    // --- Search library variables ---
-    try {
-      const { variables: libNumberVars, collectionNames } = await getLibraryVariables('FLOAT');
-
-      for (const variable of libNumberVars) {
-        if (seenVariableIds.has(variable.id)) continue;
-
-        const varCollection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
-        if (!varCollection) continue;
-
-        const modeId = varCollection.modes[0].modeId;
-        const rawValue = variable.valuesByMode[modeId];
-
-        // Resolve aliases to get the actual number value
-        const resolved = await resolveVariableValue(rawValue);
-        if (typeof resolved !== 'number') continue;
-
-        const value = resolved;
-        const difference = Math.abs(value - pixelValue);
-
-        if (difference <= tolerance) {
-          const matchScore = difference === 0 ? 1 : 1 - (difference / (tolerance || 1));
-          const aliasDepth = await countAliasDepth(rawValue);
-          seenVariableIds.add(variable.id);
-          suggestions.push({
-            variableId: variable.id,
-            variableName: variable.name,
-            collectionName: collectionNames.get(variable.variableCollectionId) || varCollection.name,
-            value: `${value}px`,
-            matchScore,
-            type: 'number',
-            aliasDepth
-          });
-        }
-      }
-    } catch (libError) {
-      console.warn('Library variable search failed for spacing:', libError);
-    }
-
     // Sort by alias depth (most semantic first), then by match score
-    return suggestions.sort((a, b) => {
-      const depthDiff = (b.aliasDepth || 0) - (a.aliasDepth || 0);
-      if (depthDiff !== 0) return depthDiff;
-      return b.matchScore - a.matchScore;
-    });
+    sortSuggestions(suggestions);
+    cache.matchMemo.set(memoKey, suggestions);
+    return copySuggestions(suggestions);
   } catch (error) {
     console.error('Error finding matching spacing variable:', error);
     return [];
