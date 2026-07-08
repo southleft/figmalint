@@ -37,6 +37,8 @@ Switch providers and models at any time. API keys are stored per provider and au
 - Distinguishes actual design tokens from hard-coded values with per-node deduplication
 - Provides AI-driven suggestions for mapping hard-coded values to tokens
 - Filters wrapper/boundary elements from scoring to reduce false positives
+- Ignores vector artwork automatically — fills and strokes inside SVG geometry (icons, logos, illustrations) are never flagged as hard-coded values, though token bindings on them still count
+- **Exclude any layer from analysis** by prefixing its name with `.` or `_` (e.g. `_logo`) — the whole subtree is skipped, same convention Figma uses for unpublished components
 
 ### Auto-Fix
 

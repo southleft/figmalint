@@ -89,6 +89,31 @@ function isNodeInVariant(node: SceneNode): boolean {
 }
 
 /**
+ * Pure vector geometry — the innards of SVG icons, logos, and illustrations.
+ * Fills/strokes on these nodes are artwork, not design-token opportunities,
+ * so they're exempt from hard-coded findings. Bound variables and styles on
+ * them are still counted as token usage (e.g. a mono icon fill bound to a
+ * color variable).
+ */
+const VECTOR_GEOMETRY_TYPES = new Set<string>([
+  'VECTOR',
+  'BOOLEAN_OPERATION',
+  'STAR',
+  'POLYGON',
+  'LINE',
+]);
+
+/**
+ * Layers named with a leading "." or "_" are excluded from analysis entirely
+ * (whole subtree) — the same convention Figma uses to exclude components from
+ * publishing. This is the explicit opt-out for assets like multi-color logos
+ * whose containers aren't pure vector geometry.
+ */
+export function isExcludedFromAnalysis(name: string): boolean {
+  return name.startsWith('.') || name.startsWith('_');
+}
+
+/**
  * Extract comprehensive design tokens from a Figma node
  */
 export async function extractDesignTokensFromNode(node: SceneNode): Promise<TokenAnalysis> {
@@ -119,6 +144,11 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     // Compute the default-variant-frame-style check once per node (it reads
     // static node properties, so the result is stable for the whole visit).
     const isDefaultVariantFrame = hasDefaultVariantFrameStyles(currentNode, inVariant);
+
+    // Vector geometry (SVG paths etc.) never yields hard-coded findings —
+    // flagging every path fill inside an icon or logo buries the real
+    // token opportunities. Token bindings on it are still collected above.
+    const skipHardCoded = VECTOR_GEOMETRY_TYPES.has(currentNode.type);
 
     // Check for Figma Styles (Design Tokens)
     const stylePromises: Promise<void>[] = [];
@@ -382,7 +412,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                             currentNode.boundVariables.fills;
     const hasFillStyle = 'fillStyleId' in currentNode && currentNode.fillStyleId;
 
-    if ('fills' in currentNode && Array.isArray(currentNode.fills) && !hasFillStyle && !hasFillVariables) {
+    if (!skipHardCoded && 'fills' in currentNode && Array.isArray(currentNode.fills) && !hasFillStyle && !hasFillVariables) {
       debugLog(`🔍 [HARD-CODED] Checking fills for ${currentNode.name} (no variables, no style)`);
       currentNode.fills.forEach((fill) => {
         if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
@@ -423,7 +453,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                               currentNode.boundVariables.strokes;
     const hasStrokeStyle = 'strokeStyleId' in currentNode && currentNode.strokeStyleId;
 
-    if ('strokes' in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
+    if (!skipHardCoded && 'strokes' in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
       debugLog(`🔍 [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
       
       // Skip if this node has default variant frame styles
@@ -466,7 +496,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     }
 
     // Extract stroke weight only if there are visible strokes and no bound variable
-    if ('strokeWeight' in currentNode && typeof currentNode.strokeWeight === 'number') {
+    if (!skipHardCoded && 'strokeWeight' in currentNode && typeof currentNode.strokeWeight === 'number') {
       debugLog(`🔍 Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
 
       const hasStrokes = 'strokes' in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
@@ -529,7 +559,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
                               (['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius', 'cornerRadius'].some(prop =>
                                 (currentNode.boundVariables as any)[prop]));
 
-    if ('cornerRadius' in currentNode && typeof currentNode.cornerRadius === 'number' && !hasRadiusVariables) {
+    if (!skipHardCoded && 'cornerRadius' in currentNode && typeof currentNode.cornerRadius === 'number' && !hasRadiusVariables) {
       debugLog(`🔍 [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
       
       // Skip if this node has default variant frame styles
@@ -569,7 +599,7 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     }
 
     // Also check for individual corner radius properties if they exist
-    if (!hasRadiusVariables && 'topLeftRadius' in currentNode) {
+    if (!skipHardCoded && !hasRadiusVariables && 'topLeftRadius' in currentNode) {
       debugLog(`🔍 [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
       
       // Skip if this node has default variant frame styles
@@ -673,6 +703,11 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     // make the extraction output nondeterministic.
     if ('children' in currentNode) {
       for (const child of currentNode.children) {
+        // "." / "_" prefixed layers are explicitly excluded from analysis
+        if (isExcludedFromAnalysis(child.name)) {
+          debugLog(`🙈 [EXCLUDED] Skipping "${child.name}" and its subtree (leading . or _)`);
+          continue;
+        }
         await traverseNode(child, inVariant || child.type === 'COMPONENT_SET');
       }
     }

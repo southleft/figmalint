@@ -549,6 +549,13 @@ export function analyzeNamingIssues(
       return;
     }
 
+    // Layers prefixed with "." or "_" are deliberately excluded from
+    // analysis (assets like logos/illustrations) — skip the whole subtree.
+    // The root itself is never skipped: analyzing it was explicit.
+    if (depth > 0 && (currentNode.name.startsWith('.') || currentNode.name.startsWith('_'))) {
+      return;
+    }
+
     const currentPath = path ? `${path} > ${currentNode.name}` : currentNode.name;
     const layerType = detectLayerType(currentNode);
 

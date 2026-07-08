@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.6.1
+
+- **Vector artwork no longer pollutes token analysis** — fills, strokes, stroke weights, and corner radii on SVG geometry (`VECTOR`, `BOOLEAN_OPERATION`, `STAR`, `POLYGON`, `LINE`) are never reported as hard-coded values. Icons and logos previously flooded the audit with unfixable findings and dragged down the token score. Variables/styles bound to vector fills (e.g. tokenized mono icons) still count as token usage
+- **New: exclude layers from analysis** — prefix any layer name with `.` or `_` (e.g. `_logo`, `.brand-illustration`) and FigmaLint skips it and everything inside it, in both token analysis and layer-naming checks. Same convention Figma uses to exclude components from publishing
+
 ## 2.6.0
 
 ### Models

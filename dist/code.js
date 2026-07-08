@@ -195,6 +195,16 @@
     }
     return false;
   }
+  var VECTOR_GEOMETRY_TYPES = /* @__PURE__ */ new Set([
+    "VECTOR",
+    "BOOLEAN_OPERATION",
+    "STAR",
+    "POLYGON",
+    "LINE"
+  ]);
+  function isExcludedFromAnalysis(name) {
+    return name.startsWith(".") || name.startsWith("_");
+  }
   async function extractDesignTokensFromNode(node) {
     clearVariableLookupCache();
     const colors = [];
@@ -210,6 +220,7 @@
     async function traverseNode(currentNode, inVariant) {
       debugLog("\u{1F50D} Analyzing node:", currentNode.name, "Type:", currentNode.type);
       const isDefaultVariantFrame = hasDefaultVariantFrameStyles(currentNode, inVariant);
+      const skipHardCoded = VECTOR_GEOMETRY_TYPES.has(currentNode.type);
       const stylePromises = [];
       if ("fillStyleId" in currentNode && typeof currentNode.fillStyleId === "string") {
         stylePromises.push(
@@ -409,7 +420,7 @@
       }
       const hasFillVariables = "boundVariables" in currentNode && currentNode.boundVariables && currentNode.boundVariables.fills;
       const hasFillStyle = "fillStyleId" in currentNode && currentNode.fillStyleId;
-      if ("fills" in currentNode && Array.isArray(currentNode.fills) && !hasFillStyle && !hasFillVariables) {
+      if (!skipHardCoded && "fills" in currentNode && Array.isArray(currentNode.fills) && !hasFillStyle && !hasFillVariables) {
         debugLog(`\u{1F50D} [HARD-CODED] Checking fills for ${currentNode.name} (no variables, no style)`);
         currentNode.fills.forEach((fill) => {
           if (fill.type === "SOLID" && fill.visible !== false && fill.color) {
@@ -444,7 +455,7 @@
       }
       const hasStrokeVariables = "boundVariables" in currentNode && currentNode.boundVariables && currentNode.boundVariables.strokes;
       const hasStrokeStyle = "strokeStyleId" in currentNode && currentNode.strokeStyleId;
-      if ("strokes" in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
+      if (!skipHardCoded && "strokes" in currentNode && Array.isArray(currentNode.strokes) && !hasStrokeStyle && !hasStrokeVariables) {
         debugLog(`\u{1F50D} [HARD-CODED] Checking strokes for ${currentNode.name} (no variables, no style)`);
         if (isDefaultVariantFrame) {
           debugLog(`   \u{1F6AB} Skipping default variant frame stroke colors`);
@@ -482,7 +493,7 @@
       } else if (hasStrokeStyle) {
         debugLog(`\u{1F50D} [STYLES] ${currentNode.name} has stroke style - skipping hard-coded detection`);
       }
-      if ("strokeWeight" in currentNode && typeof currentNode.strokeWeight === "number") {
+      if (!skipHardCoded && "strokeWeight" in currentNode && typeof currentNode.strokeWeight === "number") {
         debugLog(`\u{1F50D} Node ${currentNode.name} has strokeWeight: ${currentNode.strokeWeight}`);
         const hasStrokes = "strokes" in currentNode && Array.isArray(currentNode.strokes) && currentNode.strokes.length > 0;
         const hasVisibleStrokes = hasStrokes && currentNode.strokes.some((stroke) => stroke.visible !== false);
@@ -529,7 +540,7 @@
         }
       }
       const hasRadiusVariables = "boundVariables" in currentNode && currentNode.boundVariables && ["topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", "cornerRadius"].some((prop) => currentNode.boundVariables[prop]);
-      if ("cornerRadius" in currentNode && typeof currentNode.cornerRadius === "number" && !hasRadiusVariables) {
+      if (!skipHardCoded && "cornerRadius" in currentNode && typeof currentNode.cornerRadius === "number" && !hasRadiusVariables) {
         debugLog(`\u{1F50D} [HARD-CODED] Checking corner radius for ${currentNode.name} (no variables)`);
         if (isDefaultVariantFrame) {
           debugLog(`   \u{1F6AB} Skipping default variant frame corner radius`);
@@ -564,7 +575,7 @@
       } else if (hasRadiusVariables) {
         debugLog(`\u{1F50D} [VARIABLES] ${currentNode.name} has radius variables - skipping hard-coded detection`);
       }
-      if (!hasRadiusVariables && "topLeftRadius" in currentNode) {
+      if (!skipHardCoded && !hasRadiusVariables && "topLeftRadius" in currentNode) {
         debugLog(`\u{1F50D} [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
         if (isDefaultVariantFrame) {
           debugLog(`   \u{1F6AB} Skipping default variant frame individual corner radii`);
@@ -647,6 +658,10 @@
       }
       if ("children" in currentNode) {
         for (const child of currentNode.children) {
+          if (isExcludedFromAnalysis(child.name)) {
+            debugLog(`\u{1F648} [EXCLUDED] Skipping "${child.name}" and its subtree (leading . or _)`);
+            continue;
+          }
           await traverseNode(child, inVariant || child.type === "COMPONENT_SET");
         }
       }
@@ -3069,6 +3084,9 @@ ${scoringCriteria}
     const issues = [];
     function traverse(currentNode, depth, path) {
       if (depth > maxDepth) {
+        return;
+      }
+      if (depth > 0 && (currentNode.name.startsWith(".") || currentNode.name.startsWith("_"))) {
         return;
       }
       const currentPath = path ? `${path} > ${currentNode.name}` : currentNode.name;
