@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.7.0
+
+### Added
+- **Custom OpenAI endpoint (Azure OpenAI / Azure AI Foundry)** — the OpenAI provider can now be pointed at your own Azure deployment instead of `api.openai.com`. A collapsible **Custom endpoint** section under the OpenAI provider settings takes an **Endpoint URL** and a **Deployment / model name**:
+  - Works with **Azure OpenAI** (`https://YOUR-RESOURCE.openai.azure.com/openai/v1/chat/completions`) and **Azure AI Foundry** endpoints. The recommended path is Azure's OpenAI-compatible **v1 API**.
+  - Auth is detected automatically: Azure domains (`*.azure.com`) use the `api-key` header; other OpenAI-compatible gateways keep the standard `Authorization: Bearer` header.
+  - Azure/gateway keys don't follow the `sk-` convention, so key-format validation is relaxed when a custom endpoint is set (a non-empty key is required).
+  - Leave the endpoint blank to use the default OpenAI API. The setting is stored locally per user and restored on reopen.
+  - Model traffic goes directly to your Azure tenant — nothing routes through OpenAI's public API. This is the recommended configuration for teams whose security process only approves Azure-hosted models.
+- Manifest network allowlist now includes Azure's model domains (`*.openai.azure.com`, `*.services.ai.azure.com`, `*.cognitiveservices.azure.com`, `*.inference.ai.azure.com`) with a documented `reasoning` string for security review.
+- **`SECURITY.md`** — a security & privacy brief covering data flows, key storage, what leaves the machine, and the Azure option, for teams doing due diligence before approving the plugin.
+
 ## 2.6.1
 
 - **Vector artwork no longer pollutes token analysis** — fills, strokes, stroke weights, and corner radii on SVG geometry (`VECTOR`, `BOOLEAN_OPERATION`, `STAR`, `POLYGON`, `LINE`) are never reported as hard-coded values. Icons and logos previously flooded the audit with unfixable findings and dragged down the token score. Variables/styles bound to vector fills (e.g. tokenized mono icons) still count as token usage

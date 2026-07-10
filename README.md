@@ -18,6 +18,8 @@ Choose your preferred AI provider and model:
 
 Switch providers and models at any time. API keys are stored per provider and auto-detected from key format.
 
+**Azure OpenAI / Azure AI Foundry** — The OpenAI provider can be routed through your own Azure deployment instead of `api.openai.com`. Expand **Custom endpoint** under the OpenAI settings and enter your Azure **Endpoint URL** (e.g. `https://YOUR-RESOURCE.openai.azure.com/openai/v1/chat/completions`) and **Deployment name**. Azure keys are sent via the `api-key` header automatically; model traffic stays inside your Azure tenant. This is the recommended setup for teams whose security process only approves Azure-hosted models — see [SECURITY.md](SECURITY.md).
+
 ### Component Analysis
 
 - Detects missing interactive states (hover, focus, disabled, pressed, active)

@@ -160,25 +160,56 @@ export async function callProvider(
 ): Promise<LLMResponse> {
   const provider = getProvider(providerId);
 
-  // Validate API key
-  const validation = provider.validateApiKey(apiKey);
-  if (!validation.isValid) {
-    throw new LLMError(
-      validation.error || 'Invalid API key format',
-      LLMErrorCode.INVALID_API_KEY,
-      401
-    );
+  // OpenAI can be pointed at a custom Azure OpenAI / Azure AI Foundry endpoint.
+  // Resolve that first — it changes endpoint, auth header, the request `model`
+  // (Azure deployments have arbitrary names), and relaxes key-format validation
+  // (Azure/gateway keys are not `sk-...`).
+  let customOpenAIEndpoint = '';
+  let effectiveConfig = config;
+  if (providerId === 'openai') {
+    const custom = await loadOpenAIEndpointConfig();
+    if (custom.endpoint) {
+      customOpenAIEndpoint = custom.endpoint;
+      if (custom.deployment) {
+        effectiveConfig = { ...config, model: custom.deployment };
+      }
+    }
+  }
+
+  // Validate API key. Skip the provider's format check for custom OpenAI
+  // endpoints, whose keys (Azure, gateways) don't follow the `sk-` convention —
+  // just require a non-empty key.
+  if (customOpenAIEndpoint) {
+    if (!apiKey || !apiKey.trim()) {
+      throw new LLMError('API key is required', LLMErrorCode.INVALID_API_KEY, 401);
+    }
+  } else {
+    const validation = provider.validateApiKey(apiKey);
+    if (!validation.isValid) {
+      throw new LLMError(
+        validation.error || 'Invalid API key format',
+        LLMErrorCode.INVALID_API_KEY,
+        401
+      );
+    }
   }
 
   // Build request
-  const requestBody = provider.formatRequest(config);
-  const headers = provider.getHeaders(apiKey);
+  const requestBody = provider.formatRequest(effectiveConfig);
+  let headers = provider.getHeaders(apiKey);
 
   // Determine endpoint (Google has special URL handling)
   let endpoint = provider.endpoint;
   if (providerId === 'google') {
     // Google requires model and key in URL
     endpoint = `${provider.endpoint}/${config.model}:generateContent?key=${apiKey.trim()}`;
+  } else if (customOpenAIEndpoint) {
+    endpoint = customOpenAIEndpoint;
+    // Azure authenticates with an `api-key` header instead of Bearer. Other
+    // OpenAI-compatible gateways keep the standard Bearer header.
+    if (isAzureEndpoint(customOpenAIEndpoint)) {
+      headers = { 'Content-Type': 'application/json', 'api-key': apiKey.trim() };
+    }
   }
 
   try {
@@ -259,10 +290,74 @@ export const STORAGE_KEYS = {
   /** API key storage (per provider) */
   apiKey: (providerId: ProviderId) => `${providerId}-api-key`,
 
+  /**
+   * Custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry).
+   * When set, the OpenAI provider routes requests here instead of api.openai.com.
+   */
+  OPENAI_CUSTOM_ENDPOINT: 'openai-custom-endpoint',
+
+  /**
+   * Deployment / model name to send in the request body when a custom OpenAI
+   * endpoint is configured (Azure deployments have arbitrary names). Empty =
+   * fall back to the selected model from the dropdown.
+   */
+  OPENAI_CUSTOM_DEPLOYMENT: 'openai-custom-deployment',
+
   /** Legacy Claude key (for migration) */
   LEGACY_CLAUDE_KEY: 'claude-api-key',
   LEGACY_CLAUDE_MODEL: 'claude-model',
 };
+
+// =============================================================================
+// Custom OpenAI-compatible endpoint (Azure) support
+// =============================================================================
+
+/**
+ * Configuration for a custom OpenAI-compatible endpoint.
+ */
+export interface OpenAIEndpointConfig {
+  /** Full endpoint URL (empty string when using the default api.openai.com). */
+  endpoint: string;
+  /** Deployment / model name to send in the request body (empty = use selected model). */
+  deployment: string;
+}
+
+/**
+ * A request host is treated as Azure when it lives under an azure.com subdomain.
+ * Azure authenticates with an `api-key` header rather than `Authorization: Bearer`.
+ */
+export function isAzureEndpoint(endpoint: string): boolean {
+  return /\.azure\.com(?:[:/]|$)/i.test(endpoint.trim());
+}
+
+/**
+ * Load the custom OpenAI endpoint configuration from clientStorage.
+ * Returns empty strings when no custom endpoint is configured.
+ */
+export async function loadOpenAIEndpointConfig(): Promise<OpenAIEndpointConfig> {
+  try {
+    const endpoint = (await figma.clientStorage.getAsync(STORAGE_KEYS.OPENAI_CUSTOM_ENDPOINT)) as string | undefined;
+    const deployment = (await figma.clientStorage.getAsync(STORAGE_KEYS.OPENAI_CUSTOM_DEPLOYMENT)) as string | undefined;
+    return { endpoint: (endpoint || '').trim(), deployment: (deployment || '').trim() };
+  } catch {
+    return { endpoint: '', deployment: '' };
+  }
+}
+
+/**
+ * Persist (or clear) the custom OpenAI endpoint configuration.
+ * Passing an empty endpoint clears both keys so the provider reverts to api.openai.com.
+ */
+export async function saveOpenAIEndpointConfig(endpoint: string, deployment: string): Promise<void> {
+  const trimmedEndpoint = (endpoint || '').trim();
+  if (!trimmedEndpoint) {
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.OPENAI_CUSTOM_ENDPOINT);
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.OPENAI_CUSTOM_DEPLOYMENT);
+    return;
+  }
+  await figma.clientStorage.setAsync(STORAGE_KEYS.OPENAI_CUSTOM_ENDPOINT, trimmedEndpoint);
+  await figma.clientStorage.setAsync(STORAGE_KEYS.OPENAI_CUSTOM_DEPLOYMENT, (deployment || '').trim());
+}
 
 /**
  * Default provider and model configuration
@@ -343,6 +438,7 @@ export async function loadProviderConfig(): Promise<{
   providerId: ProviderId;
   modelId: string;
   apiKey: string | null;
+  openaiEndpoint: OpenAIEndpointConfig;
 }> {
   // Run migration first if needed
   await migrateLegacyStorage();
@@ -350,6 +446,7 @@ export async function loadProviderConfig(): Promise<{
   const providerId = (await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_PROVIDER) as ProviderId) || DEFAULTS.provider;
   const savedModelId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_MODEL) as string | undefined;
   const apiKey = await figma.clientStorage.getAsync(STORAGE_KEYS.apiKey(providerId)) as string | null;
+  const openaiEndpoint = await loadOpenAIEndpointConfig();
 
   // A saved model may have been removed from the lineup in a plugin update
   // (providers retire model IDs); fall back to the provider default so stored
@@ -362,7 +459,7 @@ export async function loadProviderConfig(): Promise<{
     await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_MODEL, modelId);
   }
 
-  return { providerId, modelId, apiKey };
+  return { providerId, modelId, apiKey, openaiEndpoint };
 }
 
 /**

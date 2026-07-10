@@ -12,7 +12,12 @@
       "https://api.anthropic.com",
       "https://api.openai.com",
       "https://generativelanguage.googleapis.com",
-      "https://design-systems-mcp.southleft-llc.workers.dev"
-    ]
+      "https://design-systems-mcp.southleft-llc.workers.dev",
+      "https://*.openai.azure.com",
+      "https://*.services.ai.azure.com",
+      "https://*.cognitiveservices.azure.com",
+      "https://*.inference.ai.azure.com"
+    ],
+    "reasoning": "Requests go only to the user's chosen AI provider (Anthropic, OpenAI, or Google) using their own API key, plus the FigmaLint design-systems knowledge service. The Azure domains let teams route the OpenAI provider through their own Azure OpenAI / Azure AI Foundry deployment instead of api.openai.com, keeping model traffic inside their approved Azure tenant."
   }
 }

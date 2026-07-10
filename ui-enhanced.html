@@ -2396,6 +2396,34 @@
               <p class="card-subtitle">Choose the model that works best for your component analysis</p>
             </div>
 
+            <!-- Custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry) -->
+            <div class="form-group" id="openai-endpoint-group" style="display: none;">
+              <details id="openai-endpoint-details">
+                <summary style="cursor: pointer; font-size: 12px; font-weight: 600; user-select: none;">Custom endpoint (Azure / OpenAI-compatible)</summary>
+                <div style="margin-top: 10px;">
+                  <label for="openai-endpoint-input">Endpoint URL</label>
+                  <input
+                    type="text"
+                    id="openai-endpoint-input"
+                    placeholder="https://YOUR-RESOURCE.openai.azure.com/openai/v1/chat/completions"
+                    autocomplete="off"
+                    spellcheck="false"
+                  >
+                  <p class="card-subtitle">Route the OpenAI provider through your own Azure OpenAI / Azure AI Foundry deployment instead of api.openai.com. Leave blank to use the default OpenAI endpoint. Azure keys are sent via the <code>api-key</code> header automatically.</p>
+
+                  <label for="openai-deployment-input" style="display: block; margin-top: 10px;">Deployment / model name</label>
+                  <input
+                    type="text"
+                    id="openai-deployment-input"
+                    placeholder="your-azure-deployment-name"
+                    autocomplete="off"
+                    spellcheck="false"
+                  >
+                  <p class="card-subtitle">The Azure deployment name sent with each request. Falls back to the selected model above if left blank.</p>
+                </div>
+              </details>
+            </div>
+
             <div class="button-group mt-md">
               <button id="save-key" class="button button-secondary">
                 <span>Save Key</span>
@@ -4063,8 +4091,11 @@
         updateAnalyzeButtonState(true);
       }
 
-      // Inline format validation
-      const formatError = validateApiKeyFormat(value, currentProvider);
+      // Inline format validation. A custom OpenAI endpoint (Azure) accepts keys
+      // that don't follow the `sk-` convention, so skip the format hint for it.
+      const endpointInput = document.getElementById('openai-endpoint-input');
+      const usingCustomEndpoint = currentProvider === 'openai' && endpointInput && endpointInput.value.trim().length > 0;
+      const formatError = usingCustomEndpoint ? null : validateApiKeyFormat(value, currentProvider);
       const config = providerConfig[currentProvider] || {};
       if (formatError) {
         apiKeyHint.textContent = formatError;
@@ -4130,6 +4161,12 @@
       // Select default model for this provider
       modelSelect.value = config.defaultModel;
 
+      // Custom endpoint (Azure) is OpenAI-only — show it just for that provider.
+      const endpointGroup = document.getElementById('openai-endpoint-group');
+      if (endpointGroup) {
+        endpointGroup.style.display = selectedProvider === 'openai' ? 'block' : 'none';
+      }
+
       // Reset saved-state: a key saved for the previous provider is not valid
       // for this one. The user must click "Save Key" again before analyze can run.
       // This also prevents handleModelChange from firing update-model with a
@@ -4161,12 +4198,24 @@
       // Store key for this provider
       providerApiKeys[selectedProvider] = apiKey;
 
+      // Custom endpoint (Azure / OpenAI-compatible) — OpenAI only.
+      let customEndpoint = '';
+      let customDeployment = '';
+      if (selectedProvider === 'openai') {
+        const endpointInput = document.getElementById('openai-endpoint-input');
+        const deploymentInput = document.getElementById('openai-deployment-input');
+        customEndpoint = endpointInput ? endpointInput.value.trim() : '';
+        customDeployment = deploymentInput ? deploymentInput.value.trim() : '';
+      }
+
       saveKeyButton.disabled = true;
       updateStatus(`Saving ${providerConfig[selectedProvider]?.name || 'API'} key...`, 'info');
       sendMessageToPlugin('save-api-key', {
         apiKey,
         model: selectedModel,
-        provider: selectedProvider
+        provider: selectedProvider,
+        customEndpoint,
+        customDeployment
       });
     }
 
@@ -4312,7 +4361,7 @@
           handleApiKeySaved(data.success, data.provider, data.error);
           break;
         case 'api-key-status':
-          handleApiKeyStatus(data.hasKey, data.provider, data.model);
+          handleApiKeyStatus(data.hasKey, data.provider, data.model, data.openaiEndpoint);
           break;
         case 'enhanced-analysis-result':
           handleEnhancedAnalysisResult(data);
@@ -4429,7 +4478,7 @@
     }
 
     // Handle API Key Status
-    function handleApiKeyStatus(hasKey, provider, model) {
+    function handleApiKeyStatus(hasKey, provider, model, openaiEndpoint) {
       // Restore saved provider and model selections first. handleProviderChange()
       // unconditionally resets `apiKeySaved = false` (it's also the user-driven
       // dropdown handler), so we must assign apiKeySaved AFTER it runs — mirroring
@@ -4441,6 +4490,17 @@
       }
       if (model && modelSelect) {
         modelSelect.value = model;
+      }
+
+      // Restore a saved custom OpenAI endpoint (Azure) into the fields and expand
+      // the disclosure so the user can see it's active.
+      if (provider === 'openai' && openaiEndpoint) {
+        const endpointInput = document.getElementById('openai-endpoint-input');
+        const deploymentInput = document.getElementById('openai-deployment-input');
+        const endpointDetails = document.getElementById('openai-endpoint-details');
+        if (endpointInput) endpointInput.value = openaiEndpoint.endpoint || '';
+        if (deploymentInput) deploymentInput.value = openaiEndpoint.deployment || '';
+        if (endpointDetails && openaiEndpoint.endpoint) endpointDetails.open = true;
       }
 
       apiKeySaved = hasKey;

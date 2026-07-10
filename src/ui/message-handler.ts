@@ -14,6 +14,7 @@ import {
   detectProviderFromKey,
   loadProviderConfig,
   saveProviderConfig,
+  saveOpenAIEndpointConfig,
   clearProviderKey,
   migrateLegacyStorage,
 } from '../api/providers';
@@ -87,7 +88,7 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         await handleCheckApiKey();
         break;
       case 'save-api-key':
-        await handleSaveApiKey(data.apiKey, data.model, data.provider);
+        await handleSaveApiKey(data.apiKey, data.model, data.provider, data.customEndpoint, data.customDeployment);
         break;
       case 'update-model':
         await handleUpdateModel(data.model);
@@ -174,29 +175,40 @@ async function handleCheckApiKey(): Promise<void> {
     selectedProvider = config.providerId;
     selectedModel = config.modelId;
 
+    // A custom OpenAI endpoint (Azure) changes how the saved key is validated:
+    // Azure/gateway keys don't follow the `sk-` convention.
+    const openaiEndpoint = config.openaiEndpoint;
+    const hasCustomEndpoint = config.providerId === 'openai' && !!openaiEndpoint.endpoint;
+    const savedKeyUsable = !!config.apiKey && (
+      hasCustomEndpoint ? config.apiKey.trim().length > 0 : isValidApiKeyFormat(config.apiKey, config.providerId)
+    );
+
     // Check in-memory first
     if (storedApiKey) {
       sendMessageToUI('api-key-status', {
         hasKey: true,
         provider: selectedProvider,
-        model: selectedModel
+        model: selectedModel,
+        openaiEndpoint
       });
       return;
     }
 
     // Check persistent storage for current provider
-    if (config.apiKey && isValidApiKeyFormat(config.apiKey, config.providerId)) {
+    if (savedKeyUsable) {
       storedApiKey = config.apiKey;
       sendMessageToUI('api-key-status', {
         hasKey: true,
         provider: selectedProvider,
-        model: selectedModel
+        model: selectedModel,
+        openaiEndpoint
       });
     } else {
       sendMessageToUI('api-key-status', {
         hasKey: false,
         provider: selectedProvider,
-        model: selectedModel
+        model: selectedModel,
+        openaiEndpoint
       });
     }
   } catch (error) {
@@ -208,13 +220,28 @@ async function handleCheckApiKey(): Promise<void> {
 /**
  * Save API key, model, and provider
  */
-async function handleSaveApiKey(apiKey: string, model?: string, provider?: string): Promise<void> {
+async function handleSaveApiKey(
+  apiKey: string,
+  model?: string,
+  provider?: string,
+  customEndpoint?: string,
+  customDeployment?: string
+): Promise<void> {
   try {
     // Update provider if specified
     const providerId = (provider as ProviderId) || selectedProvider;
 
+    // A custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry) uses
+    // keys that don't follow the `sk-` convention, so the format check is skipped
+    // for that case — we only require a non-empty key.
+    const hasCustomEndpoint = providerId === 'openai' && !!(customEndpoint && customEndpoint.trim());
+
     // Validate API key format for the provider
-    if (!isValidApiKeyFormat(apiKey, providerId)) {
+    if (hasCustomEndpoint) {
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error('Please enter your Azure / OpenAI-compatible API key.');
+      }
+    } else if (!isValidApiKeyFormat(apiKey, providerId)) {
       const providerObj = getProvider(providerId);
 
       // If the prefix matches a different known provider, name both so the user
@@ -231,6 +258,12 @@ async function handleSaveApiKey(apiKey: string, model?: string, provider?: strin
       throw new Error(
         `Invalid ${providerObj.name} API key format. Expected: ${providerObj.keyPlaceholder}`
       );
+    }
+
+    // Persist (or clear) the custom OpenAI endpoint. Only OpenAI supports it; for
+    // other providers this is a no-op that also clears any stale config.
+    if (providerId === 'openai') {
+      await saveOpenAIEndpointConfig(customEndpoint || '', customDeployment || '');
     }
 
     // Update state

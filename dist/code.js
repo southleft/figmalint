@@ -2043,19 +2043,41 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   async function callProvider(providerId, apiKey, config) {
     var _a, _b;
     const provider = getProvider(providerId);
-    const validation = provider.validateApiKey(apiKey);
-    if (!validation.isValid) {
-      throw new LLMError(
-        validation.error || "Invalid API key format",
-        "INVALID_API_KEY" /* INVALID_API_KEY */,
-        401
-      );
+    let customOpenAIEndpoint = "";
+    let effectiveConfig = config;
+    if (providerId === "openai") {
+      const custom = await loadOpenAIEndpointConfig();
+      if (custom.endpoint) {
+        customOpenAIEndpoint = custom.endpoint;
+        if (custom.deployment) {
+          effectiveConfig = __spreadProps(__spreadValues({}, config), { model: custom.deployment });
+        }
+      }
     }
-    const requestBody = provider.formatRequest(config);
-    const headers = provider.getHeaders(apiKey);
+    if (customOpenAIEndpoint) {
+      if (!apiKey || !apiKey.trim()) {
+        throw new LLMError("API key is required", "INVALID_API_KEY" /* INVALID_API_KEY */, 401);
+      }
+    } else {
+      const validation = provider.validateApiKey(apiKey);
+      if (!validation.isValid) {
+        throw new LLMError(
+          validation.error || "Invalid API key format",
+          "INVALID_API_KEY" /* INVALID_API_KEY */,
+          401
+        );
+      }
+    }
+    const requestBody = provider.formatRequest(effectiveConfig);
+    let headers = provider.getHeaders(apiKey);
     let endpoint = provider.endpoint;
     if (providerId === "google") {
       endpoint = `${provider.endpoint}/${config.model}:generateContent?key=${apiKey.trim()}`;
+    } else if (customOpenAIEndpoint) {
+      endpoint = customOpenAIEndpoint;
+      if (isAzureEndpoint(customOpenAIEndpoint)) {
+        headers = { "Content-Type": "application/json", "api-key": apiKey.trim() };
+      }
     }
     try {
       console.log(`Making ${provider.name} API call to ${endpoint}...`);
@@ -2114,10 +2136,43 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     SELECTED_MODEL: "selected-model",
     /** API key storage (per provider) */
     apiKey: (providerId) => `${providerId}-api-key`,
+    /**
+     * Custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry).
+     * When set, the OpenAI provider routes requests here instead of api.openai.com.
+     */
+    OPENAI_CUSTOM_ENDPOINT: "openai-custom-endpoint",
+    /**
+     * Deployment / model name to send in the request body when a custom OpenAI
+     * endpoint is configured (Azure deployments have arbitrary names). Empty =
+     * fall back to the selected model from the dropdown.
+     */
+    OPENAI_CUSTOM_DEPLOYMENT: "openai-custom-deployment",
     /** Legacy Claude key (for migration) */
     LEGACY_CLAUDE_KEY: "claude-api-key",
     LEGACY_CLAUDE_MODEL: "claude-model"
   };
+  function isAzureEndpoint(endpoint) {
+    return /\.azure\.com(?:[:/]|$)/i.test(endpoint.trim());
+  }
+  async function loadOpenAIEndpointConfig() {
+    try {
+      const endpoint = await figma.clientStorage.getAsync(STORAGE_KEYS.OPENAI_CUSTOM_ENDPOINT);
+      const deployment = await figma.clientStorage.getAsync(STORAGE_KEYS.OPENAI_CUSTOM_DEPLOYMENT);
+      return { endpoint: (endpoint || "").trim(), deployment: (deployment || "").trim() };
+    } catch (e) {
+      return { endpoint: "", deployment: "" };
+    }
+  }
+  async function saveOpenAIEndpointConfig(endpoint, deployment) {
+    const trimmedEndpoint = (endpoint || "").trim();
+    if (!trimmedEndpoint) {
+      await figma.clientStorage.deleteAsync(STORAGE_KEYS.OPENAI_CUSTOM_ENDPOINT);
+      await figma.clientStorage.deleteAsync(STORAGE_KEYS.OPENAI_CUSTOM_DEPLOYMENT);
+      return;
+    }
+    await figma.clientStorage.setAsync(STORAGE_KEYS.OPENAI_CUSTOM_ENDPOINT, trimmedEndpoint);
+    await figma.clientStorage.setAsync(STORAGE_KEYS.OPENAI_CUSTOM_DEPLOYMENT, (deployment || "").trim());
+  }
   var DEFAULTS = {
     provider: "anthropic",
     model: DEFAULT_MODELS.anthropic
@@ -2160,12 +2215,13 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     const providerId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_PROVIDER) || DEFAULTS.provider;
     const savedModelId = await figma.clientStorage.getAsync(STORAGE_KEYS.SELECTED_MODEL);
     const apiKey = await figma.clientStorage.getAsync(STORAGE_KEYS.apiKey(providerId));
+    const openaiEndpoint = await loadOpenAIEndpointConfig();
     const isKnownModel = savedModelId ? providers[providerId].models.some((m) => m.id === savedModelId) : false;
     const modelId = isKnownModel && savedModelId ? savedModelId : DEFAULT_MODELS[providerId];
     if (savedModelId && !isKnownModel) {
       await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_MODEL, modelId);
     }
-    return { providerId, modelId, apiKey };
+    return { providerId, modelId, apiKey, openaiEndpoint };
   }
   async function saveProviderConfig(providerId, modelId, apiKey) {
     await figma.clientStorage.setAsync(STORAGE_KEYS.SELECTED_PROVIDER, providerId);
@@ -6228,7 +6284,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           await handleCheckApiKey();
           break;
         case "save-api-key":
-          await handleSaveApiKey(data.apiKey, data.model, data.provider);
+          await handleSaveApiKey(data.apiKey, data.model, data.provider, data.customEndpoint, data.customDeployment);
           break;
         case "update-model":
           await handleUpdateModel(data.model);
@@ -6307,26 +6363,32 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       const config = await loadProviderConfig();
       selectedProvider = config.providerId;
       selectedModel = config.modelId;
+      const openaiEndpoint = config.openaiEndpoint;
+      const hasCustomEndpoint = config.providerId === "openai" && !!openaiEndpoint.endpoint;
+      const savedKeyUsable = !!config.apiKey && (hasCustomEndpoint ? config.apiKey.trim().length > 0 : isValidApiKeyFormat(config.apiKey, config.providerId));
       if (storedApiKey) {
         sendMessageToUI("api-key-status", {
           hasKey: true,
           provider: selectedProvider,
-          model: selectedModel
+          model: selectedModel,
+          openaiEndpoint
         });
         return;
       }
-      if (config.apiKey && isValidApiKeyFormat(config.apiKey, config.providerId)) {
+      if (savedKeyUsable) {
         storedApiKey = config.apiKey;
         sendMessageToUI("api-key-status", {
           hasKey: true,
           provider: selectedProvider,
-          model: selectedModel
+          model: selectedModel,
+          openaiEndpoint
         });
       } else {
         sendMessageToUI("api-key-status", {
           hasKey: false,
           provider: selectedProvider,
-          model: selectedModel
+          model: selectedModel,
+          openaiEndpoint
         });
       }
     } catch (error) {
@@ -6334,10 +6396,15 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       sendMessageToUI("api-key-status", { hasKey: false, provider: "anthropic" });
     }
   }
-  async function handleSaveApiKey(apiKey, model, provider) {
+  async function handleSaveApiKey(apiKey, model, provider, customEndpoint, customDeployment) {
     try {
       const providerId = provider || selectedProvider;
-      if (!isValidApiKeyFormat(apiKey, providerId)) {
+      const hasCustomEndpoint = providerId === "openai" && !!(customEndpoint && customEndpoint.trim());
+      if (hasCustomEndpoint) {
+        if (!apiKey || !apiKey.trim()) {
+          throw new Error("Please enter your Azure / OpenAI-compatible API key.");
+        }
+      } else if (!isValidApiKeyFormat(apiKey, providerId)) {
         const providerObj2 = getProvider(providerId);
         const detected = detectProviderFromKey(apiKey);
         if (detected && detected !== providerId) {
@@ -6349,6 +6416,9 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         throw new Error(
           `Invalid ${providerObj2.name} API key format. Expected: ${providerObj2.keyPlaceholder}`
         );
+      }
+      if (providerId === "openai") {
+        await saveOpenAIEndpointConfig(customEndpoint || "", customDeployment || "");
       }
       selectedProvider = providerId;
       storedApiKey = apiKey;
