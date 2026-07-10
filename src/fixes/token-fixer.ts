@@ -58,6 +58,65 @@ export interface TokenSuggestion {
   type: 'color' | 'number';
   /** How many alias levels deep this variable is (higher = more semantic) */
   aliasDepth?: number;
+  /** The variable's Figma UI scopes (used to keep out-of-scope tokens — e.g. an
+   * opacity-only variable — from being suggested for padding/radius/etc.) */
+  scopes?: VariableScope[];
+}
+
+// ============================================================================
+// Scope awareness
+//
+// Figma variables carry `scopes` that control which fields show them in the
+// variable picker. FigmaLint mirrors that filtering so it never suggests a
+// value-matched but semantically-wrong token — e.g. `opacity/10` (scoped to
+// OPACITY) for a 10px padding. See findBestMatchingVariable / the color field
+// filter in findMatchingColorVariable.
+// ============================================================================
+
+/** Number-field scopes appropriate for each fixable spacing/size property.
+ * Padding accepts both GAP and WIDTH_HEIGHT because Figma groups auto-layout
+ * padding with gap while some teams scope size tokens to WIDTH_HEIGHT — this
+ * stays permissive enough to never hide a legitimate spacing token, while still
+ * excluding OPACITY/CORNER_RADIUS/STROKE-only tokens. */
+const PROPERTY_FLOAT_SCOPES: Record<string, VariableScope[]> = {
+  paddingTop: ['GAP', 'WIDTH_HEIGHT'],
+  paddingRight: ['GAP', 'WIDTH_HEIGHT'],
+  paddingBottom: ['GAP', 'WIDTH_HEIGHT'],
+  paddingLeft: ['GAP', 'WIDTH_HEIGHT'],
+  itemSpacing: ['GAP'],
+  counterAxisSpacing: ['GAP'],
+  cornerRadius: ['CORNER_RADIUS'],
+  topLeftRadius: ['CORNER_RADIUS'],
+  topRightRadius: ['CORNER_RADIUS'],
+  bottomLeftRadius: ['CORNER_RADIUS'],
+  bottomRightRadius: ['CORNER_RADIUS'],
+  strokeWeight: ['STROKE_FLOAT'],
+};
+
+/** Color-field scopes appropriate for fills vs strokes. */
+const PROPERTY_COLOR_SCOPES: Record<'fill' | 'stroke', VariableScope[]> = {
+  fill: ['ALL_FILLS', 'FRAME_FILL', 'SHAPE_FILL', 'TEXT_FILL'],
+  stroke: ['STROKE_COLOR'],
+};
+
+/**
+ * True when a variable may be offered for a field with the given relevant
+ * scopes. A variable with no scope restriction (empty or `ALL_SCOPES`) is always
+ * compatible; otherwise its scopes must intersect the field's relevant scopes.
+ * Mirrors Figma's own variable-picker behavior.
+ */
+function isScopeCompatible(scopes: VariableScope[] | undefined, relevant: VariableScope[]): boolean {
+  if (!scopes || scopes.length === 0) return true;
+  if (scopes.includes('ALL_SCOPES')) return true;
+  return scopes.some(scope => relevant.includes(scope));
+}
+
+/** Map a property path (e.g. `fills[0]`, `strokes`) to a color field. */
+export function colorFieldFromPropertyPath(propertyPath?: string): 'fill' | 'stroke' | undefined {
+  if (!propertyPath) return undefined;
+  if (propertyPath.startsWith('stroke')) return 'stroke';
+  if (propertyPath.startsWith('fill')) return 'fill';
+  return undefined;
 }
 
 /**
@@ -584,6 +643,8 @@ interface ResolvedVariableEntryBase {
    * the previous local-first, seen-id dedup behavior). */
   isLibrary: boolean;
   aliasDepth: number;
+  /** The variable's Figma UI scopes, used for scope-aware suggestion filtering. */
+  scopes: VariableScope[];
 }
 
 interface ResolvedColorEntry extends ResolvedVariableEntryBase {
@@ -666,6 +727,7 @@ async function buildResolvedVariableCache(): Promise<ResolvedVariableCache> {
       collectionName,
       isLibrary,
       aliasDepth,
+      scopes: variable.scopes,
       color: resolved,
       hex: rgbToHex(resolved.r, resolved.g, resolved.b)
     };
@@ -687,6 +749,7 @@ async function buildResolvedVariableCache(): Promise<ResolvedVariableCache> {
       collectionName,
       isLibrary,
       aliasDepth,
+      scopes: variable.scopes,
       value: resolved
     };
   };
@@ -803,7 +866,8 @@ function copySuggestions(suggestions: TokenSuggestion[]): TokenSuggestion[] {
  */
 export async function findMatchingColorVariable(
   hexColor: string,
-  tolerance: number = 0
+  tolerance: number = 0,
+  colorField?: 'fill' | 'stroke'
 ): Promise<TokenSuggestion[]> {
   try {
     const targetRgb = hexToRgb(hexColor);
@@ -813,10 +877,17 @@ export async function findMatchingColorVariable(
 
     const cache = await getResolvedVariableCache();
     const normalizedHex = rgbToHex(targetRgb.r, targetRgb.g, targetRgb.b);
+    // Memo is field-agnostic (full match list, scopes attached); the optional
+    // color-field scope filter is applied to the returned copy below.
+    const scopeFilter = (list: TokenSuggestion[]): TokenSuggestion[] => {
+      if (!colorField) return list;
+      const relevant = PROPERTY_COLOR_SCOPES[colorField];
+      return list.filter(s => isScopeCompatible(s.scopes, relevant));
+    };
     const memoKey = `color:${normalizedHex}:${tolerance}`;
     const memoized = cache.matchMemo.get(memoKey);
     if (memoized) {
-      return copySuggestions(memoized);
+      return scopeFilter(copySuggestions(memoized));
     }
 
     // Exact matches (tolerance 0) require identical resolved floats, which
@@ -844,7 +915,8 @@ export async function findMatchingColorVariable(
           value: entry.hex,
           matchScore,
           type: 'color',
-          aliasDepth: entry.aliasDepth
+          aliasDepth: entry.aliasDepth,
+          scopes: entry.scopes
         });
       }
     }
@@ -852,7 +924,7 @@ export async function findMatchingColorVariable(
     // Sort by alias depth (most semantic first), then by match score
     sortSuggestions(suggestions);
     cache.matchMemo.set(memoKey, suggestions);
-    return copySuggestions(suggestions);
+    return scopeFilter(copySuggestions(suggestions));
   } catch (error) {
     console.error('Error finding matching color variable:', error);
     return [];
@@ -903,7 +975,8 @@ export async function findMatchingSpacingVariable(
           value: `${entry.value}px`,
           matchScore,
           type: 'number',
-          aliasDepth: entry.aliasDepth
+          aliasDepth: entry.aliasDepth,
+          scopes: entry.scopes
         });
       }
     }
@@ -932,8 +1005,18 @@ export async function findBestMatchingVariable(
   propertyPath: string,
   tolerance: number = 2
 ): Promise<TokenSuggestion[]> {
-  const suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
+  let suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
   if (suggestions.length === 0) return suggestions;
+
+  // Scope filter FIRST: drop value-matched variables whose Figma scopes exclude
+  // this field, mirroring the variable picker. This is what prevents e.g.
+  // `opacity/10` (scoped OPACITY) from being suggested for a 10px padding. If it
+  // removes everything, that's correct — better no suggestion than a wrong one.
+  const relevantScopes = PROPERTY_FLOAT_SCOPES[propertyPath];
+  if (relevantScopes) {
+    suggestions = suggestions.filter(s => isScopeCompatible(s.scopes, relevantScopes));
+    if (suggestions.length === 0) return suggestions;
+  }
 
   // Define affinity keywords per property type
   const affinityMap: Record<string, string[]> = {

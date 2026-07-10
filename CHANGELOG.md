@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.1
+
+### Fixed
+- **Token suggestions now respect Figma variable scopes.** FigmaLint previously matched hard-coded values to variables purely by resolved value, so a 10px padding could be "fixed" with `opacity/10` — a variable scoped to layer opacity only. Suggestions are now filtered by the variable's `scopes`, mirroring Figma's own variable picker:
+  - Spacing/size fixes only offer variables scoped to the matching field — padding/gap → `GAP`/`WIDTH_HEIGHT`, corner radius → `CORNER_RADIUS`, stroke weight → `STROKE_FLOAT`. An `OPACITY`-scoped variable is never suggested for these.
+  - Color fixes filter fills vs strokes (`ALL_FILLS`/`FRAME_FILL`/`SHAPE_FILL`/`TEXT_FILL` vs `STROKE_COLOR`).
+  - Variables with no scope restriction (`ALL_SCOPES` or unscoped) are unaffected, so existing token systems keep matching as before. If the only value-match is a mis-scoped token, FigmaLint now offers no suggestion rather than a wrong one.
+
 ## 2.7.0
 
 ### Added

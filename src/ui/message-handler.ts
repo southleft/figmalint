@@ -24,6 +24,7 @@ import {
   applySpacingFix,
   findMatchingColorVariable,
   findBestMatchingVariable,
+  colorFieldFromPropertyPath,
   FixPreview,
   FixResult,
 } from '../fixes/token-fixer';
@@ -597,7 +598,7 @@ async function handlePreviewBatchFix(data: { fixes?: Array<{ nodeId: string; pro
         const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(fix.propertyPath);
         let matches;
         if (isColorProperty) {
-          matches = await findMatchingColorVariable(fix.newValue, 0.1);
+          matches = await findMatchingColorVariable(fix.newValue, 0.1, colorFieldFromPropertyPath(fix.propertyPath));
         } else {
           const pixelValue = parseFloat(fix.newValue);
           matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2);
@@ -1293,7 +1294,7 @@ async function handlePreviewFix(data: FixPreviewRequest): Promise<void> {
         // Color property - find matching color variable
         // Normalize property path to include index (default to [0])
         const normalizedPath = matches[2] ? data.propertyPath : `${matches[1]}[0]`;
-        const colorMatches = await findMatchingColorVariable(data.suggestedValue || '', 0.1);
+        const colorMatches = await findMatchingColorVariable(data.suggestedValue || '', 0.1, colorFieldFromPropertyPath(data.propertyPath));
         if (colorMatches.length > 0) {
           preview = await previewTokenFix(sceneNode, normalizedPath, colorMatches[0].variableId);
         }
@@ -1546,7 +1547,7 @@ async function handleApplyBatchFix(data: BatchFixRequest): Promise<void> {
           if (!tokenId && fix.newValue) {
             try {
               if (isColorProperty) {
-                const colorMatches = await findMatchingColorVariable(fix.newValue, 0.1);
+                const colorMatches = await findMatchingColorVariable(fix.newValue, 0.1, colorFieldFromPropertyPath(fix.propertyPath));
                 if (colorMatches.length > 0) {
                   tokenId = colorMatches[0].variableId;
                 }

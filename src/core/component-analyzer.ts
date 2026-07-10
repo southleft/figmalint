@@ -8,7 +8,7 @@ import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmen
 import { callProvider, ProviderId } from '../api/providers';
 import { consistencyEngine } from './consistency-engine';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
-import { findMatchingColorVariable, findBestMatchingVariable } from '../fixes/token-fixer';
+import { findMatchingColorVariable, findBestMatchingVariable, colorFieldFromPropertyPath } from '../fixes/token-fixer';
 
 /**
  * Extract comprehensive component context for analysis
@@ -1898,7 +1898,7 @@ export async function enrichTokensWithMatches(tokens: TokenAnalysis): Promise<vo
       try {
         const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(token.context.property);
         if (isColorProperty) {
-          const matches = await findMatchingColorVariable(token.value || '', 0.1);
+          const matches = await findMatchingColorVariable(token.value || '', 0.1, colorFieldFromPropertyPath(token.context.property));
           token.context.hasMatchingToken = matches.length > 0;
         } else {
           const pixelValue = parseFloat(token.value || '0');

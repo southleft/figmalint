@@ -3467,6 +3467,35 @@ ${scoringCriteria}
   }
 
   // src/fixes/token-fixer.ts
+  var PROPERTY_FLOAT_SCOPES = {
+    paddingTop: ["GAP", "WIDTH_HEIGHT"],
+    paddingRight: ["GAP", "WIDTH_HEIGHT"],
+    paddingBottom: ["GAP", "WIDTH_HEIGHT"],
+    paddingLeft: ["GAP", "WIDTH_HEIGHT"],
+    itemSpacing: ["GAP"],
+    counterAxisSpacing: ["GAP"],
+    cornerRadius: ["CORNER_RADIUS"],
+    topLeftRadius: ["CORNER_RADIUS"],
+    topRightRadius: ["CORNER_RADIUS"],
+    bottomLeftRadius: ["CORNER_RADIUS"],
+    bottomRightRadius: ["CORNER_RADIUS"],
+    strokeWeight: ["STROKE_FLOAT"]
+  };
+  var PROPERTY_COLOR_SCOPES = {
+    fill: ["ALL_FILLS", "FRAME_FILL", "SHAPE_FILL", "TEXT_FILL"],
+    stroke: ["STROKE_COLOR"]
+  };
+  function isScopeCompatible(scopes, relevant) {
+    if (!scopes || scopes.length === 0) return true;
+    if (scopes.includes("ALL_SCOPES")) return true;
+    return scopes.some((scope) => relevant.includes(scope));
+  }
+  function colorFieldFromPropertyPath(propertyPath) {
+    if (!propertyPath) return void 0;
+    if (propertyPath.startsWith("stroke")) return "stroke";
+    if (propertyPath.startsWith("fill")) return "fill";
+    return void 0;
+  }
   async function bindColorToken(node, propertyType, variableId, paintIndex = 0) {
     try {
       if (!(propertyType in node)) {
@@ -3676,6 +3705,7 @@ ${scoringCriteria}
         collectionName,
         isLibrary,
         aliasDepth,
+        scopes: variable.scopes,
         color: resolved,
         hex: rgbToHex(resolved.r, resolved.g, resolved.b)
       };
@@ -3691,6 +3721,7 @@ ${scoringCriteria}
         collectionName,
         isLibrary,
         aliasDepth,
+        scopes: variable.scopes,
         value: resolved
       };
     };
@@ -3770,7 +3801,7 @@ ${scoringCriteria}
   function copySuggestions(suggestions) {
     return suggestions.map((s) => __spreadValues({}, s));
   }
-  async function findMatchingColorVariable(hexColor, tolerance = 0) {
+  async function findMatchingColorVariable(hexColor, tolerance = 0, colorField) {
     try {
       const targetRgb = hexToRgb(hexColor);
       if (!targetRgb) {
@@ -3778,10 +3809,15 @@ ${scoringCriteria}
       }
       const cache = await getResolvedVariableCache();
       const normalizedHex = rgbToHex(targetRgb.r, targetRgb.g, targetRgb.b);
+      const scopeFilter = (list) => {
+        if (!colorField) return list;
+        const relevant = PROPERTY_COLOR_SCOPES[colorField];
+        return list.filter((s) => isScopeCompatible(s.scopes, relevant));
+      };
       const memoKey = `color:${normalizedHex}:${tolerance}`;
       const memoized = cache.matchMemo.get(memoKey);
       if (memoized) {
-        return copySuggestions(memoized);
+        return scopeFilter(copySuggestions(memoized));
       }
       const candidates = tolerance === 0 ? cache.colorByHex.get(normalizedHex) || [] : cache.colorEntries;
       const suggestions = [];
@@ -3798,13 +3834,14 @@ ${scoringCriteria}
             value: entry.hex,
             matchScore,
             type: "color",
-            aliasDepth: entry.aliasDepth
+            aliasDepth: entry.aliasDepth,
+            scopes: entry.scopes
           });
         }
       }
       sortSuggestions(suggestions);
       cache.matchMemo.set(memoKey, suggestions);
-      return copySuggestions(suggestions);
+      return scopeFilter(copySuggestions(suggestions));
     } catch (error) {
       console.error("Error finding matching color variable:", error);
       return [];
@@ -3834,7 +3871,8 @@ ${scoringCriteria}
             value: `${entry.value}px`,
             matchScore,
             type: "number",
-            aliasDepth: entry.aliasDepth
+            aliasDepth: entry.aliasDepth,
+            scopes: entry.scopes
           });
         }
       }
@@ -3847,8 +3885,13 @@ ${scoringCriteria}
     }
   }
   async function findBestMatchingVariable(pixelValue, propertyPath, tolerance = 2) {
-    const suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
+    let suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
     if (suggestions.length === 0) return suggestions;
+    const relevantScopes = PROPERTY_FLOAT_SCOPES[propertyPath];
+    if (relevantScopes) {
+      suggestions = suggestions.filter((s) => isScopeCompatible(s.scopes, relevantScopes));
+      if (suggestions.length === 0) return suggestions;
+    }
     const affinityMap = {
       strokeWeight: ["stroke", "border-width", "border/width", "borderwidth"],
       cornerRadius: ["radius", "corner", "round", "border-radius"],
@@ -5499,7 +5542,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         try {
           const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(token.context.property);
           if (isColorProperty) {
-            const matches = await findMatchingColorVariable(token.value || "", 0.1);
+            const matches = await findMatchingColorVariable(token.value || "", 0.1, colorFieldFromPropertyPath(token.context.property));
             token.context.hasMatchingToken = matches.length > 0;
           } else {
             const pixelValue = parseFloat(token.value || "0");
@@ -6661,7 +6704,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(fix.propertyPath);
           let matches;
           if (isColorProperty) {
-            matches = await findMatchingColorVariable(fix.newValue, 0.1);
+            matches = await findMatchingColorVariable(fix.newValue, 0.1, colorFieldFromPropertyPath(fix.propertyPath));
           } else {
             const pixelValue = parseFloat(fix.newValue);
             matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2);
@@ -7150,7 +7193,7 @@ Respond naturally and helpfully to the user's question.`;
         const matches = data.propertyPath.match(/^(fills|strokes)(\[(\d+)\])?$/);
         if (matches) {
           const normalizedPath = matches[2] ? data.propertyPath : `${matches[1]}[0]`;
-          const colorMatches = await findMatchingColorVariable(data.suggestedValue || "", 0.1);
+          const colorMatches = await findMatchingColorVariable(data.suggestedValue || "", 0.1, colorFieldFromPropertyPath(data.propertyPath));
           if (colorMatches.length > 0) {
             preview = await previewFix(sceneNode, normalizedPath, colorMatches[0].variableId);
           }
@@ -7341,7 +7384,7 @@ Respond naturally and helpfully to the user's question.`;
             if (!tokenId && fix.newValue) {
               try {
                 if (isColorProperty) {
-                  const colorMatches = await findMatchingColorVariable(fix.newValue, 0.1);
+                  const colorMatches = await findMatchingColorVariable(fix.newValue, 0.1, colorFieldFromPropertyPath(fix.propertyPath));
                   if (colorMatches.length > 0) {
                     tokenId = colorMatches[0].variableId;
                   }
