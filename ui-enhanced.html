@@ -4071,6 +4071,7 @@
       switch (provider) {
         case 'anthropic':
           if (!trimmed.startsWith('sk-ant-')) return 'Claude keys start with "sk-ant-"';
+          if (trimmed.startsWith('sk-ant-admin')) return 'This is an Admin API key — it can\'t call Claude models. Create a standard API key (sk-ant-api...) instead';
           if (trimmed.length < 40) return 'This key looks too short — copy the complete key';
           return null;
         case 'openai':

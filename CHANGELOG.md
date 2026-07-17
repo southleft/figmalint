@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.2
+
+### Fixed
+- **Anthropic Admin API keys are now caught with a clear explanation.** Org-issued `sk-ant-admin...` keys manage an organization but cannot call Claude models — previously they passed format validation and failed later with a generic "Invalid API key" 401. FigmaLint now rejects them at save time (and inline while typing) with guidance to create a standard `sk-ant-api...` key instead. This is the most common reason an org-issued key fails while a personal key works.
+- **Anthropic 401/403 errors now surface the API's actual message** (revoked key, workspace restriction, model access) plus targeted guidance, instead of a generic "invalid key" line. 400 billing errors ("credit balance is too low") now say to add credits rather than "check your request format".
+
 ## 2.7.1
 
 ### Fixed

@@ -49,7 +49,10 @@ function isValidApiKeyFormat(apiKey: string, provider: ProviderId = selectedProv
 
   switch (provider) {
     case 'anthropic':
-      return trimmed.startsWith('sk-ant-') && trimmed.length >= 40;
+      // sk-ant-admin... keys are Admin API keys — valid format, but they cannot
+      // call Claude models. Rejected here so handleSaveApiKey surfaces the
+      // detailed provider message instead of failing with a 401 at analyze time.
+      return trimmed.startsWith('sk-ant-') && !trimmed.startsWith('sk-ant-admin') && trimmed.length >= 40;
     case 'openai':
       return trimmed.startsWith('sk-') && trimmed.length >= 20;
     case 'google':
@@ -256,7 +259,11 @@ async function handleSaveApiKey(
         );
       }
 
+      // Use the provider's own validation message when it has one — it carries
+      // specifics (e.g. Admin-key explanation) the generic line below lacks.
+      const detailed = providerObj.validateApiKey(apiKey);
       throw new Error(
+        detailed.error ||
         `Invalid ${providerObj.name} API key format. Expected: ${providerObj.keyPlaceholder}`
       );
     }

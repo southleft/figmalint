@@ -189,6 +189,19 @@ export class AnthropicProvider implements LLMProvider {
       };
     }
 
+    // Anthropic Admin API keys (sk-ant-admin...) manage an organization and are
+    // rejected by the model API (/v1/messages). Org admins often generate these
+    // by mistake when asked for "an API key" — catch it here with a clear
+    // explanation instead of a generic 401 at analyze time.
+    if (trimmedKey.startsWith('sk-ant-admin')) {
+      return {
+        isValid: false,
+        error:
+          'This is an Anthropic Admin API key (sk-ant-admin...), which manages your organization but cannot call Claude models. ' +
+          'Ask your admin to create a standard API key instead (Console → API Keys → Create Key), which starts with "sk-ant-api...".',
+      };
+    }
+
     // Anthropic API keys are typically longer than 40 characters
     if (trimmedKey.length < 40) {
       return {
@@ -232,6 +245,15 @@ export class AnthropicProvider implements LLMProvider {
 
     switch (statusCode) {
       case 400:
+        // Billing errors surface as 400s ("credit balance is too low") — say so
+        // instead of the misleading "check your request format".
+        if (errorMessage.toLowerCase().includes('credit balance')) {
+          return new LLMError(
+            `Claude API Error (400): ${errorMessage} Add credits to the account that issued this key at platform.claude.com — API usage is billed separately from Claude subscriptions.`,
+            LLMErrorCode.INVALID_REQUEST,
+            400
+          );
+        }
         return new LLMError(
           `Claude API Error (400): ${errorMessage}. Please check your request format.`,
           LLMErrorCode.INVALID_REQUEST,
@@ -239,15 +261,18 @@ export class AnthropicProvider implements LLMProvider {
         );
 
       case 401:
+        // Include Anthropic's actual message — for org-issued keys it explains
+        // exactly what's wrong (revoked, wrong key type, workspace restrictions),
+        // which a generic "invalid key" hides.
         return new LLMError(
-          'Claude API Error (401): Invalid API key. Please check your Claude API key in settings.',
+          `Claude API Error (401): ${errorMessage} Check your Claude API key in settings — it must be a standard API key (sk-ant-api...), not an Admin key, and must be active in your organization's Console.`,
           LLMErrorCode.INVALID_API_KEY,
           401
         );
 
       case 403:
         return new LLMError(
-          'Claude API Error (403): Access forbidden. Please check your API key permissions.',
+          `Claude API Error (403): ${errorMessage} Your key was recognized but lacks permission — common causes: the organization restricts which models or workspaces this key can use, or the key's workspace has a spend limit of $0. Ask your admin to check the key's permissions in the Anthropic Console.`,
           LLMErrorCode.INVALID_API_KEY,
           403
         );

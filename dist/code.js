@@ -1380,6 +1380,12 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           error: `Invalid API Key Format: Claude API keys should start with "${this.keyPrefix}". Please check your API key.`
         };
       }
+      if (trimmedKey.startsWith("sk-ant-admin")) {
+        return {
+          isValid: false,
+          error: 'This is an Anthropic Admin API key (sk-ant-admin...), which manages your organization but cannot call Claude models. Ask your admin to create a standard API key instead (Console \u2192 API Keys \u2192 Create Key), which starts with "sk-ant-api...".'
+        };
+      }
       if (trimmedKey.length < 40) {
         return {
           isValid: false,
@@ -1415,6 +1421,13 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       const errorMessage = ((_a = errorResponse == null ? void 0 : errorResponse.error) == null ? void 0 : _a.message) || (typeof response === "string" ? response : "Unknown error");
       switch (statusCode) {
         case 400:
+          if (errorMessage.toLowerCase().includes("credit balance")) {
+            return new LLMError(
+              `Claude API Error (400): ${errorMessage} Add credits to the account that issued this key at platform.claude.com \u2014 API usage is billed separately from Claude subscriptions.`,
+              "INVALID_REQUEST" /* INVALID_REQUEST */,
+              400
+            );
+          }
           return new LLMError(
             `Claude API Error (400): ${errorMessage}. Please check your request format.`,
             "INVALID_REQUEST" /* INVALID_REQUEST */,
@@ -1422,13 +1435,13 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           );
         case 401:
           return new LLMError(
-            "Claude API Error (401): Invalid API key. Please check your Claude API key in settings.",
+            `Claude API Error (401): ${errorMessage} Check your Claude API key in settings \u2014 it must be a standard API key (sk-ant-api...), not an Admin key, and must be active in your organization's Console.`,
             "INVALID_API_KEY" /* INVALID_API_KEY */,
             401
           );
         case 403:
           return new LLMError(
-            "Claude API Error (403): Access forbidden. Please check your API key permissions.",
+            `Claude API Error (403): ${errorMessage} Your key was recognized but lacks permission \u2014 common causes: the organization restricts which models or workspaces this key can use, or the key's workspace has a spend limit of $0. Ask your admin to check the key's permissions in the Anthropic Console.`,
             "INVALID_API_KEY" /* INVALID_API_KEY */,
             403
           );
@@ -6305,7 +6318,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     const trimmed = (apiKey == null ? void 0 : apiKey.trim()) || "";
     switch (provider) {
       case "anthropic":
-        return trimmed.startsWith("sk-ant-") && trimmed.length >= 40;
+        return trimmed.startsWith("sk-ant-") && !trimmed.startsWith("sk-ant-admin") && trimmed.length >= 40;
       case "openai":
         return trimmed.startsWith("sk-") && trimmed.length >= 20;
       case "google":
@@ -6456,8 +6469,9 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
             `This looks like a ${detectedObj.name} key (${detectedObj.keyPlaceholder}), but ${providerObj2.name} is selected. Switch the AI Provider dropdown to ${detectedObj.name}, or paste a ${providerObj2.name} key (${providerObj2.keyPlaceholder}).`
           );
         }
+        const detailed = providerObj2.validateApiKey(apiKey);
         throw new Error(
-          `Invalid ${providerObj2.name} API key format. Expected: ${providerObj2.keyPlaceholder}`
+          detailed.error || `Invalid ${providerObj2.name} API key format. Expected: ${providerObj2.keyPlaceholder}`
         );
       }
       if (providerId === "openai") {
