@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.3
+
+### Fixed
+- **The custom endpoint (Azure) fields were too easy to miss.** The section shipped as a collapsed disclosure labeled "Custom endpoint (Azure / OpenAI-compatible)" that read like a static heading, and pasting an Azure key showed only a red `OpenAI keys start with "sk-"` error — implying the key type was unsupported rather than pointing at the fix. Now:
+  - Pasting a non-`sk-` key with the OpenAI provider auto-expands the custom endpoint section and the error explains that entering an endpoint URL skips the `sk-` check.
+  - The disclosure is restyled as an interactive link ("Using Azure or a custom endpoint? Set it up here").
+  - Typing an endpoint URL clears the key-format error immediately (previously it lingered until the key field was edited again).
+
 ## 2.7.2
 
 ### Fixed

@@ -2399,7 +2399,7 @@
             <!-- Custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry) -->
             <div class="form-group" id="openai-endpoint-group" style="display: none;">
               <details id="openai-endpoint-details">
-                <summary style="cursor: pointer; font-size: 12px; font-weight: 600; user-select: none;">Custom endpoint (Azure / OpenAI-compatible)</summary>
+                <summary style="cursor: pointer; font-size: 12px; font-weight: 600; user-select: none; color: var(--primary);">Using Azure or a custom endpoint? Set it up here</summary>
                 <div style="margin-top: 10px;">
                   <label for="openai-endpoint-input">Endpoint URL</label>
                   <input
@@ -3391,6 +3391,12 @@
       analyzeButton.addEventListener('click', handleAnalyzeComponent);
       quickAnalyzeButton.addEventListener('click', handleAnalyzeComponent);
       apiKeyInput.addEventListener('input', handleApiKeyChange);
+      // Typing a custom endpoint changes how the key is validated (Azure keys
+      // don't start with "sk-"), so re-run the inline check to clear the error.
+      const openaiEndpointInput = document.getElementById('openai-endpoint-input');
+      if (openaiEndpointInput) {
+        openaiEndpointInput.addEventListener('input', handleApiKeyChange);
+      }
       apiKeyInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && apiKeyInput.value.trim()) {
           handleSaveApiKey();
@@ -4099,7 +4105,16 @@
       const formatError = usingCustomEndpoint ? null : validateApiKeyFormat(value, currentProvider);
       const config = providerConfig[currentProvider] || {};
       if (formatError) {
-        apiKeyHint.textContent = formatError;
+        if (currentProvider === 'openai') {
+          // An Azure / gateway key legitimately won't start with "sk-" — point the
+          // user at the custom endpoint section and reveal it instead of implying
+          // their key type is unsupported.
+          apiKeyHint.textContent = formatError + ' — using Azure or another OpenAI-compatible gateway? Enter its URL in the custom endpoint section below and this check is skipped.';
+          const endpointDetails = document.getElementById('openai-endpoint-details');
+          if (endpointDetails) endpointDetails.open = true;
+        } else {
+          apiKeyHint.textContent = formatError;
+        }
         apiKeyHint.style.color = 'var(--figma-red, #f24822)';
       } else {
         apiKeyHint.textContent = config.hint || '';
