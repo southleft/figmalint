@@ -255,19 +255,68 @@ export async function callProvider(
       throw error;
     }
 
-    // Handle network errors
-    if (error instanceof Error) {
-      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-        throw new LLMError(
-          `Network error connecting to ${provider.name}. Please check your internet connection.`,
-          LLMErrorCode.NETWORK_ERROR
-        );
-      }
+    // Log the raw throw for the dev console — the flattened message below can lose
+    // detail when a non-Error crosses the sandbox boundary.
+    console.error(`${provider.name} request to ${endpoint} failed:`, error);
+
+    // Figma's plugin sandbox throws when a request targets a domain that isn't in
+    // the manifest `allowedDomains`. The rejection crosses the realm boundary and
+    // often arrives as a non-Error value, so `error.message` alone loses it — pull
+    // the message out however it's shaped.
+    const rawMessage =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : (() => {
+              try {
+                return JSON.stringify(error);
+              } catch {
+                return String(error);
+              }
+            })();
+
+    let host = endpoint;
+    try {
+      host = new URL(endpoint).host;
+    } catch {
+      // endpoint isn't a valid URL — surface it verbatim below (likely the cause).
     }
 
-    // Unknown error
+    // A blocked-domain failure is the most common custom-endpoint (Azure) problem.
+    // Figma's message contains "whitelist"/"allowed"; a bad URL throws a TypeError.
+    const lower = rawMessage.toLowerCase();
+    if (
+      lower.includes('whitelist') ||
+      lower.includes('not allowed') ||
+      lower.includes('allowedDomains'.toLowerCase()) ||
+      lower.includes('non-whitelisted')
+    ) {
+      throw new LLMError(
+        `Figma blocked the request to "${host}". This domain isn't in the plugin's network allowlist. ` +
+          `Custom endpoints are supported only for Azure model hosts (*.openai.azure.com, *.services.ai.azure.com, ` +
+          `*.cognitiveservices.azure.com, *.inference.ai.azure.com). Check that your Endpoint URL points at one of these. (${rawMessage})`,
+        LLMErrorCode.NETWORK_ERROR
+      );
+    }
+
+    // Network / connectivity failures.
+    if (
+      lower.includes('failed to fetch') ||
+      lower.includes('networkerror') ||
+      lower.includes('network request')
+    ) {
+      throw new LLMError(
+        `Network error connecting to ${provider.name} at "${host}". ` +
+          `Check your internet connection and that the endpoint URL is correct and reachable. (${rawMessage})`,
+        LLMErrorCode.NETWORK_ERROR
+      );
+    }
+
+    // Everything else — surface the real message and where it was going, instead
+    // of a bare "Unknown error".
     throw new LLMError(
-      `Unexpected error calling ${provider.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      `Unexpected error calling ${provider.name} at "${host}": ${rawMessage || 'no error detail was provided by the runtime'}`,
       LLMErrorCode.UNKNOWN_ERROR
     );
   }

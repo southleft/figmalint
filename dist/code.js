@@ -2128,16 +2128,34 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       if (error instanceof LLMError) {
         throw error;
       }
-      if (error instanceof Error) {
-        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-          throw new LLMError(
-            `Network error connecting to ${provider.name}. Please check your internet connection.`,
-            "NETWORK_ERROR" /* NETWORK_ERROR */
-          );
+      console.error(`${provider.name} request to ${endpoint} failed:`, error);
+      const rawMessage = error instanceof Error ? error.message : typeof error === "string" ? error : (() => {
+        try {
+          return JSON.stringify(error);
+        } catch (e) {
+          return String(error);
         }
+      })();
+      let host = endpoint;
+      try {
+        host = new URL(endpoint).host;
+      } catch (e) {
+      }
+      const lower = rawMessage.toLowerCase();
+      if (lower.includes("whitelist") || lower.includes("not allowed") || lower.includes("allowedDomains".toLowerCase()) || lower.includes("non-whitelisted")) {
+        throw new LLMError(
+          `Figma blocked the request to "${host}". This domain isn't in the plugin's network allowlist. Custom endpoints are supported only for Azure model hosts (*.openai.azure.com, *.services.ai.azure.com, *.cognitiveservices.azure.com, *.inference.ai.azure.com). Check that your Endpoint URL points at one of these. (${rawMessage})`,
+          "NETWORK_ERROR" /* NETWORK_ERROR */
+        );
+      }
+      if (lower.includes("failed to fetch") || lower.includes("networkerror") || lower.includes("network request")) {
+        throw new LLMError(
+          `Network error connecting to ${provider.name} at "${host}". Check your internet connection and that the endpoint URL is correct and reachable. (${rawMessage})`,
+          "NETWORK_ERROR" /* NETWORK_ERROR */
+        );
       }
       throw new LLMError(
-        `Unexpected error calling ${provider.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Unexpected error calling ${provider.name} at "${host}": ${rawMessage || "no error detail was provided by the runtime"}`,
         "UNKNOWN_ERROR" /* UNKNOWN_ERROR */
       );
     }

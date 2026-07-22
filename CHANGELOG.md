@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.4
+
+### Fixed
+- **Custom endpoint (Azure) failures now explain what actually went wrong** instead of "Unexpected error calling OpenAI: Unknown error". When a request fails before an HTTP response — most often because Figma's network sandbox blocked the endpoint's domain, or the Endpoint URL was malformed — the thrown value can cross the plugin sandbox boundary as a non-`Error`, and its real message was being discarded. The provider call now:
+  - Extracts the underlying message however it's shaped (Error, string, or object).
+  - Detects a Figma domain-block and names the blocked host plus the supported Azure domains (`*.openai.azure.com`, `*.services.ai.azure.com`, `*.cognitiveservices.azure.com`, `*.inference.ai.azure.com`).
+  - Includes the target host in network and unknown-error messages, and logs the raw failure to the dev console for inspection.
+
 ## 2.7.3
 
 ### Fixed
