@@ -204,7 +204,9 @@ export async function callProvider(
     // Google requires model and key in URL
     endpoint = `${provider.endpoint}/${config.model}:generateContent?key=${apiKey.trim()}`;
   } else if (customOpenAIEndpoint) {
-    endpoint = customOpenAIEndpoint;
+    // Accept a base URL (e.g. `.../openai/v1`) as well as a full one — Azure's docs
+    // present the endpoint as a base and expect the client to add the chat route.
+    endpoint = normalizeChatCompletionsEndpoint(customOpenAIEndpoint);
     // Azure authenticates with an `api-key` header instead of Bearer. Other
     // OpenAI-compatible gateways keep the standard Bearer header.
     if (isAzureEndpoint(customOpenAIEndpoint)) {
@@ -377,6 +379,20 @@ export interface OpenAIEndpointConfig {
  */
 export function isAzureEndpoint(endpoint: string): boolean {
   return /\.azure\.com(?:[:/]|$)/i.test(endpoint.trim());
+}
+
+/**
+ * Normalize a custom OpenAI-compatible endpoint so a base URL works as well as a
+ * full one. Azure's docs (and the OpenAI SDK) present the endpoint as a base URL
+ * ending in `/openai/v1`; the chat route `/chat/completions` is appended by the
+ * client. Users paste the base URL and get a 404, so append the route when it's
+ * missing. If the URL already points at a chat/completions path, leave it alone.
+ */
+export function normalizeChatCompletionsEndpoint(endpoint: string): string {
+  const trimmed = endpoint.trim().replace(/\/+$/, '');
+  if (/\/chat\/completions$/i.test(trimmed)) return trimmed;
+  // The chat route for any OpenAI-compatible endpoint is `<base>/chat/completions`.
+  return `${trimmed}/chat/completions`;
 }
 
 /**

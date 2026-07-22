@@ -2087,7 +2087,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     if (providerId === "google") {
       endpoint = `${provider.endpoint}/${config.model}:generateContent?key=${apiKey.trim()}`;
     } else if (customOpenAIEndpoint) {
-      endpoint = customOpenAIEndpoint;
+      endpoint = normalizeChatCompletionsEndpoint(customOpenAIEndpoint);
       if (isAzureEndpoint(customOpenAIEndpoint)) {
         headers = { "Content-Type": "application/json", "api-key": apiKey.trim() };
       }
@@ -2184,6 +2184,11 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   };
   function isAzureEndpoint(endpoint) {
     return /\.azure\.com(?:[:/]|$)/i.test(endpoint.trim());
+  }
+  function normalizeChatCompletionsEndpoint(endpoint) {
+    const trimmed = endpoint.trim().replace(/\/+$/, "");
+    if (/\/chat\/completions$/i.test(trimmed)) return trimmed;
+    return `${trimmed}/chat/completions`;
   }
   async function loadOpenAIEndpointConfig() {
     try {

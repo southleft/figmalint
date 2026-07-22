@@ -2405,11 +2405,11 @@
                   <input
                     type="text"
                     id="openai-endpoint-input"
-                    placeholder="https://YOUR-RESOURCE.openai.azure.com/openai/v1/chat/completions"
+                    placeholder="https://YOUR-RESOURCE.openai.azure.com/openai/v1"
                     autocomplete="off"
                     spellcheck="false"
                   >
-                  <p class="card-subtitle">Route the OpenAI provider through your own Azure OpenAI / Azure AI Foundry deployment instead of api.openai.com. Leave blank to use the default OpenAI endpoint. Azure keys are sent via the <code>api-key</code> header automatically.</p>
+                  <p class="card-subtitle">Route the OpenAI provider through your own Azure OpenAI / Azure AI Foundry deployment instead of api.openai.com. Paste the base URL ending in <code>/openai/v1</code> (the <code>/chat/completions</code> route is added automatically). Leave blank to use the default OpenAI endpoint. Azure keys are sent via the <code>api-key</code> header automatically.</p>
 
                   <label for="openai-deployment-input" style="display: block; margin-top: 10px;">Deployment / model name</label>
                   <input
@@ -2419,7 +2419,7 @@
                     autocomplete="off"
                     spellcheck="false"
                   >
-                  <p class="card-subtitle">The Azure deployment name sent with each request. Falls back to the selected model above if left blank.</p>
+                  <p class="card-subtitle"><strong>Required for Azure:</strong> the exact deployment name you created in your Azure resource (not the model above — Azure deployment names are arbitrary). A wrong or blank name is the usual cause of a 404 "model not found".</p>
                 </div>
               </details>
             </div>

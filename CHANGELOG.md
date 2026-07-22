@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.7.5
+
+### Fixed
+- **Azure AI Foundry endpoints (`*.ai.azure.com`) are now allowlisted.** The network allowlist only covered `*.services.ai.azure.com` and `*.inference.ai.azure.com`, so Foundry hosts on other `*.ai.azure.com` subdomains were silently blocked by Figma's sandbox (surfacing as the opaque error fixed in 2.7.4). Replaced the two narrow patterns with `*.ai.azure.com`, which covers the whole Foundry family.
+- **A base endpoint URL now works, not just the full one.** Azure's docs present the endpoint as a base ending in `/openai/v1`; pasting that returned a 404 because the plugin POSTed to it verbatim. The plugin now appends `/chat/completions` when it's missing, so both `.../openai/v1` and `.../openai/v1/chat/completions` work.
+
+### Changed
+- Clearer custom-endpoint help: the deployment / model field is flagged as **required for Azure** (a blank or wrong deployment name is the usual cause of a 404 "model not found"), and the endpoint field documents that a base URL is accepted.
+
 ## 2.7.4
 
 ### Fixed
