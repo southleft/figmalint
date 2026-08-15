@@ -2371,6 +2371,7 @@
                 <option value="anthropic">Anthropic (Claude)</option>
                 <option value="openai">OpenAI (GPT)</option>
                 <option value="google">Google (Gemini)</option>
+                <option value="openrouter">OpenRouter</option>
               </select>
               <p class="card-subtitle">Select your preferred AI provider</p>
             </div>
@@ -2420,14 +2421,36 @@
                   <option value="gemini-3.6-flash" disabled>Gemini 3.6 Flash (Standard - Best Value)</option>
                   <option value="gemini-3.5-flash-lite" disabled>Gemini 3.5 Flash-Lite (Fast - Economy)</option>
                 </optgroup>
+                <!-- OpenRouter Models (shortlist; any slug can be typed below) -->
+                <optgroup label="OpenRouter" id="openrouter-models" style="display: none;">
+                  <option value="anthropic/claude-opus-5" disabled>Claude Opus 5 (Anthropic - Flagship)</option>
+                  <option value="anthropic/claude-sonnet-5" disabled>Claude Sonnet 5 (Anthropic - Recommended)</option>
+                  <option value="openai/gpt-5.6-sol" disabled>GPT-5.6 Sol (OpenAI - Flagship)</option>
+                  <option value="openai/gpt-5.6-terra" disabled>GPT-5.6 Terra (OpenAI - Best Value)</option>
+                  <option value="google/gemini-3.7-flash" disabled>Gemini 3.7 Flash (Google - Flagship)</option>
+                  <option value="google/gemini-3.5-flash-lite" disabled>Gemini 3.5 Flash-Lite (Google - Economy)</option>
+                </optgroup>
               </select>
               <p class="card-subtitle">Choose the model that works best for your component analysis</p>
             </div>
 
-            <!-- Custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry, OpenRouter) -->
+            <!-- OpenRouter free-text model slug (overrides the dropdown) -->
+            <div class="form-group" id="openrouter-model-group" style="display: none;">
+              <label for="openrouter-model-input">Other model slug <span style="font-weight: 400; text-transform: none; letter-spacing: normal;">(optional)</span></label>
+              <input
+                type="text"
+                id="openrouter-model-input"
+                placeholder="meta-llama/llama-4-maverick"
+                autocomplete="off"
+                spellcheck="false"
+              >
+              <p class="card-subtitle">OpenRouter offers far more models than the shortlist above. Paste any slug from <code>openrouter.ai/models</code> to use it instead — leave blank to use the dropdown selection.</p>
+            </div>
+
+            <!-- Custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry, self-managed gateways) -->
             <div class="form-group" id="openai-endpoint-group" style="display: none;">
               <details id="openai-endpoint-details">
-                <summary style="cursor: pointer; font-size: 12px; font-weight: 600; user-select: none; color: var(--primary);">Using Azure, OpenRouter, or a custom endpoint? Set it up here</summary>
+                <summary style="cursor: pointer; font-size: 12px; font-weight: 600; user-select: none; color: var(--primary);">Using Azure or a custom endpoint? Set it up here</summary>
                 <div style="margin-top: 10px;">
                   <label for="openai-endpoint-input">Endpoint URL</label>
                   <input
@@ -2437,10 +2460,8 @@
                     autocomplete="off"
                     spellcheck="false"
                   >
-                  <p class="card-subtitle">Route the OpenAI provider through an OpenAI-compatible gateway instead of api.openai.com. Leave blank to use the default OpenAI endpoint. Supported:<br>
-                    &bull; <strong>OpenRouter</strong> — <code>https://openrouter.ai/api/v1</code><br>
-                    &bull; <strong>Azure OpenAI / AI Foundry</strong> — <code>https://YOUR-RESOURCE.openai.azure.com/openai/v1</code><br>
-                    Paste the base URL; the <code>/chat/completions</code> route is added automatically. Azure keys are sent via the <code>api-key</code> header, OpenRouter and other gateways via <code>Authorization: Bearer</code>.</p>
+                  <p class="card-subtitle">Route the OpenAI provider through your own OpenAI-compatible gateway instead of api.openai.com — most often <strong>Azure OpenAI / AI Foundry</strong> (<code>https://YOUR-RESOURCE.openai.azure.com/openai/v1</code>). Leave blank to use the default OpenAI endpoint. Paste the base URL; the <code>/chat/completions</code> route is added automatically. Azure keys are sent via the <code>api-key</code> header, other gateways via <code>Authorization: Bearer</code>.<br>
+                    Looking for <strong>OpenRouter</strong>? It's now its own entry in the AI Provider dropdown above — no endpoint setup needed.</p>
 
                   <label for="openai-deployment-input" style="display: block; margin-top: 10px;">Deployment / model name</label>
                   <input
@@ -2450,7 +2471,7 @@
                     autocomplete="off"
                     spellcheck="false"
                   >
-                  <p class="card-subtitle"><strong>Required for Azure and OpenRouter:</strong> the exact model identifier the endpoint expects, which overrides the model dropdown above. For OpenRouter that's the model slug (e.g. <code>anthropic/claude-sonnet-4.5</code>, <code>openai/gpt-5.6</code>) — browse them at <code>openrouter.ai/models</code>. For Azure it's the deployment name you created in your resource. A wrong or blank name is the usual cause of a 404 "model not found".</p>
+                  <p class="card-subtitle"><strong>Required for Azure:</strong> the exact model identifier the endpoint expects, which overrides the model dropdown above. For Azure that's the deployment name you created in your resource (deployment names are arbitrary, so it rarely matches the model name). A wrong or blank name is the usual cause of a 404 "model not found".</p>
                 </div>
               </details>
             </div>
@@ -2927,6 +2948,15 @@
         portalUrl: 'https://aistudio.google.com/apikey',
         portalLabel: 'aistudio.google.com',
         subscriptionName: 'Gemini Advanced'
+      },
+      openrouter: {
+        name: 'OpenRouter',
+        placeholder: 'sk-or-v1-...',
+        hint: 'Get your API key from openrouter.ai/keys',
+        defaultModel: 'anthropic/claude-sonnet-5',
+        portalUrl: 'https://openrouter.ai/keys',
+        portalLabel: 'openrouter.ai',
+        subscriptionName: 'any OpenRouter subscription'
       }
     };
 
@@ -4116,11 +4146,15 @@
           // OpenRouter keys (sk-or-v1-...) satisfy the "sk-" check, so without this
           // they save cleanly and then 401 against api.openai.com. Catch the prefix
           // and point at the endpoint field, which is the actual missing step.
-          if (trimmed.startsWith('sk-or-')) return 'This is an OpenRouter key — set the Endpoint URL below to https://openrouter.ai/api/v1 to use it';
+          if (trimmed.startsWith('sk-or-')) return 'This is an OpenRouter key — switch the AI Provider dropdown above to OpenRouter to use it';
+          if (trimmed.startsWith('sk-ant-')) return 'This is a Claude key — switch the AI Provider dropdown above to Anthropic (Claude) to use it';
           if (!trimmed.startsWith('sk-')) return 'OpenAI keys start with "sk-"';
           return null;
         case 'google':
           if (!trimmed.startsWith('AIza') && !trimmed.startsWith('AQ.')) return 'Google keys start with "AIza" or "AQ."';
+          return null;
+        case 'openrouter':
+          if (!trimmed.startsWith('sk-or-')) return 'OpenRouter keys start with "sk-or-"';
           return null;
         default:
           return null;
@@ -4149,7 +4183,7 @@
           const isOpenRouterKey = value.startsWith('sk-or-');
           apiKeyHint.textContent = isOpenRouterKey
             ? formatError
-            : formatError + ' — using Azure, OpenRouter, or another OpenAI-compatible gateway? Enter its URL in the custom endpoint section below and this check is skipped.';
+            : formatError + ' — using Azure or another OpenAI-compatible gateway? Enter its URL in the custom endpoint section below and this check is skipped.';
           const endpointDetails = document.getElementById('openai-endpoint-details');
           if (endpointDetails) endpointDetails.open = true;
         } else {
@@ -4201,7 +4235,8 @@
       const providerGroups = {
         anthropic: document.getElementById('anthropic-models'),
         openai: document.getElementById('openai-models'),
-        google: document.getElementById('google-models')
+        google: document.getElementById('google-models'),
+        openrouter: document.getElementById('openrouter-models')
       };
 
       Object.entries(providerGroups).forEach(([key, group]) => {
@@ -4217,10 +4252,17 @@
       // Select default model for this provider
       modelSelect.value = config.defaultModel;
 
-      // Custom endpoint (Azure / OpenRouter) is OpenAI-only — show it just for that provider.
+      // The custom endpoint section is for pointing the OpenAI provider elsewhere
+      // (Azure, or a self-managed gateway) — OpenAI-only.
       const endpointGroup = document.getElementById('openai-endpoint-group');
       if (endpointGroup) {
         endpointGroup.style.display = selectedProvider === 'openai' ? 'block' : 'none';
+      }
+
+      // The free-text slug field is OpenRouter-only.
+      const openrouterModelGroup = document.getElementById('openrouter-model-group');
+      if (openrouterModelGroup) {
+        openrouterModelGroup.style.display = selectedProvider === 'openrouter' ? 'block' : 'none';
       }
 
       // Reset saved-state: a key saved for the previous provider is not valid
@@ -4254,7 +4296,7 @@
       // Store key for this provider
       providerApiKeys[selectedProvider] = apiKey;
 
-      // Custom endpoint (Azure / OpenRouter / OpenAI-compatible) — OpenAI only.
+      // Custom endpoint (Azure / OpenAI-compatible gateway) — OpenAI only.
       let customEndpoint = '';
       let customDeployment = '';
       if (selectedProvider === 'openai') {
@@ -4264,6 +4306,13 @@
         customDeployment = deploymentInput ? deploymentInput.value.trim() : '';
       }
 
+      // Free-text OpenRouter slug — overrides the dropdown when set.
+      let openrouterModel = '';
+      if (selectedProvider === 'openrouter') {
+        const slugInput = document.getElementById('openrouter-model-input');
+        openrouterModel = slugInput ? slugInput.value.trim() : '';
+      }
+
       saveKeyButton.disabled = true;
       updateStatus(`Saving ${providerConfig[selectedProvider]?.name || 'API'} key...`, 'info');
       sendMessageToPlugin('save-api-key', {
@@ -4271,7 +4320,8 @@
         model: selectedModel,
         provider: selectedProvider,
         customEndpoint,
-        customDeployment
+        customDeployment,
+        openrouterModel
       });
     }
 
@@ -4417,7 +4467,7 @@
           handleApiKeySaved(data.success, data.provider, data.error);
           break;
         case 'api-key-status':
-          handleApiKeyStatus(data.hasKey, data.provider, data.model, data.openaiEndpoint);
+          handleApiKeyStatus(data.hasKey, data.provider, data.model, data.openaiEndpoint, data.openrouterModel);
           break;
         case 'enhanced-analysis-result':
           handleEnhancedAnalysisResult(data);
@@ -4534,7 +4584,7 @@
     }
 
     // Handle API Key Status
-    function handleApiKeyStatus(hasKey, provider, model, openaiEndpoint) {
+    function handleApiKeyStatus(hasKey, provider, model, openaiEndpoint, openrouterModel) {
       // Restore saved provider and model selections first. handleProviderChange()
       // unconditionally resets `apiKeySaved = false` (it's also the user-driven
       // dropdown handler), so we must assign apiKeySaved AFTER it runs — mirroring
@@ -4548,7 +4598,7 @@
         modelSelect.value = model;
       }
 
-      // Restore a saved custom OpenAI endpoint (Azure / OpenRouter) into the fields and expand
+      // Restore a saved custom OpenAI endpoint (Azure / gateway) into the fields and expand
       // the disclosure so the user can see it's active.
       if (provider === 'openai' && openaiEndpoint) {
         const endpointInput = document.getElementById('openai-endpoint-input');
@@ -4557,6 +4607,12 @@
         if (endpointInput) endpointInput.value = openaiEndpoint.endpoint || '';
         if (deploymentInput) deploymentInput.value = openaiEndpoint.deployment || '';
         if (endpointDetails && openaiEndpoint.endpoint) endpointDetails.open = true;
+      }
+
+      // Restore a saved OpenRouter slug so the field reflects what will actually run.
+      if (provider === 'openrouter') {
+        const slugInput = document.getElementById('openrouter-model-input');
+        if (slugInput) slugInput.value = openrouterModel || '';
       }
 
       apiKeySaved = hasKey;

@@ -19,7 +19,7 @@ A Figma plugin that audits components for design-system compliance, accessibilit
   | `api.openai.com` | OpenAI API | Only if you select OpenAI **without** a custom endpoint |
   | `generativelanguage.googleapis.com` | Google (Gemini) API | Only if you select Google |
   | `*.openai.azure.com`, `*.ai.azure.com`, `*.cognitiveservices.azure.com` | Azure OpenAI / Azure AI Foundry | Only if you configure a custom Azure endpoint |
-  | `openrouter.ai` | OpenRouter (OpenAI-compatible gateway) | Only if you configure a custom OpenRouter endpoint |
+  | `openrouter.ai` | OpenRouter (multi-vendor gateway) | Only if you select OpenRouter |
   | `design-systems-mcp.southleft-llc.workers.dev` | FigmaLint design-systems knowledge service | Best-practice lookups during analysis and the chat feature |
 
   There is **no analytics, telemetry, crash-reporting, or tracking endpoint** — the list above is exhaustive.
@@ -63,13 +63,11 @@ This lets an AI-enablement team deploy an approved model into Azure AI Foundry a
 
 ## OpenRouter (consolidated model access)
 
-The same custom endpoint field accepts [OpenRouter](https://openrouter.ai), an OpenAI-compatible gateway that fronts many providers behind one key and one bill. Configure it the same way:
+[OpenRouter](https://openrouter.ai) is a gateway that fronts many model vendors behind one key and one bill. It is selectable as its own provider:
 
-1. **AI Provider** — OpenAI.
-2. Expand the custom endpoint section.
-3. **Endpoint URL** — `https://openrouter.ai/api/v1`
-4. **Deployment / model name** — the OpenRouter model slug (e.g. `anthropic/claude-sonnet-4.5`).
-5. **API key** — your OpenRouter key (`sk-or-v1-…`).
+1. **AI Provider** — OpenRouter.
+2. **API key** — your OpenRouter key (`sk-or-v1-…`).
+3. **Model** — pick from the shortlist, or paste any slug from openrouter.ai/models into **Other model slug**.
 
 Notes for reviewers:
 - Requests go to `openrouter.ai` only, authenticated with `Authorization: Bearer`. OpenRouter then routes to the upstream model provider you selected in the slug, under **its** data policy — review OpenRouter's model-routing and data-retention settings if that matters to your organization.

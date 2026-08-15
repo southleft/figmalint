@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.10.0
+
+### Changed
+- **OpenRouter is now its own AI Provider.** It was previously reachable only by selecting the OpenAI provider and pasting an endpoint URL into the custom endpoint section — which buried it, because OpenRouter's whole point is routing to *other* vendors: a slug like `anthropic/claude-opus-5` runs Claude. Anyone wanting Claude through OpenRouter would sensibly pick "Anthropic (Claude)", hit the org-key wall, and never find the setting. Selecting **OpenRouter** in the AI Provider dropdown now gives it:
+  - Its own `sk-or-v1-…` key slot, validated on the right format, stored separately from the OpenAI key.
+  - A model shortlist spanning vendors (Claude Opus 5 / Sonnet 5, GPT-5.6 Sol / Terra, Gemini 3.7 Flash / 3.5 Flash-Lite), plus an **Other model slug** field that accepts anything from openrouter.ai/models — so the full catalog stays reachable without the plugin shipping a list that goes stale.
+  - No endpoint URL to type, and the OpenAI provider goes back to meaning OpenAI (or Azure via the custom endpoint).
+
+  The 2.8.0 route still works, so an existing OpenAI-plus-endpoint setup keeps running untouched.
+
+### Fixed
+- **A key pasted under the wrong provider is caught instead of failing later.** The OpenAI key check was a bare `sk-` prefix test, which also matches Anthropic (`sk-ant-`) and OpenRouter (`sk-or-`) keys — so either one saved cleanly under the OpenAI provider and then failed with an unexplained 401 at analyze time. All three prefixes are now distinguished, and the error names the provider to switch to. Every supported key format now maps to exactly one provider.
+
 ## 2.9.0
 
 ### Models

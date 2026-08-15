@@ -10,6 +10,7 @@
 import { anthropicProvider } from './anthropic';
 import { OpenAIProvider as openaiProvider } from './openai';
 import { googleProvider } from './google';
+import { openrouterProvider } from './openrouter';
 import {
   LLMProvider,
   ProviderId,
@@ -28,6 +29,7 @@ export * from './types';
 export { anthropicProvider } from './anthropic';
 export { OpenAIProvider as openaiProvider } from './openai';
 export { googleProvider } from './google';
+export { openrouterProvider } from './openrouter';
 
 // =============================================================================
 // Provider Registry
@@ -40,12 +42,13 @@ export const providers: ProviderRegistry = {
   anthropic: anthropicProvider,
   openai: openaiProvider,
   google: googleProvider,
+  openrouter: openrouterProvider,
 };
 
 /**
  * Array of all provider IDs for iteration
  */
-export const providerIds: ProviderId[] = ['anthropic', 'openai', 'google'];
+export const providerIds: ProviderId[] = ['anthropic', 'openai', 'google', 'openrouter'];
 
 /**
  * Provider metadata for UI display
@@ -65,6 +68,11 @@ export const providerMeta: Record<ProviderId, { name: string; icon: string; desc
     name: 'Google (Gemini)',
     icon: '🔵',
     description: 'Gemini models with multimodal understanding and large context windows',
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    icon: '🟠',
+    description: 'Gateway to models from many vendors — Claude, GPT, Gemini and more — behind one key and one bill',
   },
 };
 
@@ -174,6 +182,13 @@ export async function callProvider(
       if (custom.deployment) {
         effectiveConfig = { ...config, model: custom.deployment };
       }
+    }
+  } else if (providerId === 'openrouter') {
+    // The dropdown carries a shortlist; a typed slug wins so any of OpenRouter's
+    // catalog is reachable without shipping (and re-shipping) the whole list.
+    const customSlug = await loadOpenRouterCustomModel();
+    if (customSlug) {
+      effectiveConfig = { ...config, model: customSlug };
     }
   }
 
@@ -364,6 +379,13 @@ export const STORAGE_KEYS = {
    */
   OPENAI_CUSTOM_DEPLOYMENT: 'openai-custom-deployment',
 
+  /**
+   * Free-text OpenRouter model slug. OpenRouter fronts hundreds of models and the
+   * dropdown only carries a shortlist, so this overrides the selection when set.
+   * Empty = use the selected model from the dropdown.
+   */
+  OPENROUTER_CUSTOM_MODEL: 'openrouter-custom-model',
+
   /** Legacy Claude key (for migration) */
   LEGACY_CLAUDE_KEY: 'claude-api-key',
   LEGACY_CLAUDE_MODEL: 'claude-model',
@@ -427,6 +449,33 @@ export function normalizeChatCompletionsEndpoint(endpoint: string): string {
   }
   // The chat route for any OpenAI-compatible endpoint is `<base>/chat/completions`.
   return `${trimmed}/chat/completions`;
+}
+
+/**
+ * Load the free-text OpenRouter model slug, or '' when none is set.
+ */
+export async function loadOpenRouterCustomModel(): Promise<string> {
+  try {
+    const slug = (await figma.clientStorage.getAsync(
+      STORAGE_KEYS.OPENROUTER_CUSTOM_MODEL
+    )) as string | undefined;
+    return (slug || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Persist (or clear) the free-text OpenRouter model slug. Empty clears it, so the
+ * dropdown selection takes over again.
+ */
+export async function saveOpenRouterCustomModel(slug: string): Promise<void> {
+  const trimmed = (slug || '').trim();
+  if (!trimmed) {
+    await figma.clientStorage.deleteAsync(STORAGE_KEYS.OPENROUTER_CUSTOM_MODEL);
+    return;
+  }
+  await figma.clientStorage.setAsync(STORAGE_KEYS.OPENROUTER_CUSTOM_MODEL, trimmed);
 }
 
 /**

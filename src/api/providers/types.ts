@@ -14,7 +14,7 @@
 /**
  * Supported LLM provider identifiers
  */
-export type ProviderId = 'anthropic' | 'openai' | 'google';
+export type ProviderId = 'anthropic' | 'openai' | 'google' | 'openrouter';
 
 /**
  * Model tier classification for pricing and capability guidance
@@ -448,6 +448,72 @@ export const GOOGLE_MODELS: LLMModel[] = [
   },
 ];
 
+/**
+ * OpenRouter model configuration
+ *
+ * OpenRouter is a gateway, not a model vendor — it fronts hundreds of models from
+ * many vendors behind one key. This list is a curated shortlist for the dropdown,
+ * not the full catalog; any slug from openrouter.ai/models can be entered by hand
+ * and overrides the selection. Slugs are OpenRouter's own namespace and do not
+ * always match the vendor's native ID (e.g. `openai/gpt-5.6-sol` vs `gpt-5.6`).
+ */
+export const OPENROUTER_MODELS: LLMModel[] = [
+  {
+    id: 'anthropic/claude-opus-5',
+    name: 'Claude Opus 5',
+    description: 'Anthropic flagship - Most intelligent, best for complex agents and coding',
+    tier: 'flagship',
+    contextWindow: 1000000,
+    maxOutputTokens: 128000,
+    isDefault: false,
+  },
+  {
+    id: 'anthropic/claude-sonnet-5',
+    name: 'Claude Sonnet 5',
+    description: 'Anthropic standard - Best combination of speed and intelligence, recommended for most tasks',
+    tier: 'standard',
+    contextWindow: 1000000,
+    maxOutputTokens: 128000,
+    isDefault: true,
+  },
+  {
+    id: 'openai/gpt-5.6-sol',
+    name: 'GPT-5.6 Sol',
+    description: 'OpenAI flagship - Frontier reasoning for complex coding and analysis',
+    tier: 'flagship',
+    contextWindow: 1050000,
+    maxOutputTokens: 128000,
+    isDefault: false,
+  },
+  {
+    id: 'openai/gpt-5.6-terra',
+    name: 'GPT-5.6 Terra',
+    description: 'OpenAI standard - Balances intelligence and cost',
+    tier: 'standard',
+    contextWindow: 1050000,
+    maxOutputTokens: 128000,
+    isDefault: false,
+  },
+  {
+    id: 'google/gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    description: 'Google flagship - Most intelligent workhorse for coding and agents',
+    tier: 'flagship',
+    contextWindow: 1000000,
+    maxOutputTokens: 64000,
+    isDefault: false,
+  },
+  {
+    id: 'google/gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash-Lite',
+    description: 'Google economy - Fastest and most budget-friendly for high-volume tasks',
+    tier: 'economy',
+    contextWindow: 1000000,
+    maxOutputTokens: 64000,
+    isDefault: false,
+  },
+];
+
 // =============================================================================
 // Default Model Configuration
 // =============================================================================
@@ -459,6 +525,7 @@ export const DEFAULT_MODELS: Record<ProviderId, string> = {
   anthropic: 'claude-sonnet-5',
   openai: 'gpt-5.6-terra',
   google: 'gemini-3.7-flash',
+  openrouter: 'anthropic/claude-sonnet-5',
 };
 
 // =============================================================================
@@ -525,6 +592,10 @@ export function detectProviderFromKey(apiKey: string): ProviderId | undefined {
   if (trimmed.startsWith('sk-ant-')) {
     return 'anthropic';
   }
+  // Checked before the generic `sk-` case below, which it would otherwise match.
+  if (trimmed.startsWith('sk-or-')) {
+    return 'openrouter';
+  }
   if (trimmed.startsWith('sk-')) {
     return 'openai';
   }
@@ -549,9 +620,17 @@ export function validateApiKeyFormat(apiKey: string, providerId: ProviderId): bo
     case 'anthropic':
       return trimmed.startsWith('sk-ant-') && trimmed.length >= 40;
     case 'openai':
-      // sk-or-... are OpenRouter keys — usable only via a custom endpoint, which
-      // bypasses this check entirely. See OpenAIProvider.validateApiKey.
-      return trimmed.startsWith('sk-') && !trimmed.startsWith('sk-or-') && trimmed.length >= 20;
+      // `sk-` alone is too loose: Anthropic (sk-ant-) and OpenRouter (sk-or-) keys
+      // both match it. Excluding them lets the caller detect a provider mismatch
+      // and name the right dropdown entry instead of saving a key that 401s later.
+      return (
+        trimmed.startsWith('sk-') &&
+        !trimmed.startsWith('sk-or-') &&
+        !trimmed.startsWith('sk-ant-') &&
+        trimmed.length >= 20
+      );
+    case 'openrouter':
+      return trimmed.startsWith('sk-or-') && trimmed.length >= 20;
     case 'google':
       return (
         (trimmed.startsWith('AIza') || trimmed.startsWith('AQ.')) &&
@@ -573,6 +652,7 @@ export function getAllModels(): Array<{ model: LLMModel; providerId: ProviderId 
     ...ANTHROPIC_MODELS.map((model) => ({ model, providerId: 'anthropic' as ProviderId })),
     ...OPENAI_MODELS.map((model) => ({ model, providerId: 'openai' as ProviderId })),
     ...GOOGLE_MODELS.map((model) => ({ model, providerId: 'google' as ProviderId })),
+    ...OPENROUTER_MODELS.map((model) => ({ model, providerId: 'openrouter' as ProviderId })),
   ];
 }
 
@@ -590,6 +670,8 @@ export function getModelsForProvider(providerId: ProviderId): LLMModel[] {
       return OPENAI_MODELS;
     case 'google':
       return GOOGLE_MODELS;
+    case 'openrouter':
+      return OPENROUTER_MODELS;
     default:
       return [];
   }

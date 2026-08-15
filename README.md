@@ -12,15 +12,16 @@ FigmaLint analyzes your components against real standards, surfaces hard-coded v
 
 Choose your preferred AI provider and model:
 
-- **Anthropic** — Claude Opus 4.8, Sonnet 5, Haiku 4.5
-- **OpenAI** — GPT-5.5, GPT-5.4 Mini, GPT-5.4 Nano
-- **Google** — Gemini 3.5 Flash, Gemini 3.1 Flash-Lite, Gemini 2.5 Flash-Lite
+- **Anthropic** — Claude Opus 5, Sonnet 5, Haiku 4.5
+- **OpenAI** — GPT-5.6 Sol, GPT-5.6 Terra, GPT-5.6 Luna
+- **Google** — Gemini 3.7 Flash, Gemini 3.6 Flash, Gemini 3.5 Flash-Lite
+- **OpenRouter** — one key for models from all of the above and more
 
 Switch providers and models at any time. API keys are stored per provider and auto-detected from key format.
 
 **Azure OpenAI / Azure AI Foundry** — The OpenAI provider can be routed through your own Azure deployment instead of `api.openai.com`. Expand **Custom endpoint** under the OpenAI settings and enter your Azure **Endpoint URL** (e.g. `https://YOUR-RESOURCE.openai.azure.com/openai/v1`) and **Deployment name**. Azure keys are sent via the `api-key` header automatically; model traffic stays inside your Azure tenant. This is the recommended setup for teams whose security process only approves Azure-hosted models — see [SECURITY.md](SECURITY.md).
 
-**OpenRouter** — The same custom endpoint field accepts [OpenRouter](https://openrouter.ai), which fronts many model providers behind a single key and bill. Set **Endpoint URL** to `https://openrouter.ai/api/v1`, put the model slug (e.g. `anthropic/claude-sonnet-4.5`) in the **Deployment / model name** field, and paste your `sk-or-v1-…` key. The model dropdown is ignored when a slug is set — the slug decides which model runs.
+**OpenRouter** — [OpenRouter](https://openrouter.ai) is available as its own entry in the **AI Provider** dropdown. It fronts models from many vendors behind a single key and bill, so it's the practical route for teams whose organization can't issue a direct Anthropic, OpenAI, or Google key. Select it, paste your `sk-or-v1-…` key, and pick a model — the dropdown carries a shortlist (Claude, GPT, Gemini), and an **Other model slug** field takes any slug from [openrouter.ai/models](https://openrouter.ai/models) when you want something outside it. Note that OpenRouter slugs are its own namespace and don't always match the vendor's native ID (`openai/gpt-5.6-sol`, not `gpt-5.6`).
 
 ### Component Analysis
 

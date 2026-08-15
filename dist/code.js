@@ -1254,15 +1254,75 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       this.name = "LLMError";
     }
   };
+  var OPENROUTER_MODELS = [
+    {
+      id: "anthropic/claude-opus-5",
+      name: "Claude Opus 5",
+      description: "Anthropic flagship - Most intelligent, best for complex agents and coding",
+      tier: "flagship",
+      contextWindow: 1e6,
+      maxOutputTokens: 128e3,
+      isDefault: false
+    },
+    {
+      id: "anthropic/claude-sonnet-5",
+      name: "Claude Sonnet 5",
+      description: "Anthropic standard - Best combination of speed and intelligence, recommended for most tasks",
+      tier: "standard",
+      contextWindow: 1e6,
+      maxOutputTokens: 128e3,
+      isDefault: true
+    },
+    {
+      id: "openai/gpt-5.6-sol",
+      name: "GPT-5.6 Sol",
+      description: "OpenAI flagship - Frontier reasoning for complex coding and analysis",
+      tier: "flagship",
+      contextWindow: 105e4,
+      maxOutputTokens: 128e3,
+      isDefault: false
+    },
+    {
+      id: "openai/gpt-5.6-terra",
+      name: "GPT-5.6 Terra",
+      description: "OpenAI standard - Balances intelligence and cost",
+      tier: "standard",
+      contextWindow: 105e4,
+      maxOutputTokens: 128e3,
+      isDefault: false
+    },
+    {
+      id: "google/gemini-3.7-flash",
+      name: "Gemini 3.7 Flash",
+      description: "Google flagship - Most intelligent workhorse for coding and agents",
+      tier: "flagship",
+      contextWindow: 1e6,
+      maxOutputTokens: 64e3,
+      isDefault: false
+    },
+    {
+      id: "google/gemini-3.5-flash-lite",
+      name: "Gemini 3.5 Flash-Lite",
+      description: "Google economy - Fastest and most budget-friendly for high-volume tasks",
+      tier: "economy",
+      contextWindow: 1e6,
+      maxOutputTokens: 64e3,
+      isDefault: false
+    }
+  ];
   var DEFAULT_MODELS = {
     anthropic: "claude-sonnet-5",
     openai: "gpt-5.6-terra",
-    google: "gemini-3.7-flash"
+    google: "gemini-3.7-flash",
+    openrouter: "anthropic/claude-sonnet-5"
   };
   function detectProviderFromKey(apiKey) {
     const trimmed = apiKey.trim();
     if (trimmed.startsWith("sk-ant-")) {
       return "anthropic";
+    }
+    if (trimmed.startsWith("sk-or-")) {
+      return "openrouter";
     }
     if (trimmed.startsWith("sk-")) {
       return "openai";
@@ -1594,7 +1654,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       if (trimmedKey.startsWith("sk-or-")) {
         return {
           isValid: false,
-          error: "This is an OpenRouter API key. OpenRouter is supported, but it needs an endpoint: open the custom endpoint section and set the Endpoint URL to https://openrouter.ai/api/v1, plus the model slug you want (e.g. anthropic/claude-sonnet-4.5) in the model field."
+          error: "This is an OpenRouter API key. OpenRouter is supported as its own provider \u2014 switch the AI Provider dropdown to OpenRouter and paste this key there."
         };
       }
       if (!trimmedKey.startsWith(this.keyPrefix)) {
@@ -2048,11 +2108,123 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   };
   var googleProvider = new GoogleProvider();
 
+  // src/api/providers/openrouter.ts
+  var ATTRIBUTION_HEADERS = {
+    "HTTP-Referer": "https://www.figma.com/community/plugin/1521241390290871981",
+    "X-Title": "FigmaLint"
+  };
+  var OpenRouterProviderClass = class {
+    constructor() {
+      this.name = "OpenRouter";
+      this.id = "openrouter";
+      this.endpoint = "https://openrouter.ai/api/v1/chat/completions";
+      this.keyPrefix = "sk-or-";
+      this.keyPlaceholder = "sk-or-v1-...";
+      this.models = OPENROUTER_MODELS;
+    }
+    /**
+     * Identical wire format to OpenAI — delegate rather than duplicate.
+     */
+    formatRequest(config) {
+      return OpenAIProvider.formatRequest(config);
+    }
+    /**
+     * Identical response envelope to OpenAI — delegate rather than duplicate.
+     */
+    parseResponse(response) {
+      return OpenAIProvider.parseResponse(response);
+    }
+    /**
+     * Validate API key format for OpenRouter
+     */
+    validateApiKey(apiKey) {
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          isValid: false,
+          error: "API Key Required: Please provide a valid OpenRouter API key."
+        };
+      }
+      const trimmedKey = apiKey.trim();
+      if (trimmedKey.length === 0) {
+        return {
+          isValid: false,
+          error: "API Key Required: The OpenRouter API key cannot be empty."
+        };
+      }
+      if (!trimmedKey.startsWith(this.keyPrefix)) {
+        return {
+          isValid: false,
+          error: `Invalid API Key Format: OpenRouter API keys start with "${this.keyPrefix}". Create one at openrouter.ai/keys.`
+        };
+      }
+      if (trimmedKey.length < 20) {
+        return {
+          isValid: false,
+          error: "Invalid API Key Format: The API key appears to be too short. Please verify you copied the complete key."
+        };
+      }
+      return { isValid: true };
+    }
+    /**
+     * Get HTTP headers for OpenRouter requests
+     */
+    getHeaders(apiKey) {
+      return __spreadValues({
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey.trim()}`
+      }, ATTRIBUTION_HEADERS);
+    }
+    /**
+     * Get the default model for OpenRouter
+     */
+    getDefaultModel() {
+      const defaultModel = this.models.find((model) => model.isDefault);
+      return defaultModel || this.models[0];
+    }
+    /**
+     * Handle OpenRouter-specific error responses.
+     *
+     * OpenRouter returns OpenAI-shaped errors, but the causes differ enough to be
+     * worth naming: a 404 is almost always a bad model slug rather than a bad
+     * endpoint, and a 402 (which OpenAI does not use) means the account is out of
+     * credits.
+     */
+    handleError(statusCode, response) {
+      var _a;
+      const errorResponse = response;
+      const errorMessage = ((_a = errorResponse == null ? void 0 : errorResponse.error) == null ? void 0 : _a.message) || (typeof response === "string" ? response : "Unknown error");
+      switch (statusCode) {
+        case 401:
+          return new LLMError(
+            `OpenRouter API Error (401): ${errorMessage} Check your OpenRouter API key in settings \u2014 it should start with "sk-or-" and be active at openrouter.ai/keys.`,
+            "INVALID_API_KEY" /* INVALID_API_KEY */,
+            401
+          );
+        case 402:
+          return new LLMError(
+            `OpenRouter API Error (402): ${errorMessage} Your OpenRouter account is out of credits \u2014 add credits at openrouter.ai/credits.`,
+            "INVALID_REQUEST" /* INVALID_REQUEST */,
+            402
+          );
+        case 404:
+          return new LLMError(
+            `OpenRouter API Error (404): ${errorMessage} The model slug was not recognized \u2014 check it against openrouter.ai/models (slugs look like "anthropic/claude-sonnet-5").`,
+            "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */,
+            404
+          );
+        default:
+          return OpenAIProvider.handleError(statusCode, response);
+      }
+    }
+  };
+  var openrouterProvider = new OpenRouterProviderClass();
+
   // src/api/providers/index.ts
   var providers = {
     anthropic: anthropicProvider,
     openai: OpenAIProvider,
-    google: googleProvider
+    google: googleProvider,
+    openrouter: openrouterProvider
   };
   function getProvider(providerId) {
     const provider = providers[providerId];
@@ -2077,6 +2249,11 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         if (custom.deployment) {
           effectiveConfig = __spreadProps(__spreadValues({}, config), { model: custom.deployment });
         }
+      }
+    } else if (providerId === "openrouter") {
+      const customSlug = await loadOpenRouterCustomModel();
+      if (customSlug) {
+        effectiveConfig = __spreadProps(__spreadValues({}, config), { model: customSlug });
       }
     }
     if (customOpenAIEndpoint) {
@@ -2195,6 +2372,12 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
      * fall back to the selected model from the dropdown.
      */
     OPENAI_CUSTOM_DEPLOYMENT: "openai-custom-deployment",
+    /**
+     * Free-text OpenRouter model slug. OpenRouter fronts hundreds of models and the
+     * dropdown only carries a shortlist, so this overrides the selection when set.
+     * Empty = use the selected model from the dropdown.
+     */
+    OPENROUTER_CUSTOM_MODEL: "openrouter-custom-model",
     /** Legacy Claude key (for migration) */
     LEGACY_CLAUDE_KEY: "claude-api-key",
     LEGACY_CLAUDE_MODEL: "claude-model"
@@ -2213,6 +2396,24 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       return `${trimmed}/api/v1/chat/completions`;
     }
     return `${trimmed}/chat/completions`;
+  }
+  async function loadOpenRouterCustomModel() {
+    try {
+      const slug = await figma.clientStorage.getAsync(
+        STORAGE_KEYS.OPENROUTER_CUSTOM_MODEL
+      );
+      return (slug || "").trim();
+    } catch (e) {
+      return "";
+    }
+  }
+  async function saveOpenRouterCustomModel(slug) {
+    const trimmed = (slug || "").trim();
+    if (!trimmed) {
+      await figma.clientStorage.deleteAsync(STORAGE_KEYS.OPENROUTER_CUSTOM_MODEL);
+      return;
+    }
+    await figma.clientStorage.setAsync(STORAGE_KEYS.OPENROUTER_CUSTOM_MODEL, trimmed);
   }
   async function loadOpenAIEndpointConfig() {
     try {
@@ -6367,7 +6568,9 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       case "anthropic":
         return trimmed.startsWith("sk-ant-") && !trimmed.startsWith("sk-ant-admin") && trimmed.length >= 40;
       case "openai":
-        return trimmed.startsWith("sk-") && !trimmed.startsWith("sk-or-") && trimmed.length >= 20;
+        return trimmed.startsWith("sk-") && !trimmed.startsWith("sk-or-") && !trimmed.startsWith("sk-ant-") && trimmed.length >= 20;
+      case "openrouter":
+        return trimmed.startsWith("sk-or-") && trimmed.length >= 20;
       case "google":
         return (trimmed.startsWith("AIza") || trimmed.startsWith("AQ.")) && trimmed.length >= 30 && trimmed.length <= 100;
       default:
@@ -6387,7 +6590,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           await handleCheckApiKey();
           break;
         case "save-api-key":
-          await handleSaveApiKey(data.apiKey, data.model, data.provider, data.customEndpoint, data.customDeployment);
+          await handleSaveApiKey(data.apiKey, data.model, data.provider, data.customEndpoint, data.customDeployment, data.openrouterModel);
           break;
         case "update-model":
           await handleUpdateModel(data.model);
@@ -6467,6 +6670,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       selectedProvider = config.providerId;
       selectedModel = config.modelId;
       const openaiEndpoint = config.openaiEndpoint;
+      const openrouterModel = await loadOpenRouterCustomModel();
       const hasCustomEndpoint = config.providerId === "openai" && !!openaiEndpoint.endpoint;
       const savedKeyUsable = !!config.apiKey && (hasCustomEndpoint ? config.apiKey.trim().length > 0 : isValidApiKeyFormat(config.apiKey, config.providerId));
       if (storedApiKey) {
@@ -6474,7 +6678,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           hasKey: true,
           provider: selectedProvider,
           model: selectedModel,
-          openaiEndpoint
+          openaiEndpoint,
+          openrouterModel
         });
         return;
       }
@@ -6484,14 +6689,16 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           hasKey: true,
           provider: selectedProvider,
           model: selectedModel,
-          openaiEndpoint
+          openaiEndpoint,
+          openrouterModel
         });
       } else {
         sendMessageToUI("api-key-status", {
           hasKey: false,
           provider: selectedProvider,
           model: selectedModel,
-          openaiEndpoint
+          openaiEndpoint,
+          openrouterModel
         });
       }
     } catch (error) {
@@ -6499,7 +6706,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       sendMessageToUI("api-key-status", { hasKey: false, provider: "anthropic" });
     }
   }
-  async function handleSaveApiKey(apiKey, model, provider, customEndpoint, customDeployment) {
+  async function handleSaveApiKey(apiKey, model, provider, customEndpoint, customDeployment, openrouterModel) {
     try {
       const providerId = provider || selectedProvider;
       const hasCustomEndpoint = providerId === "openai" && !!(customEndpoint && customEndpoint.trim());
@@ -6524,6 +6731,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       if (providerId === "openai") {
         await saveOpenAIEndpointConfig(customEndpoint || "", customDeployment || "");
       }
+      await saveOpenRouterCustomModel(providerId === "openrouter" ? openrouterModel || "" : "");
       selectedProvider = providerId;
       storedApiKey = apiKey;
       if (model) {

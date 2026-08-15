@@ -15,6 +15,8 @@ import {
   loadProviderConfig,
   saveProviderConfig,
   saveOpenAIEndpointConfig,
+  saveOpenRouterCustomModel,
+  loadOpenRouterCustomModel,
   clearProviderKey,
   migrateLegacyStorage,
 } from '../api/providers';
@@ -54,10 +56,17 @@ function isValidApiKeyFormat(apiKey: string, provider: ProviderId = selectedProv
       // detailed provider message instead of failing with a 401 at analyze time.
       return trimmed.startsWith('sk-ant-') && !trimmed.startsWith('sk-ant-admin') && trimmed.length >= 40;
     case 'openai':
-      // sk-or-... are OpenRouter keys — valid, but only via a custom endpoint.
-      // Rejected here so handleSaveApiKey surfaces the provider's detailed message
-      // (this path only runs when no custom endpoint is configured).
-      return trimmed.startsWith('sk-') && !trimmed.startsWith('sk-or-') && trimmed.length >= 20;
+      // `sk-` alone is too loose: Anthropic (sk-ant-) and OpenRouter (sk-or-) keys
+      // both match it. Excluding them lets handleSaveApiKey detect the mismatch and
+      // name the right dropdown entry instead of saving a key that 401s later.
+      return (
+        trimmed.startsWith('sk-') &&
+        !trimmed.startsWith('sk-or-') &&
+        !trimmed.startsWith('sk-ant-') &&
+        trimmed.length >= 20
+      );
+    case 'openrouter':
+      return trimmed.startsWith('sk-or-') && trimmed.length >= 20;
     case 'google':
       return (
         (trimmed.startsWith('AIza') || trimmed.startsWith('AQ.')) &&
@@ -95,7 +104,7 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         await handleCheckApiKey();
         break;
       case 'save-api-key':
-        await handleSaveApiKey(data.apiKey, data.model, data.provider, data.customEndpoint, data.customDeployment);
+        await handleSaveApiKey(data.apiKey, data.model, data.provider, data.customEndpoint, data.customDeployment, data.openrouterModel);
         break;
       case 'update-model':
         await handleUpdateModel(data.model);
@@ -185,6 +194,8 @@ async function handleCheckApiKey(): Promise<void> {
     // A custom OpenAI endpoint (Azure) changes how the saved key is validated:
     // Azure/gateway keys don't follow the `sk-` convention.
     const openaiEndpoint = config.openaiEndpoint;
+    // Round-tripped to the UI so the slug field repopulates on reopen.
+    const openrouterModel = await loadOpenRouterCustomModel();
     const hasCustomEndpoint = config.providerId === 'openai' && !!openaiEndpoint.endpoint;
     const savedKeyUsable = !!config.apiKey && (
       hasCustomEndpoint ? config.apiKey.trim().length > 0 : isValidApiKeyFormat(config.apiKey, config.providerId)
@@ -196,7 +207,8 @@ async function handleCheckApiKey(): Promise<void> {
         hasKey: true,
         provider: selectedProvider,
         model: selectedModel,
-        openaiEndpoint
+        openaiEndpoint,
+        openrouterModel
       });
       return;
     }
@@ -208,14 +220,16 @@ async function handleCheckApiKey(): Promise<void> {
         hasKey: true,
         provider: selectedProvider,
         model: selectedModel,
-        openaiEndpoint
+        openaiEndpoint,
+        openrouterModel
       });
     } else {
       sendMessageToUI('api-key-status', {
         hasKey: false,
         provider: selectedProvider,
         model: selectedModel,
-        openaiEndpoint
+        openaiEndpoint,
+        openrouterModel
       });
     }
   } catch (error) {
@@ -232,7 +246,8 @@ async function handleSaveApiKey(
   model?: string,
   provider?: string,
   customEndpoint?: string,
-  customDeployment?: string
+  customDeployment?: string,
+  openrouterModel?: string
 ): Promise<void> {
   try {
     // Update provider if specified
@@ -276,6 +291,10 @@ async function handleSaveApiKey(
     if (providerId === 'openai') {
       await saveOpenAIEndpointConfig(customEndpoint || '', customDeployment || '');
     }
+
+    // Persist (or clear) the free-text OpenRouter slug. Cleared for other providers
+    // so a stale slug can't leak into a later OpenRouter session.
+    await saveOpenRouterCustomModel(providerId === 'openrouter' ? openrouterModel || '' : '');
 
     // Update state
     selectedProvider = providerId;
