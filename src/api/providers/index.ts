@@ -132,6 +132,34 @@ export function getAllProviderModels(): Array<{ provider: LLMProvider; model: LL
 }
 
 /**
+ * List the providers that currently have an API key in storage.
+ *
+ * The UI keeps its own `apiKeySaved` flag, which it resets whenever the provider
+ * dropdown changes. Without a way to ask what is actually stored, switching away
+ * from a configured provider and back left the UI believing it was unconfigured —
+ * keys live plugin-side and are never echoed back, so it had nothing to re-check
+ * against.
+ *
+ * @returns Provider IDs with a non-empty stored key
+ */
+export async function listProvidersWithKeys(): Promise<ProviderId[]> {
+  const configured: ProviderId[] = [];
+  for (const providerId of providerIds) {
+    try {
+      const key = (await figma.clientStorage.getAsync(
+        STORAGE_KEYS.apiKey(providerId)
+      )) as string | null;
+      if (key && key.trim()) {
+        configured.push(providerId);
+      }
+    } catch {
+      // A single unreadable entry shouldn't hide the rest.
+    }
+  }
+  return configured;
+}
+
+/**
  * Find a model by ID across all providers
  *
  * @param modelId - The model identifier to find

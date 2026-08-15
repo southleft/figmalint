@@ -2226,6 +2226,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     google: googleProvider,
     openrouter: openrouterProvider
   };
+  var providerIds = ["anthropic", "openai", "google", "openrouter"];
   function getProvider(providerId) {
     const provider = providers[providerId];
     if (!provider) {
@@ -2236,6 +2237,21 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       );
     }
     return provider;
+  }
+  async function listProvidersWithKeys() {
+    const configured = [];
+    for (const providerId of providerIds) {
+      try {
+        const key = await figma.clientStorage.getAsync(
+          STORAGE_KEYS.apiKey(providerId)
+        );
+        if (key && key.trim()) {
+          configured.push(providerId);
+        }
+      } catch (e) {
+      }
+    }
+    return configured;
   }
   async function callProvider(providerId, apiKey, config) {
     var _a, _b;
@@ -6592,6 +6608,9 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         case "save-api-key":
           await handleSaveApiKey(data.apiKey, data.model, data.provider, data.customEndpoint, data.customDeployment, data.openrouterModel);
           break;
+        case "update-provider":
+          await handleUpdateProvider(data.provider, data.model);
+          break;
         case "update-model":
           await handleUpdateModel(data.model);
           break;
@@ -6671,6 +6690,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       selectedModel = config.modelId;
       const openaiEndpoint = config.openaiEndpoint;
       const openrouterModel = await loadOpenRouterCustomModel();
+      const savedProviders = await listProvidersWithKeys();
       const hasCustomEndpoint = config.providerId === "openai" && !!openaiEndpoint.endpoint;
       const savedKeyUsable = !!config.apiKey && (hasCustomEndpoint ? config.apiKey.trim().length > 0 : isValidApiKeyFormat(config.apiKey, config.providerId));
       if (storedApiKey) {
@@ -6679,7 +6699,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           provider: selectedProvider,
           model: selectedModel,
           openaiEndpoint,
-          openrouterModel
+          openrouterModel,
+          savedProviders
         });
         return;
       }
@@ -6690,7 +6711,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           provider: selectedProvider,
           model: selectedModel,
           openaiEndpoint,
-          openrouterModel
+          openrouterModel,
+          savedProviders
         });
       } else {
         sendMessageToUI("api-key-status", {
@@ -6698,7 +6720,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           provider: selectedProvider,
           model: selectedModel,
           openaiEndpoint,
-          openrouterModel
+          openrouterModel,
+          savedProviders
         });
       }
     } catch (error) {
@@ -6747,6 +6770,32 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
       sendMessageToUI("api-key-saved", { success: false, error: errorMessage });
       figma.notify(`Failed to save API key: ${errorMessage}`, { error: true });
+    }
+  }
+  async function handleUpdateProvider(provider, model) {
+    try {
+      const providerId = provider;
+      if (!providerId || !providers[providerId]) {
+        return;
+      }
+      const savedKey = await figma.clientStorage.getAsync(
+        STORAGE_KEYS.apiKey(providerId)
+      );
+      if (!savedKey || !savedKey.trim()) {
+        await handleCheckApiKey();
+        return;
+      }
+      selectedProvider = providerId;
+      storedApiKey = savedKey;
+      if (model) {
+        selectedModel = model;
+      }
+      await saveProviderConfig(providerId, selectedModel, savedKey);
+      console.log(`Active provider switched to ${providerId} (${selectedModel})`);
+      await handleCheckApiKey();
+    } catch (error) {
+      console.error("Error switching provider:", error);
+      figma.notify("Failed to switch provider", { error: true });
     }
   }
   async function handleUpdateModel(model) {

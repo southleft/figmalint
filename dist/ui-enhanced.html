@@ -2886,6 +2886,10 @@
     // UI State Management
     let currentTab = 'analyze';
     let apiKeySaved = false;
+    // Providers with a key in plugin storage. Keys themselves are never echoed to
+    // the UI, so this is the only way to tell a configured provider from a blank
+    // one after the dropdown changes.
+    let savedProviders = [];
     let currentMetadata = null;
     let currentAuditResults = null;
     let currentTokenSummary = null;
@@ -3467,7 +3471,19 @@
 
       // Provider selection handling
       if (providerSelect) {
-        providerSelect.addEventListener('change', handleProviderChange);
+        providerSelect.addEventListener('change', () => {
+          handleProviderChange();
+          // Emitted here rather than inside handleProviderChange because that
+          // function also runs when the plugin pushes state back to the UI —
+          // sending from there would bounce update-provider and api-key-status
+          // off each other indefinitely. A `change` event is always user-driven.
+          if (apiKeySaved) {
+            sendMessageToPlugin('update-provider', {
+              provider: providerSelect.value,
+              model: modelSelect.value
+            });
+          }
+        });
       }
 
       // Model selection handling
@@ -3518,10 +3534,13 @@
       });
 
       hideConfigButton.addEventListener('click', () => {
-        if (apiKeySaved) {
-          apiKeyCard.style.display = 'none';
-          quickActions.style.display = 'flex';
-        }
+        // Unconditional by design. This used to be gated on `apiKeySaved`, so any
+        // state that cleared that flag — switching provider and back, most often —
+        // left Hide silently inert with no feedback, reading as a broken button.
+        // The gate was redundant anyway: Hide is only visible once a key has been
+        // saved, and Show brings the panel straight back.
+        apiKeyCard.style.display = 'none';
+        quickActions.style.display = 'flex';
       });
 
       // Export functionality
@@ -4265,19 +4284,30 @@
         openrouterModelGroup.style.display = selectedProvider === 'openrouter' ? 'block' : 'none';
       }
 
-      // Reset saved-state: a key saved for the previous provider is not valid
-      // for this one. The user must click "Save Key" again before analyze can run.
-      // This also prevents handleModelChange from firing update-model with a
-      // model ID that doesn't match the saved provider on the plugin side.
-      apiKeySaved = false;
-      clearApiKeyLink.classList.add('hidden');
-      updateAnalyzeButtonState(false);
+      // Reflect whether THIS provider already has a key in plugin storage. A key
+      // saved for the previous provider isn't valid for this one, but switching to
+      // a provider that is already configured must not present it as blank — that
+      // desync is what made Hide look broken.
+      const providerHasKey = savedProviders.indexOf(selectedProvider) !== -1;
+      apiKeySaved = providerHasKey;
+      if (providerHasKey) {
+        apiKeyInput.placeholder = 'API key saved \u2713';
+        clearApiKeyLink.classList.remove('hidden');
+      } else {
+        clearApiKeyLink.classList.add('hidden');
+      }
+      updateAnalyzeButtonState(providerHasKey);
 
       // Hide any error toast left over from the previous provider
       if (statusContainer && !statusContainer.classList.contains('hidden')) {
         statusContainer.classList.add('hidden');
       }
-      updateStatus(`Save your ${config.name} API key to continue`, 'info');
+      updateStatus(
+        providerHasKey
+          ? `Using your saved ${config.name} API key`
+          : `Save your ${config.name} API key to continue`,
+        providerHasKey ? 'success' : 'info'
+      );
 
       console.log('Provider changed to:', selectedProvider, 'Model:', config.defaultModel);
     }
@@ -4442,6 +4472,7 @@
         apiKeyInput.placeholder = 'sk-ant-...';
         clearApiKeyLink.classList.add('hidden');
         apiKeySaved = false;
+        savedProviders = savedProviders.filter(function (p) { return p !== currentProvider; });
         updateAnalyzeButtonState(false);
         updateStatus('API key cleared', 'info');
 
@@ -4467,7 +4498,7 @@
           handleApiKeySaved(data.success, data.provider, data.error);
           break;
         case 'api-key-status':
-          handleApiKeyStatus(data.hasKey, data.provider, data.model, data.openaiEndpoint, data.openrouterModel);
+          handleApiKeyStatus(data.hasKey, data.provider, data.model, data.openaiEndpoint, data.openrouterModel, data.savedProviders);
           break;
         case 'enhanced-analysis-result':
           handleEnhancedAnalysisResult(data);
@@ -4563,6 +4594,10 @@
           handleProviderChange();
         }
         apiKeySaved = true;
+        const savedFor = provider || currentProvider;
+        if (savedFor && savedProviders.indexOf(savedFor) === -1) {
+          savedProviders.push(savedFor);
+        }
         updateStatus('API key saved successfully!', 'success');
         updateAnalyzeButtonState(true);
         clearApiKeyLink.classList.remove('hidden');
@@ -4584,7 +4619,12 @@
     }
 
     // Handle API Key Status
-    function handleApiKeyStatus(hasKey, provider, model, openaiEndpoint, openrouterModel) {
+    function handleApiKeyStatus(hasKey, provider, model, openaiEndpoint, openrouterModel, providersWithKeys) {
+      // Assign before handleProviderChange() below — it reads this to decide whether
+      // the incoming provider is already configured.
+      if (Array.isArray(providersWithKeys)) {
+        savedProviders = providersWithKeys;
+      }
       // Restore saved provider and model selections first. handleProviderChange()
       // unconditionally resets `apiKeySaved = false` (it's also the user-driven
       // dropdown handler), so we must assign apiKeySaved AFTER it runs — mirroring

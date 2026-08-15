@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.10.1
+
+### Fixed
+- **The Hide button no longer stops working.** Hiding the configuration panel was gated on an internal "key is saved" flag, and clicking Hide while that flag was false did nothing at all — no movement, no message, indistinguishable from a dead button. The flag was reset by any provider-dropdown change, so opening settings and looking at the AI Provider list was enough to trigger it. Hide is now unconditional: it's only shown once a key has been saved, and Show reopens the panel, so the gate protected nothing.
+- **Switching to an already-configured provider no longer looks unconfigured.** The UI reset its saved-key state on every provider change and had no way to ask what was actually stored, because keys live plugin-side and are never sent back to the UI. Switching away from a configured provider and back therefore showed an empty key field, a "Save your API key to continue" prompt, and a disabled Analyze button despite the key still being saved. The UI is now told which providers have a stored key and reflects that.
+
+### Changed
+- **Switching between configured providers no longer requires re-saving the key.** Selecting a provider that already has a stored key now switches the plugin for real and re-enables analysis immediately. Previously the dropdown changed only the UI — the plugin kept using whichever provider was last saved — so the interface had to force a re-save to avoid silently analyzing with the wrong provider. Selecting a provider with no stored key still prompts for one, and leaves the active provider untouched until it's saved.
+
 ## 2.10.0
 
 ### Changed

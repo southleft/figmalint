@@ -186,6 +186,7 @@ export type UIMessageType =
   | 'check-api-key'
   | 'save-api-key'
   | 'update-model'
+  | 'update-provider'
   | 'analyze'
   | 'analyze-enhanced'
   | 'clear-api-key'

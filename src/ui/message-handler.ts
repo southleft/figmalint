@@ -17,6 +17,9 @@ import {
   saveOpenAIEndpointConfig,
   saveOpenRouterCustomModel,
   loadOpenRouterCustomModel,
+  listProvidersWithKeys,
+  providers,
+  STORAGE_KEYS,
   clearProviderKey,
   migrateLegacyStorage,
 } from '../api/providers';
@@ -105,6 +108,9 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         break;
       case 'save-api-key':
         await handleSaveApiKey(data.apiKey, data.model, data.provider, data.customEndpoint, data.customDeployment, data.openrouterModel);
+        break;
+      case 'update-provider':
+        await handleUpdateProvider(data.provider, data.model);
         break;
       case 'update-model':
         await handleUpdateModel(data.model);
@@ -196,6 +202,9 @@ async function handleCheckApiKey(): Promise<void> {
     const openaiEndpoint = config.openaiEndpoint;
     // Round-tripped to the UI so the slug field repopulates on reopen.
     const openrouterModel = await loadOpenRouterCustomModel();
+    // Lets the UI keep its saved-state flag accurate when the provider dropdown
+    // changes, instead of assuming every switch lands on an unconfigured provider.
+    const savedProviders = await listProvidersWithKeys();
     const hasCustomEndpoint = config.providerId === 'openai' && !!openaiEndpoint.endpoint;
     const savedKeyUsable = !!config.apiKey && (
       hasCustomEndpoint ? config.apiKey.trim().length > 0 : isValidApiKeyFormat(config.apiKey, config.providerId)
@@ -208,7 +217,8 @@ async function handleCheckApiKey(): Promise<void> {
         provider: selectedProvider,
         model: selectedModel,
         openaiEndpoint,
-        openrouterModel
+        openrouterModel,
+        savedProviders
       });
       return;
     }
@@ -221,7 +231,8 @@ async function handleCheckApiKey(): Promise<void> {
         provider: selectedProvider,
         model: selectedModel,
         openaiEndpoint,
-        openrouterModel
+        openrouterModel,
+        savedProviders
       });
     } else {
       sendMessageToUI('api-key-status', {
@@ -229,7 +240,8 @@ async function handleCheckApiKey(): Promise<void> {
         provider: selectedProvider,
         model: selectedModel,
         openaiEndpoint,
-        openrouterModel
+        openrouterModel,
+        savedProviders
       });
     }
   } catch (error) {
@@ -317,6 +329,55 @@ async function handleSaveApiKey(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     sendMessageToUI('api-key-saved', { success: false, error: errorMessage });
     figma.notify(`Failed to save API key: ${errorMessage}`, { error: true });
+  }
+}
+
+/**
+ * Update selected model
+ */
+/**
+ * Switch to a provider that already has a stored key, without re-entering it.
+ *
+ * The dropdown previously changed UI state only — the plugin's provider was set
+ * just on load and on save. Acting on a dropdown switch alone would therefore run
+ * the analysis against the *previous* provider, so the UI had to force a re-save
+ * to stay honest. This makes the switch real: the stored key is promoted to the
+ * active one and persisted, and the UI is re-synced from actual state.
+ *
+ * No-ops when the target provider has no stored key — the UI keeps prompting for
+ * one, which is the correct outcome.
+ */
+async function handleUpdateProvider(provider?: string, model?: string): Promise<void> {
+  try {
+    const providerId = provider as ProviderId;
+    if (!providerId || !providers[providerId]) {
+      return;
+    }
+
+    const savedKey = (await figma.clientStorage.getAsync(
+      STORAGE_KEYS.apiKey(providerId)
+    )) as string | null;
+
+    if (!savedKey || !savedKey.trim()) {
+      // Nothing stored for this provider — leave the active provider alone so a
+      // half-finished switch can't strand analysis on a provider with no key.
+      await handleCheckApiKey();
+      return;
+    }
+
+    selectedProvider = providerId;
+    storedApiKey = savedKey;
+    if (model) {
+      selectedModel = model;
+    }
+    await saveProviderConfig(providerId, selectedModel, savedKey);
+    console.log(`Active provider switched to ${providerId} (${selectedModel})`);
+
+    // Re-derive UI state from storage rather than assuming the switch succeeded.
+    await handleCheckApiKey();
+  } catch (error) {
+    console.error('Error switching provider:', error);
+    figma.notify('Failed to switch provider', { error: true });
   }
 }
 
