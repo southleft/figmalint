@@ -15,8 +15,9 @@
       "https://design-systems-mcp.southleft-llc.workers.dev",
       "https://*.openai.azure.com",
       "https://*.ai.azure.com",
-      "https://*.cognitiveservices.azure.com"
+      "https://*.cognitiveservices.azure.com",
+      "https://openrouter.ai"
     ],
-    "reasoning": "Requests go only to the user's chosen AI provider (Anthropic, OpenAI, or Google) using their own API key, plus the FigmaLint design-systems knowledge service. The Azure domains let teams route the OpenAI provider through their own Azure OpenAI / Azure AI Foundry deployment instead of api.openai.com, keeping model traffic inside their approved Azure tenant."
+    "reasoning": "Requests go only to the user's chosen AI provider (Anthropic, OpenAI, or Google) using their own API key, plus the FigmaLint design-systems knowledge service. The Azure domains let teams route the OpenAI provider through their own Azure OpenAI / Azure AI Foundry deployment instead of api.openai.com, keeping model traffic inside their approved Azure tenant. openrouter.ai serves the same purpose for teams that consolidate model access and billing through OpenRouter's OpenAI-compatible gateway."
   }
 }

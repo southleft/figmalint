@@ -1585,6 +1585,12 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
           error: "API Key Required: The OpenAI API key cannot be empty."
         };
       }
+      if (trimmedKey.startsWith("sk-or-")) {
+        return {
+          isValid: false,
+          error: "This is an OpenRouter API key. OpenRouter is supported, but it needs an endpoint: open the custom endpoint section and set the Endpoint URL to https://openrouter.ai/api/v1, plus the model slug you want (e.g. anthropic/claude-sonnet-4.5) in the model field."
+        };
+      }
       if (!trimmedKey.startsWith(this.keyPrefix)) {
         return {
           isValid: false,
@@ -2090,6 +2096,11 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       endpoint = normalizeChatCompletionsEndpoint(customOpenAIEndpoint);
       if (isAzureEndpoint(customOpenAIEndpoint)) {
         headers = { "Content-Type": "application/json", "api-key": apiKey.trim() };
+      } else if (isOpenRouterEndpoint(customOpenAIEndpoint)) {
+        headers = __spreadProps(__spreadValues({}, headers), {
+          "HTTP-Referer": "https://www.figma.com/community/plugin/1521241390290871981",
+          "X-Title": "FigmaLint"
+        });
       }
     }
     try {
@@ -2144,7 +2155,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       const lower = rawMessage.toLowerCase();
       if (lower.includes("whitelist") || lower.includes("not allowed") || lower.includes("allowedDomains".toLowerCase()) || lower.includes("non-whitelisted")) {
         throw new LLMError(
-          `Figma blocked the request to "${host}". This domain isn't in the plugin's network allowlist. Custom endpoints are supported only for Azure model hosts (*.openai.azure.com, *.services.ai.azure.com, *.cognitiveservices.azure.com, *.inference.ai.azure.com). Check that your Endpoint URL points at one of these. (${rawMessage})`,
+          `Figma blocked the request to "${host}". This domain isn't in the plugin's network allowlist. Custom endpoints are supported for Azure model hosts and OpenRouter (${SUPPORTED_CUSTOM_ENDPOINT_HOSTS}). Check that your Endpoint URL points at one of these. (${rawMessage})`,
           "NETWORK_ERROR" /* NETWORK_ERROR */
         );
       }
@@ -2185,9 +2196,16 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   function isAzureEndpoint(endpoint) {
     return /\.azure\.com(?:[:/]|$)/i.test(endpoint.trim());
   }
+  function isOpenRouterEndpoint(endpoint) {
+    return /(^|\/\/|\.)openrouter\.ai(?:[:/]|$)/i.test(endpoint.trim());
+  }
+  var SUPPORTED_CUSTOM_ENDPOINT_HOSTS = "*.openai.azure.com, *.ai.azure.com, *.cognitiveservices.azure.com, openrouter.ai";
   function normalizeChatCompletionsEndpoint(endpoint) {
     const trimmed = endpoint.trim().replace(/\/+$/, "");
     if (/\/chat\/completions$/i.test(trimmed)) return trimmed;
+    if (isOpenRouterEndpoint(trimmed) && !/\/api\/v\d/i.test(trimmed)) {
+      return `${trimmed}/api/v1/chat/completions`;
+    }
     return `${trimmed}/chat/completions`;
   }
   async function loadOpenAIEndpointConfig() {
@@ -4241,7 +4259,14 @@ ${scoringCriteria}
     debugLog(`  Name-based: ${isContainerByName}`);
     debugLog(`  Structure-based: ${isContainerByStructure}`);
     debugLog(`  Final result: ${isContainer}`);
-    if (nodeName.includes("avatar") || nodeName.includes("profile")) {
+    if (isContainer) {
+      context.componentFamily = "container";
+      context.possibleUseCase = "Layout container for organizing child components";
+      context.hasInteractiveElements = false;
+      context.suggestedConsiderations.push("Focus on layout and organization rather than interaction states");
+      context.suggestedConsiderations.push("Child components handle individual interactions");
+      context.designPatterns.push("layout-container", "component-organization");
+    } else if (nodeName.includes("avatar") || nodeName.includes("profile")) {
       context.componentFamily = "avatar";
       context.possibleUseCase = "User representation, often clickable for profile access or dropdown menus";
       context.hasInteractiveElements = true;
@@ -4278,13 +4303,6 @@ ${scoringCriteria}
       context.hasInteractiveElements = false;
       context.suggestedConsiderations.push("Usually decorative, but may be interactive if part of a button");
       context.designPatterns.push("visual-indicator", "decoration");
-    } else if (isContainer) {
-      context.componentFamily = "container";
-      context.possibleUseCase = "Layout container for organizing child components";
-      context.hasInteractiveElements = false;
-      context.suggestedConsiderations.push("Focus on layout and organization rather than interaction states");
-      context.suggestedConsiderations.push("Child components handle individual interactions");
-      context.designPatterns.push("layout-container", "component-organization");
     }
     if ("children" in node) {
       const hasTextWithAction = node.findAll(
@@ -6343,7 +6361,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       case "anthropic":
         return trimmed.startsWith("sk-ant-") && !trimmed.startsWith("sk-ant-admin") && trimmed.length >= 40;
       case "openai":
-        return trimmed.startsWith("sk-") && trimmed.length >= 20;
+        return trimmed.startsWith("sk-") && !trimmed.startsWith("sk-or-") && trimmed.length >= 20;
       case "google":
         return (trimmed.startsWith("AIza") || trimmed.startsWith("AQ.")) && trimmed.length >= 30 && trimmed.length <= 100;
       default:
@@ -6481,7 +6499,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       const hasCustomEndpoint = providerId === "openai" && !!(customEndpoint && customEndpoint.trim());
       if (hasCustomEndpoint) {
         if (!apiKey || !apiKey.trim()) {
-          throw new Error("Please enter your Azure / OpenAI-compatible API key.");
+          throw new Error("Please enter the API key for your custom endpoint (Azure, OpenRouter, or another OpenAI-compatible gateway).");
         }
       } else if (!isValidApiKeyFormat(apiKey, providerId)) {
         const providerObj2 = getProvider(providerId);

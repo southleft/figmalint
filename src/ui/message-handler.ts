@@ -54,7 +54,10 @@ function isValidApiKeyFormat(apiKey: string, provider: ProviderId = selectedProv
       // detailed provider message instead of failing with a 401 at analyze time.
       return trimmed.startsWith('sk-ant-') && !trimmed.startsWith('sk-ant-admin') && trimmed.length >= 40;
     case 'openai':
-      return trimmed.startsWith('sk-') && trimmed.length >= 20;
+      // sk-or-... are OpenRouter keys — valid, but only via a custom endpoint.
+      // Rejected here so handleSaveApiKey surfaces the provider's detailed message
+      // (this path only runs when no custom endpoint is configured).
+      return trimmed.startsWith('sk-') && !trimmed.startsWith('sk-or-') && trimmed.length >= 20;
     case 'google':
       return (
         (trimmed.startsWith('AIza') || trimmed.startsWith('AQ.')) &&
@@ -235,15 +238,15 @@ async function handleSaveApiKey(
     // Update provider if specified
     const providerId = (provider as ProviderId) || selectedProvider;
 
-    // A custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry) uses
-    // keys that don't follow the `sk-` convention, so the format check is skipped
-    // for that case — we only require a non-empty key.
+    // A custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry,
+    // OpenRouter) uses keys that don't follow the `sk-` convention, so the format
+    // check is skipped for that case — we only require a non-empty key.
     const hasCustomEndpoint = providerId === 'openai' && !!(customEndpoint && customEndpoint.trim());
 
     // Validate API key format for the provider
     if (hasCustomEndpoint) {
       if (!apiKey || !apiKey.trim()) {
-        throw new Error('Please enter your Azure / OpenAI-compatible API key.');
+        throw new Error('Please enter the API key for your custom endpoint (Azure, OpenRouter, or another OpenAI-compatible gateway).');
       }
     } else if (!isValidApiKeyFormat(apiKey, providerId)) {
       const providerObj = getProvider(providerId);

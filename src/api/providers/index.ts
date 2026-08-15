@@ -160,10 +160,11 @@ export async function callProvider(
 ): Promise<LLMResponse> {
   const provider = getProvider(providerId);
 
-  // OpenAI can be pointed at a custom Azure OpenAI / Azure AI Foundry endpoint.
-  // Resolve that first — it changes endpoint, auth header, the request `model`
-  // (Azure deployments have arbitrary names), and relaxes key-format validation
-  // (Azure/gateway keys are not `sk-...`).
+  // OpenAI can be pointed at a custom OpenAI-compatible endpoint (Azure OpenAI /
+  // Azure AI Foundry, OpenRouter). Resolve that first — it changes endpoint, auth
+  // header, the request `model` (Azure deployments and OpenRouter slugs are not
+  // OpenAI model IDs), and relaxes key-format validation (gateway keys are not
+  // always `sk-...`).
   let customOpenAIEndpoint = '';
   let effectiveConfig = config;
   if (providerId === 'openai') {
@@ -208,9 +209,18 @@ export async function callProvider(
     // present the endpoint as a base and expect the client to add the chat route.
     endpoint = normalizeChatCompletionsEndpoint(customOpenAIEndpoint);
     // Azure authenticates with an `api-key` header instead of Bearer. Other
-    // OpenAI-compatible gateways keep the standard Bearer header.
+    // OpenAI-compatible gateways (OpenRouter, LiteLLM, ...) keep the standard
+    // Bearer header.
     if (isAzureEndpoint(customOpenAIEndpoint)) {
       headers = { 'Content-Type': 'application/json', 'api-key': apiKey.trim() };
+    } else if (isOpenRouterEndpoint(customOpenAIEndpoint)) {
+      // Optional attribution headers — OpenRouter uses them to label the request
+      // in the user's activity log. Neither affects routing or auth.
+      headers = {
+        ...headers,
+        'HTTP-Referer': 'https://www.figma.com/community/plugin/1521241390290871981',
+        'X-Title': 'FigmaLint',
+      };
     }
   }
 
@@ -296,8 +306,8 @@ export async function callProvider(
     ) {
       throw new LLMError(
         `Figma blocked the request to "${host}". This domain isn't in the plugin's network allowlist. ` +
-          `Custom endpoints are supported only for Azure model hosts (*.openai.azure.com, *.services.ai.azure.com, ` +
-          `*.cognitiveservices.azure.com, *.inference.ai.azure.com). Check that your Endpoint URL points at one of these. (${rawMessage})`,
+          `Custom endpoints are supported for Azure model hosts and OpenRouter ` +
+          `(${SUPPORTED_CUSTOM_ENDPOINT_HOSTS}). Check that your Endpoint URL points at one of these. (${rawMessage})`,
         LLMErrorCode.NETWORK_ERROR
       );
     }
@@ -360,7 +370,7 @@ export const STORAGE_KEYS = {
 };
 
 // =============================================================================
-// Custom OpenAI-compatible endpoint (Azure) support
+// Custom OpenAI-compatible endpoint (Azure, OpenRouter) support
 // =============================================================================
 
 /**
@@ -382,6 +392,24 @@ export function isAzureEndpoint(endpoint: string): boolean {
 }
 
 /**
+ * OpenRouter is an OpenAI-compatible gateway, so it needs no special auth or body
+ * handling — but it does read two optional headers to attribute traffic to the
+ * calling app. Identifying FigmaLint keeps requests off the "unknown app" bucket
+ * in the user's OpenRouter activity log.
+ */
+export function isOpenRouterEndpoint(endpoint: string): boolean {
+  return /(^|\/\/|\.)openrouter\.ai(?:[:/]|$)/i.test(endpoint.trim());
+}
+
+/**
+ * Hosts the plugin's manifest allowlist permits for a custom endpoint. Figma's
+ * sandbox rejects anything else before the request leaves, so this list drives
+ * the error message users see when they paste an unsupported URL.
+ */
+export const SUPPORTED_CUSTOM_ENDPOINT_HOSTS =
+  '*.openai.azure.com, *.ai.azure.com, *.cognitiveservices.azure.com, openrouter.ai';
+
+/**
  * Normalize a custom OpenAI-compatible endpoint so a base URL works as well as a
  * full one. Azure's docs (and the OpenAI SDK) present the endpoint as a base URL
  * ending in `/openai/v1`; the chat route `/chat/completions` is appended by the
@@ -391,6 +419,12 @@ export function isAzureEndpoint(endpoint: string): boolean {
 export function normalizeChatCompletionsEndpoint(endpoint: string): string {
   const trimmed = endpoint.trim().replace(/\/+$/, '');
   if (/\/chat\/completions$/i.test(trimmed)) return trimmed;
+  // OpenRouter's API lives under `/api/v1`, and users typically paste the bare
+  // host (`https://openrouter.ai`) copied from the browser. Fill in the API base
+  // so that works, rather than 404ing on `https://openrouter.ai/chat/completions`.
+  if (isOpenRouterEndpoint(trimmed) && !/\/api\/v\d/i.test(trimmed)) {
+    return `${trimmed}/api/v1/chat/completions`;
+  }
   // The chat route for any OpenAI-compatible endpoint is `<base>/chat/completions`.
   return `${trimmed}/chat/completions`;
 }

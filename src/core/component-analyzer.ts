@@ -95,7 +95,19 @@ async function extractAdditionalContext(node: SceneNode): Promise<any> {
   debugLog(`  Final result: ${isContainer}`);
 
   // Detect component family/type
-  if (nodeName.includes('avatar') || nodeName.includes('profile')) {
+  // Containers are checked FIRST so names like "Button Group", "Avatar Group",
+  // or "Radio Group" classify as layout containers rather than matching the
+  // interactive-family substrings ('button', 'avatar', ...) below — otherwise
+  // the container patterns that themselves contain those words (e.g.
+  // 'button-group') are unreachable.
+  if (isContainer) {
+    context.componentFamily = 'container';
+    context.possibleUseCase = 'Layout container for organizing child components';
+    context.hasInteractiveElements = false; // Containers typically don't have direct interactions
+    context.suggestedConsiderations.push('Focus on layout and organization rather than interaction states');
+    context.suggestedConsiderations.push('Child components handle individual interactions');
+    context.designPatterns.push('layout-container', 'component-organization');
+  } else if (nodeName.includes('avatar') || nodeName.includes('profile')) {
     context.componentFamily = 'avatar';
     context.possibleUseCase = 'User representation, often clickable for profile access or dropdown menus';
     context.hasInteractiveElements = true;
@@ -132,13 +144,6 @@ async function extractAdditionalContext(node: SceneNode): Promise<any> {
     context.hasInteractiveElements = false;
     context.suggestedConsiderations.push('Usually decorative, but may be interactive if part of a button');
     context.designPatterns.push('visual-indicator', 'decoration');
-  } else if (isContainer) {
-    context.componentFamily = 'container';
-    context.possibleUseCase = 'Layout container for organizing child components';
-    context.hasInteractiveElements = false; // Containers typically don't have direct interactions
-    context.suggestedConsiderations.push('Focus on layout and organization rather than interaction states');
-    context.suggestedConsiderations.push('Child components handle individual interactions');
-    context.designPatterns.push('layout-container', 'component-organization');
   }
 
   // Check for interactive indicators in structure

@@ -354,7 +354,8 @@
       align-items: center;
     }
 
-    input, textarea, select {
+    /* Text-like inputs only — checkboxes/radios keep their native box */
+    input:not([type="checkbox"]):not([type="radio"]), textarea, select {
       width: 100%;
       padding: var(--spacing-03) var(--spacing-04);
       border: 1px solid var(--border-strong);
@@ -365,6 +366,16 @@
       color: var(--text-primary);
       transition: border-color var(--transition-fast);
       min-height: 32px;
+    }
+
+    input[type="checkbox"], input[type="radio"] {
+      width: 14px;
+      height: 14px;
+      min-height: 0;
+      margin: 0;
+      flex: none;
+      accent-color: var(--interactive);
+      cursor: pointer;
     }
 
     textarea {
@@ -1832,6 +1843,7 @@
     .modal-body {
       padding: var(--space-md);
       overflow-y: auto;
+      overflow-x: hidden;
       max-height: 50vh;
     }
 
@@ -1861,6 +1873,22 @@
       font-size: 13px;
       color: var(--text-primary);
       font-family: 'SF Mono', Monaco, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    /* A preview row rendered as a <label> must not inherit the global
+       uppercase form-label treatment. */
+    label.preview-box {
+      font-size: inherit;
+      font-weight: 400;
+      color: var(--text-primary);
+      text-transform: none;
+      letter-spacing: normal;
+    }
+
+    label.preview-box .preview-value {
+      font-size: 12px;
+      line-height: 1.5;
     }
 
     .preview-arrow {
@@ -2396,30 +2424,33 @@
               <p class="card-subtitle">Choose the model that works best for your component analysis</p>
             </div>
 
-            <!-- Custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry) -->
+            <!-- Custom OpenAI-compatible endpoint (Azure OpenAI / Azure AI Foundry, OpenRouter) -->
             <div class="form-group" id="openai-endpoint-group" style="display: none;">
               <details id="openai-endpoint-details">
-                <summary style="cursor: pointer; font-size: 12px; font-weight: 600; user-select: none; color: var(--primary);">Using Azure or a custom endpoint? Set it up here</summary>
+                <summary style="cursor: pointer; font-size: 12px; font-weight: 600; user-select: none; color: var(--primary);">Using Azure, OpenRouter, or a custom endpoint? Set it up here</summary>
                 <div style="margin-top: 10px;">
                   <label for="openai-endpoint-input">Endpoint URL</label>
                   <input
                     type="text"
                     id="openai-endpoint-input"
-                    placeholder="https://YOUR-RESOURCE.openai.azure.com/openai/v1"
+                    placeholder="https://openrouter.ai/api/v1"
                     autocomplete="off"
                     spellcheck="false"
                   >
-                  <p class="card-subtitle">Route the OpenAI provider through your own Azure OpenAI / Azure AI Foundry deployment instead of api.openai.com. Paste the base URL ending in <code>/openai/v1</code> (the <code>/chat/completions</code> route is added automatically). Leave blank to use the default OpenAI endpoint. Azure keys are sent via the <code>api-key</code> header automatically.</p>
+                  <p class="card-subtitle">Route the OpenAI provider through an OpenAI-compatible gateway instead of api.openai.com. Leave blank to use the default OpenAI endpoint. Supported:<br>
+                    &bull; <strong>OpenRouter</strong> — <code>https://openrouter.ai/api/v1</code><br>
+                    &bull; <strong>Azure OpenAI / AI Foundry</strong> — <code>https://YOUR-RESOURCE.openai.azure.com/openai/v1</code><br>
+                    Paste the base URL; the <code>/chat/completions</code> route is added automatically. Azure keys are sent via the <code>api-key</code> header, OpenRouter and other gateways via <code>Authorization: Bearer</code>.</p>
 
                   <label for="openai-deployment-input" style="display: block; margin-top: 10px;">Deployment / model name</label>
                   <input
                     type="text"
                     id="openai-deployment-input"
-                    placeholder="your-azure-deployment-name"
+                    placeholder="anthropic/claude-sonnet-4.5"
                     autocomplete="off"
                     spellcheck="false"
                   >
-                  <p class="card-subtitle"><strong>Required for Azure:</strong> the exact deployment name you created in your Azure resource (not the model above — Azure deployment names are arbitrary). A wrong or blank name is the usual cause of a 404 "model not found".</p>
+                  <p class="card-subtitle"><strong>Required for Azure and OpenRouter:</strong> the exact model identifier the endpoint expects, which overrides the model dropdown above. For OpenRouter that's the model slug (e.g. <code>anthropic/claude-sonnet-4.5</code>, <code>openai/gpt-5.5</code>) — browse them at <code>openrouter.ai/models</code>. For Azure it's the deployment name you created in your resource. A wrong or blank name is the usual cause of a 404 "model not found".</p>
                 </div>
               </details>
             </div>
@@ -3141,8 +3172,8 @@
         const count = group.fixes.length;
         const checkboxId = `batch-fix-group-${index}`;
         if (group.resolution) {
-          previewHtml += '<label class="preview-box" for="' + checkboxId + '" style="margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer;">';
-          previewHtml += '<input type="checkbox" id="' + checkboxId + '" data-fix-group="' + escapeHtml(key) + '" checked style="flex-shrink: 0;">';
+          previewHtml += '<label class="preview-box" for="' + checkboxId + '" style="margin-bottom: 6px; display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">';
+          previewHtml += '<input type="checkbox" id="' + checkboxId + '" data-fix-group="' + escapeHtml(key) + '" checked style="margin-top: 2px;">';
           previewHtml += '<span class="preview-value" style="min-width: 0;">' + escapeHtml(value) + ' (' + escapeHtml(prop) + ') → <strong>' + escapeHtml(group.resolution.tokenName) + '</strong>' +
             (group.resolution.collectionName ? ' <span style="color: var(--text-tertiary, #999);">(' + escapeHtml(group.resolution.collectionName) + ')</span>' : '') +
             ' — ' + count + ' node' + (count !== 1 ? 's' : '') + '</span>';
@@ -3391,8 +3422,9 @@
       analyzeButton.addEventListener('click', handleAnalyzeComponent);
       quickAnalyzeButton.addEventListener('click', handleAnalyzeComponent);
       apiKeyInput.addEventListener('input', handleApiKeyChange);
-      // Typing a custom endpoint changes how the key is validated (Azure keys
-      // don't start with "sk-"), so re-run the inline check to clear the error.
+      // Typing a custom endpoint changes how the key is validated (Azure and
+      // gateway keys don't follow the "sk-" convention), so re-run the inline
+      // check to clear the error.
       const openaiEndpointInput = document.getElementById('openai-endpoint-input');
       if (openaiEndpointInput) {
         openaiEndpointInput.addEventListener('input', handleApiKeyChange);
@@ -4081,6 +4113,10 @@
           if (trimmed.length < 40) return 'This key looks too short — copy the complete key';
           return null;
         case 'openai':
+          // OpenRouter keys (sk-or-v1-...) satisfy the "sk-" check, so without this
+          // they save cleanly and then 401 against api.openai.com. Catch the prefix
+          // and point at the endpoint field, which is the actual missing step.
+          if (trimmed.startsWith('sk-or-')) return 'This is an OpenRouter key — set the Endpoint URL below to https://openrouter.ai/api/v1 to use it';
           if (!trimmed.startsWith('sk-')) return 'OpenAI keys start with "sk-"';
           return null;
         case 'google':
@@ -4108,8 +4144,12 @@
         if (currentProvider === 'openai') {
           // An Azure / gateway key legitimately won't start with "sk-" — point the
           // user at the custom endpoint section and reveal it instead of implying
-          // their key type is unsupported.
-          apiKeyHint.textContent = formatError + ' — using Azure or another OpenAI-compatible gateway? Enter its URL in the custom endpoint section below and this check is skipped.';
+          // their key type is unsupported. The OpenRouter message already names the
+          // fix, so it isn't given the generic suffix.
+          const isOpenRouterKey = value.startsWith('sk-or-');
+          apiKeyHint.textContent = isOpenRouterKey
+            ? formatError
+            : formatError + ' — using Azure, OpenRouter, or another OpenAI-compatible gateway? Enter its URL in the custom endpoint section below and this check is skipped.';
           const endpointDetails = document.getElementById('openai-endpoint-details');
           if (endpointDetails) endpointDetails.open = true;
         } else {
@@ -4177,7 +4217,7 @@
       // Select default model for this provider
       modelSelect.value = config.defaultModel;
 
-      // Custom endpoint (Azure) is OpenAI-only — show it just for that provider.
+      // Custom endpoint (Azure / OpenRouter) is OpenAI-only — show it just for that provider.
       const endpointGroup = document.getElementById('openai-endpoint-group');
       if (endpointGroup) {
         endpointGroup.style.display = selectedProvider === 'openai' ? 'block' : 'none';
@@ -4214,7 +4254,7 @@
       // Store key for this provider
       providerApiKeys[selectedProvider] = apiKey;
 
-      // Custom endpoint (Azure / OpenAI-compatible) — OpenAI only.
+      // Custom endpoint (Azure / OpenRouter / OpenAI-compatible) — OpenAI only.
       let customEndpoint = '';
       let customDeployment = '';
       if (selectedProvider === 'openai') {
@@ -4508,7 +4548,7 @@
         modelSelect.value = model;
       }
 
-      // Restore a saved custom OpenAI endpoint (Azure) into the fields and expand
+      // Restore a saved custom OpenAI endpoint (Azure / OpenRouter) into the fields and expand
       // the disclosure so the user can see it's active.
       if (provider === 'openai' && openaiEndpoint) {
         const endpointInput = document.getElementById('openai-endpoint-input');

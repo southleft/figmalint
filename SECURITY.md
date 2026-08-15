@@ -18,7 +18,8 @@ A Figma plugin that audits components for design-system compliance, accessibilit
   | `api.anthropic.com` | Anthropic (Claude) API | Only if you select Anthropic |
   | `api.openai.com` | OpenAI API | Only if you select OpenAI **without** a custom endpoint |
   | `generativelanguage.googleapis.com` | Google (Gemini) API | Only if you select Google |
-  | `*.openai.azure.com`, `*.services.ai.azure.com`, `*.cognitiveservices.azure.com`, `*.inference.ai.azure.com` | Azure OpenAI / Azure AI Foundry | Only if you configure a custom Azure endpoint |
+  | `*.openai.azure.com`, `*.ai.azure.com`, `*.cognitiveservices.azure.com` | Azure OpenAI / Azure AI Foundry | Only if you configure a custom Azure endpoint |
+  | `openrouter.ai` | OpenRouter (OpenAI-compatible gateway) | Only if you configure a custom OpenRouter endpoint |
   | `design-systems-mcp.southleft-llc.workers.dev` | FigmaLint design-systems knowledge service | Best-practice lookups during analysis and the chat feature |
 
   There is **no analytics, telemetry, crash-reporting, or tracking endpoint** — the list above is exhaustive.
@@ -59,6 +60,21 @@ With this set:
 - The key is not required to be an `sk-…` OpenAI key; Azure/gateway key formats are accepted.
 
 This lets an AI-enablement team deploy an approved model into Azure AI Foundry and point the plugin at it, keeping both the data path and billing inside the organization's Azure boundary.
+
+## OpenRouter (consolidated model access)
+
+The same custom endpoint field accepts [OpenRouter](https://openrouter.ai), an OpenAI-compatible gateway that fronts many providers behind one key and one bill. Configure it the same way:
+
+1. **AI Provider** — OpenAI.
+2. Expand the custom endpoint section.
+3. **Endpoint URL** — `https://openrouter.ai/api/v1`
+4. **Deployment / model name** — the OpenRouter model slug (e.g. `anthropic/claude-sonnet-4.5`).
+5. **API key** — your OpenRouter key (`sk-or-v1-…`).
+
+Notes for reviewers:
+- Requests go to `openrouter.ai` only, authenticated with `Authorization: Bearer`. OpenRouter then routes to the upstream model provider you selected in the slug, under **its** data policy — review OpenRouter's model-routing and data-retention settings if that matters to your organization.
+- FigmaLint sends two optional attribution headers (`HTTP-Referer`, `X-Title`) identifying the plugin in your OpenRouter activity log. They carry no user or document data.
+- Billing goes to your OpenRouter account.
 
 ## Permissions requested
 

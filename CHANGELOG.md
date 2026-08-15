@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.8.0
+
+### Added
+- **OpenRouter support.** [OpenRouter](https://openrouter.ai) keys now work through the existing custom endpoint field, giving teams that consolidate model access and billing through one gateway a way to use FigmaLint without a direct Anthropic/OpenAI/Google key. Under the OpenAI provider, expand the custom endpoint section and set:
+  - **Endpoint URL** — `https://openrouter.ai/api/v1` (the bare `https://openrouter.ai` also works; the API path is filled in).
+  - **Deployment / model name** — the OpenRouter model slug, e.g. `anthropic/claude-sonnet-4.5` or `openai/gpt-5.5`. This overrides the model dropdown.
+  - **API key** — your `sk-or-v1-…` key.
+
+  `openrouter.ai` has been added to the manifest network allowlist. Requests use the standard `Authorization: Bearer` header, plus two optional attribution headers (`HTTP-Referer`, `X-Title`) that label the plugin in your OpenRouter activity log and carry no user or document data.
+
+### Fixed
+- **An OpenRouter key pasted without an endpoint now explains itself.** `sk-or-v1-…` keys satisfy the OpenAI `sk-` prefix check, so they previously saved cleanly and then failed at analyze time with a confusing 401 from `api.openai.com`. The key is now recognized on sight — inline while typing and at save time — with the endpoint URL and model slug it needs.
+- The blocked-domain error for custom endpoints listed two Azure hosts (`*.services.ai.azure.com`, `*.inference.ai.azure.com`) that were folded into `*.ai.azure.com` back in 2.7.5, so it named domains the manifest no longer contained. It now reports the actual allowlist. Same stale list corrected in `SECURITY.md`.
+- **Grouped components are classified as containers again.** The component-family check tested interactive names before the container check, so anything matching both — "Button Group", "Avatar Group", "Radio Group" — was typed as a button or avatar and analyzed for interaction states it doesn't have. The container branch is now evaluated first, which also makes the `*-group` patterns reachable for the first time.
+- **Checkboxes in the batch-fix preview render at their native size.** A global `input` rule stretched every input to full width with a 32px min-height, which applied to the batch-fix selection checkboxes too. Text-like inputs keep that treatment; checkboxes and radios no longer do. Long token names in the preview also wrap instead of forcing the modal to scroll sideways.
+
 ## 2.7.5
 
 ### Fixed

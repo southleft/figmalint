@@ -184,6 +184,19 @@ class OpenAIProviderClass implements LLMProvider {
       };
     }
 
+    // OpenRouter keys (sk-or-v1-...) also start with `sk-`, so they pass the check
+    // below and then fail with a 401 against api.openai.com. This branch is only
+    // reached when no custom endpoint is configured — with one set, validation is
+    // skipped entirely — so reaching here means the endpoint is the missing step.
+    if (trimmedKey.startsWith('sk-or-')) {
+      return {
+        isValid: false,
+        error:
+          'This is an OpenRouter API key. OpenRouter is supported, but it needs an endpoint: open the custom endpoint section and set the Endpoint URL to ' +
+          'https://openrouter.ai/api/v1, plus the model slug you want (e.g. anthropic/claude-sonnet-4.5) in the model field.',
+      };
+    }
+
     // OpenAI keys start with 'sk-'
     if (!trimmedKey.startsWith(this.keyPrefix)) {
       return {

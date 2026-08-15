@@ -549,7 +549,9 @@ export function validateApiKeyFormat(apiKey: string, providerId: ProviderId): bo
     case 'anthropic':
       return trimmed.startsWith('sk-ant-') && trimmed.length >= 40;
     case 'openai':
-      return trimmed.startsWith('sk-') && trimmed.length >= 20;
+      // sk-or-... are OpenRouter keys — usable only via a custom endpoint, which
+      // bypasses this check entirely. See OpenAIProvider.validateApiKey.
+      return trimmed.startsWith('sk-') && !trimmed.startsWith('sk-or-') && trimmed.length >= 20;
     case 'google':
       return (
         (trimmed.startsWith('AIza') || trimmed.startsWith('AQ.')) &&
