@@ -24,22 +24,22 @@ import {
  */
 export const GOOGLE_MODELS: LLMModel[] = [
   {
-    id: 'gemini-3.5-flash',
-    name: 'Gemini 3.5 Flash',
-    description: 'Flagship model - Most intelligent, frontier performance on agentic and coding tasks, recommended for most tasks',
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    description: 'Flagship model - Most intelligent workhorse for coding and agents, recommended for most tasks',
     contextWindow: 1000000,
     isDefault: true,
   },
   {
-    id: 'gemini-3.1-flash-lite',
-    name: 'Gemini 3.1 Flash-Lite',
-    description: 'Standard model - Frontier-class performance rivaling larger models at a fraction of the cost',
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    description: 'Standard model - Balances speed and multimodal capability at lower cost',
     contextWindow: 1000000,
     isDefault: false,
   },
   {
-    id: 'gemini-2.5-flash-lite',
-    name: 'Gemini 2.5 Flash-Lite',
+    id: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash-Lite',
     description: 'Economy model - Fastest and most budget-friendly for low-latency, high-volume tasks',
     contextWindow: 1000000,
     isDefault: false,

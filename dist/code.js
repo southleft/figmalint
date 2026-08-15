@@ -1256,8 +1256,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   };
   var DEFAULT_MODELS = {
     anthropic: "claude-sonnet-5",
-    openai: "gpt-5.4-mini",
-    google: "gemini-3.5-flash"
+    openai: "gpt-5.6-terra",
+    google: "gemini-3.7-flash"
   };
   function detectProviderFromKey(apiKey) {
     const trimmed = apiKey.trim();
@@ -1274,10 +1274,11 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   }
 
   // src/api/providers/anthropic.ts
+  var MIN_THINKING_HEADROOM_TOKENS = 8192;
   var ANTHROPIC_MODELS = [
     {
-      id: "claude-opus-4-8",
-      name: "Claude Opus 4.8",
+      id: "claude-opus-5",
+      name: "Claude Opus 5",
       description: "Flagship model - Most intelligent, best for complex agents and coding",
       contextWindow: 1e6,
       isDefault: false
@@ -1290,7 +1291,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       isDefault: true
     },
     {
-      id: "claude-haiku-4-5-20251001",
+      id: "claude-haiku-4-5",
       name: "Claude Haiku 4.5",
       description: "Economy model - Fastest with near-frontier intelligence",
       contextWindow: 2e5,
@@ -1318,7 +1319,12 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
             content: config.prompt.trim()
           }
         ],
-        max_tokens: config.maxTokens
+        // Claude Opus 5 and Sonnet 5 run adaptive thinking by default, and `max_tokens`
+        // caps thinking *plus* the response text. A budget sized around the JSON alone
+        // truncates mid-answer once thinking takes a share of it, which surfaces as a
+        // parse failure rather than an API error. Floor the budget so both fit; models
+        // only bill what they actually emit, so this costs nothing on short responses.
+        max_tokens: Math.max(config.maxTokens, MIN_THINKING_HEADROOM_TOKENS)
       };
       if (config.additionalParams) {
         Object.assign(request, config.additionalParams);
@@ -1483,24 +1489,24 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   // src/api/providers/openai.ts
   var OPENAI_MODELS = [
     {
-      id: "gpt-5.5",
-      name: "GPT-5.5",
+      id: "gpt-5.6",
+      name: "GPT-5.6 Sol",
       description: "Flagship model - Frontier reasoning and agentic capabilities for complex coding and analysis",
-      contextWindow: 1e6,
+      contextWindow: 105e4,
       isDefault: false
     },
     {
-      id: "gpt-5.4-mini",
-      name: "GPT-5.4 Mini",
-      description: "Standard model - Strong coding and reasoning at lower cost, recommended for most tasks",
-      contextWindow: 4e5,
+      id: "gpt-5.6-terra",
+      name: "GPT-5.6 Terra",
+      description: "Standard model - Balances intelligence and cost, recommended for most tasks",
+      contextWindow: 105e4,
       isDefault: true
     },
     {
-      id: "gpt-5.4-nano",
-      name: "GPT-5.4 Nano",
+      id: "gpt-5.6-luna",
+      name: "GPT-5.6 Luna",
       description: "Economy model - Fastest and cheapest for high-volume tasks",
-      contextWindow: 4e5,
+      contextWindow: 105e4,
       isDefault: false
     }
   ];
@@ -1708,22 +1714,22 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   // src/api/providers/google.ts
   var GOOGLE_MODELS = [
     {
-      id: "gemini-3.5-flash",
-      name: "Gemini 3.5 Flash",
-      description: "Flagship model - Most intelligent, frontier performance on agentic and coding tasks, recommended for most tasks",
+      id: "gemini-3.7-flash",
+      name: "Gemini 3.7 Flash",
+      description: "Flagship model - Most intelligent workhorse for coding and agents, recommended for most tasks",
       contextWindow: 1e6,
       isDefault: true
     },
     {
-      id: "gemini-3.1-flash-lite",
-      name: "Gemini 3.1 Flash-Lite",
-      description: "Standard model - Frontier-class performance rivaling larger models at a fraction of the cost",
+      id: "gemini-3.6-flash",
+      name: "Gemini 3.6 Flash",
+      description: "Standard model - Balances speed and multimodal capability at lower cost",
       contextWindow: 1e6,
       isDefault: false
     },
     {
-      id: "gemini-2.5-flash-lite",
-      name: "Gemini 2.5 Flash-Lite",
+      id: "gemini-3.5-flash-lite",
+      name: "Gemini 3.5 Flash-Lite",
       description: "Economy model - Fastest and most budget-friendly for low-latency, high-volume tasks",
       contextWindow: 1e6,
       isDefault: false

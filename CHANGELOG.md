@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.9.0
+
+### Models
+- **Anthropic**: Claude Opus 5 replaces Claude Opus 4.8 as the flagship. Sonnet 5 (default) and Haiku 4.5 are unchanged — Haiku's ID moves from the dated `claude-haiku-4-5-20251001` to the `claude-haiku-4-5` alias.
+- **OpenAI**: the GPT-5.6 family — **Sol** (`gpt-5.6`, flagship), **Terra** (`gpt-5.6-terra`, new default), and **Luna** (`gpt-5.6-luna`, economy) — replaces GPT-5.5 / GPT-5.4 Mini / GPT-5.4 Nano. All three carry a 1.05M context window, up from 400K on the Mini and Nano tiers.
+- **Google**: Gemini 3.7 Flash (new default) and Gemini 3.6 Flash replace Gemini 3.5 Flash and 3.1 Flash-Lite; Gemini 3.5 Flash-Lite replaces 2.5 Flash-Lite in the economy slot.
+
+A saved model that no longer exists still falls back to the provider default on load (added in 2.6.0), so upgrading doesn't strand anyone on a retired ID.
+
+### Fixed
+- **Anthropic responses no longer risk truncation from thinking spend.** Current Claude models run adaptive thinking by default and bill it against the same `max_tokens` budget as the reply, so the plugin's 4,096-token request budget had to cover both. A long analysis could be cut off mid-JSON, surfacing as a parse failure rather than an API error. Anthropic requests now apply an 8,192-token floor so the reply gets its full budget regardless of thinking spend — models bill only what they emit, so short responses cost the same.
+
 ## 2.8.0
 
 ### Added

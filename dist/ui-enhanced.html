@@ -2404,21 +2404,21 @@
               <select id="model-select">
                 <!-- Anthropic (Claude) Models -->
                 <optgroup label="Anthropic (Claude)" id="anthropic-models">
-                  <option value="claude-opus-4-8">Claude Opus 4.8 (Flagship - Advanced Reasoning)</option>
+                  <option value="claude-opus-5">Claude Opus 5 (Flagship - Advanced Reasoning)</option>
                   <option value="claude-sonnet-5" selected>Claude Sonnet 5 (Recommended - Best Value)</option>
-                  <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast - Economy)</option>
+                  <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fast - Economy)</option>
                 </optgroup>
                 <!-- OpenAI (GPT) Models -->
                 <optgroup label="OpenAI (GPT)" id="openai-models" style="display: none;">
-                  <option value="gpt-5.5" disabled>GPT-5.5 (Flagship)</option>
-                  <option value="gpt-5.4-mini" disabled>GPT-5.4 Mini (Recommended - Best Value)</option>
-                  <option value="gpt-5.4-nano" disabled>GPT-5.4 Nano (Fast - Economy)</option>
+                  <option value="gpt-5.6" disabled>GPT-5.6 Sol (Flagship)</option>
+                  <option value="gpt-5.6-terra" disabled>GPT-5.6 Terra (Recommended - Best Value)</option>
+                  <option value="gpt-5.6-luna" disabled>GPT-5.6 Luna (Fast - Economy)</option>
                 </optgroup>
                 <!-- Google (Gemini) Models -->
                 <optgroup label="Google (Gemini)" id="google-models" style="display: none;">
-                  <option value="gemini-3.5-flash" disabled>Gemini 3.5 Flash (Flagship - Recommended)</option>
-                  <option value="gemini-3.1-flash-lite" disabled>Gemini 3.1 Flash-Lite (Standard - Best Value)</option>
-                  <option value="gemini-2.5-flash-lite" disabled>Gemini 2.5 Flash-Lite (Fast - Economy)</option>
+                  <option value="gemini-3.7-flash" disabled>Gemini 3.7 Flash (Flagship - Recommended)</option>
+                  <option value="gemini-3.6-flash" disabled>Gemini 3.6 Flash (Standard - Best Value)</option>
+                  <option value="gemini-3.5-flash-lite" disabled>Gemini 3.5 Flash-Lite (Fast - Economy)</option>
                 </optgroup>
               </select>
               <p class="card-subtitle">Choose the model that works best for your component analysis</p>
@@ -2450,7 +2450,7 @@
                     autocomplete="off"
                     spellcheck="false"
                   >
-                  <p class="card-subtitle"><strong>Required for Azure and OpenRouter:</strong> the exact model identifier the endpoint expects, which overrides the model dropdown above. For OpenRouter that's the model slug (e.g. <code>anthropic/claude-sonnet-4.5</code>, <code>openai/gpt-5.5</code>) — browse them at <code>openrouter.ai/models</code>. For Azure it's the deployment name you created in your resource. A wrong or blank name is the usual cause of a 404 "model not found".</p>
+                  <p class="card-subtitle"><strong>Required for Azure and OpenRouter:</strong> the exact model identifier the endpoint expects, which overrides the model dropdown above. For OpenRouter that's the model slug (e.g. <code>anthropic/claude-sonnet-4.5</code>, <code>openai/gpt-5.6</code>) — browse them at <code>openrouter.ai/models</code>. For Azure it's the deployment name you created in your resource. A wrong or blank name is the usual cause of a 404 "model not found".</p>
                 </div>
               </details>
             </div>
@@ -2914,7 +2914,7 @@
         name: 'OpenAI',
         placeholder: 'sk-...',
         hint: 'Get your API key from platform.openai.com',
-        defaultModel: 'gpt-5.4-mini',
+        defaultModel: 'gpt-5.6-terra',
         portalUrl: 'https://platform.openai.com/api-keys',
         portalLabel: 'platform.openai.com',
         subscriptionName: 'ChatGPT Plus'
@@ -2923,7 +2923,7 @@
         name: 'Gemini',
         placeholder: 'AIza...',
         hint: 'Get your API key from aistudio.google.com',
-        defaultModel: 'gemini-3.5-flash',
+        defaultModel: 'gemini-3.7-flash',
         portalUrl: 'https://aistudio.google.com/apikey',
         portalLabel: 'aistudio.google.com',
         subscriptionName: 'Gemini Advanced'

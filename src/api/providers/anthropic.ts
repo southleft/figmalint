@@ -2,7 +2,7 @@
  * Anthropic (Claude) Provider Implementation
  *
  * Implements the LLMProvider interface for Anthropic's Claude API.
- * Supports Claude Opus 4.8, Sonnet 5, and Haiku 4.5 models.
+ * Supports Claude Opus 5, Sonnet 5, and Haiku 4.5 models.
  */
 
 import {
@@ -17,12 +17,21 @@ import {
 } from './types';
 
 /**
+ * Minimum `max_tokens` for Anthropic requests. Current Claude models think by
+ * default and charge that thinking against the same output budget as the reply,
+ * so the caller's budget is treated as a floor for the visible answer rather than
+ * a ceiling on the whole response. Well under every model's output cap (64K on
+ * Haiku 4.5, 128K on Opus 5 / Sonnet 5).
+ */
+const MIN_THINKING_HEADROOM_TOKENS = 8192;
+
+/**
  * Available Anthropic Claude models
  */
 export const ANTHROPIC_MODELS: LLMModel[] = [
   {
-    id: 'claude-opus-4-8',
-    name: 'Claude Opus 4.8',
+    id: 'claude-opus-5',
+    name: 'Claude Opus 5',
     description: 'Flagship model - Most intelligent, best for complex agents and coding',
     contextWindow: 1000000,
     isDefault: false,
@@ -35,7 +44,7 @@ export const ANTHROPIC_MODELS: LLMModel[] = [
     isDefault: true,
   },
   {
-    id: 'claude-haiku-4-5-20251001',
+    id: 'claude-haiku-4-5',
     name: 'Claude Haiku 4.5',
     description: 'Economy model - Fastest with near-frontier intelligence',
     contextWindow: 200000,
@@ -100,7 +109,12 @@ export class AnthropicProvider implements LLMProvider {
           content: config.prompt.trim(),
         },
       ],
-      max_tokens: config.maxTokens,
+      // Claude Opus 5 and Sonnet 5 run adaptive thinking by default, and `max_tokens`
+      // caps thinking *plus* the response text. A budget sized around the JSON alone
+      // truncates mid-answer once thinking takes a share of it, which surfaces as a
+      // parse failure rather than an API error. Floor the budget so both fit; models
+      // only bill what they actually emit, so this costs nothing on short responses.
+      max_tokens: Math.max(config.maxTokens, MIN_THINKING_HEADROOM_TOKENS),
     };
 
     // `config.temperature` is intentionally dropped for Anthropic. Newer Claude 4.x

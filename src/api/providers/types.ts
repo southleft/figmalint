@@ -338,14 +338,14 @@ export type ProviderRegistry = Record<ProviderId, LLMProvider>;
  * Anthropic (Claude) models configuration
  *
  * Available models:
- * - Claude Opus 4.8: Flagship model for complex agents and coding
+ * - Claude Opus 5: Flagship model for complex agents and coding
  * - Claude Sonnet 5: Standard balanced model (default)
  * - Claude Haiku 4.5: Economy model for quick tasks
  */
 export const ANTHROPIC_MODELS: LLMModel[] = [
   {
-    id: 'claude-opus-4-8',
-    name: 'Claude Opus 4.8',
+    id: 'claude-opus-5',
+    name: 'Claude Opus 5',
     description: 'Flagship model - Most intelligent, best for complex agents and coding',
     tier: 'flagship',
     contextWindow: 1000000,
@@ -362,7 +362,7 @@ export const ANTHROPIC_MODELS: LLMModel[] = [
     isDefault: true,
   },
   {
-    id: 'claude-haiku-4-5-20251001',
+    id: 'claude-haiku-4-5',
     name: 'Claude Haiku 4.5',
     description: 'Economy model - Fastest with near-frontier intelligence',
     tier: 'economy',
@@ -376,35 +376,35 @@ export const ANTHROPIC_MODELS: LLMModel[] = [
  * OpenAI (GPT) models configuration
  *
  * Available models:
- * - GPT-5.5: Flagship model for agentic and professional workflows
- * - GPT-5.4 Mini: Standard model for coding and reasoning (default)
- * - GPT-5.4 Nano: Economy model for high-volume tasks
+ * - GPT-5.6 Sol: Flagship model for complex reasoning and coding
+ * - GPT-5.6 Terra: Standard model balancing intelligence and cost (default)
+ * - GPT-5.6 Luna: Economy model for cost-sensitive, high-volume workloads
  */
 export const OPENAI_MODELS: LLMModel[] = [
   {
-    id: 'gpt-5.5',
-    name: 'GPT-5.5',
+    id: 'gpt-5.6',
+    name: 'GPT-5.6 Sol',
     description: 'Flagship model - Frontier reasoning and agentic capabilities for complex coding and analysis',
     tier: 'flagship',
-    contextWindow: 1000000,
+    contextWindow: 1050000,
     maxOutputTokens: 128000,
     isDefault: false,
   },
   {
-    id: 'gpt-5.4-mini',
-    name: 'GPT-5.4 Mini',
-    description: 'Standard model - Strong coding and reasoning at lower cost, recommended for most tasks',
+    id: 'gpt-5.6-terra',
+    name: 'GPT-5.6 Terra',
+    description: 'Standard model - Balances intelligence and cost, recommended for most tasks',
     tier: 'standard',
-    contextWindow: 400000,
+    contextWindow: 1050000,
     maxOutputTokens: 128000,
     isDefault: true,
   },
   {
-    id: 'gpt-5.4-nano',
-    name: 'GPT-5.4 Nano',
+    id: 'gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
     description: 'Economy model - Fastest and cheapest for high-volume tasks',
     tier: 'economy',
-    contextWindow: 400000,
+    contextWindow: 1050000,
     maxOutputTokens: 128000,
     isDefault: false,
   },
@@ -414,32 +414,32 @@ export const OPENAI_MODELS: LLMModel[] = [
  * Google (Gemini) models configuration
  *
  * Available models:
- * - Gemini 3.5 Flash: Flagship GA model for agentic and coding tasks (default)
- * - Gemini 3.1 Flash-Lite: Standard GA model, frontier-class at a fraction of the cost
- * - Gemini 2.5 Flash-Lite: Economy GA model for high-volume tasks
+ * - Gemini 3.7 Flash: Flagship GA model for coding and agents (default)
+ * - Gemini 3.6 Flash: Standard GA model balancing speed and multimodal capability
+ * - Gemini 3.5 Flash-Lite: Economy GA model for high-volume tasks
  */
 export const GOOGLE_MODELS: LLMModel[] = [
   {
-    id: 'gemini-3.5-flash',
-    name: 'Gemini 3.5 Flash',
-    description: 'Flagship model - Most intelligent, frontier performance on agentic and coding tasks, recommended for most tasks',
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    description: 'Flagship model - Most intelligent workhorse for coding and agents, recommended for most tasks',
     tier: 'flagship',
     contextWindow: 1000000,
     maxOutputTokens: 64000,
     isDefault: true,
   },
   {
-    id: 'gemini-3.1-flash-lite',
-    name: 'Gemini 3.1 Flash-Lite',
-    description: 'Standard model - Frontier-class performance rivaling larger models at a fraction of the cost',
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    description: 'Standard model - Balances speed and multimodal capability at lower cost',
     tier: 'standard',
     contextWindow: 1000000,
     maxOutputTokens: 64000,
     isDefault: false,
   },
   {
-    id: 'gemini-2.5-flash-lite',
-    name: 'Gemini 2.5 Flash-Lite',
+    id: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash-Lite',
     description: 'Economy model - Fastest and most budget-friendly for low-latency, high-volume tasks',
     tier: 'economy',
     contextWindow: 1000000,
@@ -457,8 +457,8 @@ export const GOOGLE_MODELS: LLMModel[] = [
  */
 export const DEFAULT_MODELS: Record<ProviderId, string> = {
   anthropic: 'claude-sonnet-5',
-  openai: 'gpt-5.4-mini',
-  google: 'gemini-3.5-flash',
+  openai: 'gpt-5.6-terra',
+  google: 'gemini-3.7-flash',
 };
 
 // =============================================================================

@@ -20,24 +20,24 @@ import {
  */
 export const OPENAI_MODELS: LLMModel[] = [
   {
-    id: 'gpt-5.5',
-    name: 'GPT-5.5',
+    id: 'gpt-5.6',
+    name: 'GPT-5.6 Sol',
     description: 'Flagship model - Frontier reasoning and agentic capabilities for complex coding and analysis',
-    contextWindow: 1000000,
+    contextWindow: 1050000,
     isDefault: false,
   },
   {
-    id: 'gpt-5.4-mini',
-    name: 'GPT-5.4 Mini',
-    description: 'Standard model - Strong coding and reasoning at lower cost, recommended for most tasks',
-    contextWindow: 400000,
+    id: 'gpt-5.6-terra',
+    name: 'GPT-5.6 Terra',
+    description: 'Standard model - Balances intelligence and cost, recommended for most tasks',
+    contextWindow: 1050000,
     isDefault: true,
   },
   {
-    id: 'gpt-5.4-nano',
-    name: 'GPT-5.4 Nano',
+    id: 'gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
     description: 'Economy model - Fastest and cheapest for high-volume tasks',
-    contextWindow: 400000,
+    contextWindow: 1050000,
     isDefault: false,
   },
 ];
