@@ -242,6 +242,13 @@ export interface EnhancedAnalysisOptions {
   bypassCache?: boolean;
   /** UI-generated id used to drop results of cancelled/superseded analyses. */
   requestId?: string;
+  /**
+   * False when no API key is configured. The audit, token analysis, naming
+   * checks and MCP-readiness score are all computed locally from the Figma
+   * node, so the analysis still runs — it just skips the LLM call and the
+   * AI-authored fields (description, usage prose, property recommendations).
+   */
+  aiEnabled?: boolean;
 }
 
 export interface AuditCheck {
@@ -281,6 +288,11 @@ export interface EnhancedAnalysisResult {
   existingDescription?: string;
   /** True when served from the component-hash cache (no LLM call was made). */
   fromCache?: boolean;
+  /**
+   * False when this result was produced without an API key. The UI uses it to
+   * hide the AI-authored sections rather than render them empty.
+   */
+  aiEnabled?: boolean;
 }
 
 // Re-export NamingIssue shape for use in UI messages

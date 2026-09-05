@@ -8,6 +8,14 @@ FigmaLint analyzes your components against real standards, surfaces hard-coded v
 
 ## Features
 
+### Works Without an API Key
+
+The audit runs with no key and no account. Design token analysis, the full readiness score, every accessibility check, component readiness, naming detection, both auto-fixers, batch mode, the instance sheet, and all three exports are computed locally from your Figma file — no model is involved, so **the score is identical with or without a key**.
+
+Adding a key adds the AI-authored layer: generated component descriptions, recommended properties, and the Design Systems Chat tab.
+
+This matters for teams whose organization can't issue an API key — keys are billed separately from any Claude, ChatGPT, or Gemini subscription. Run the audit unkeyed, export the **AI Prompt** or **Markdown** spec, and paste it into whatever AI tooling your organization already approves.
+
 ### Multi-Provider AI Analysis
 
 Choose your preferred AI provider and model:
@@ -108,10 +116,13 @@ Three export formats:
 
 ### Setup
 
-1. Select a provider (Anthropic, OpenAI, or Google)
+Select a component and click Analyze (or press **Cmd/Ctrl+Enter**). No key or account is required for the audit.
+
+To also generate descriptions, property recommendations, and use Chat:
+
+1. Select a provider (Anthropic, OpenAI, Google, or OpenRouter)
 2. Choose a model
 3. Enter your API key
-4. Select a component and click Analyze (or press **Cmd/Ctrl+Enter**)
 
 Tips: **Esc** closes the fix confirmation modal. If an analysis is slow, the Cancel button aborts it; a stuck analysis auto-recovers after 90 seconds.
 

@@ -228,6 +228,43 @@
       line-height: 1.3;
     }
 
+    .label-optional {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 5px;
+      border-radius: var(--radius-sm);
+      background: var(--surface-secondary, rgba(0,0,0,0.06));
+      color: var(--text-tertiary);
+      font-size: 9px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      vertical-align: middle;
+    }
+
+    .ai-locked-note {
+      display: flex;
+      gap: 6px;
+      align-items: flex-start;
+      padding: 8px 10px;
+      margin-bottom: var(--spacing-03, 8px);
+      background: var(--surface-secondary, rgba(0,0,0,0.04));
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--text-secondary);
+    }
+
+    .ai-locked-note button {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--info);
+      font-size: 11px;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
     .api-key-notice {
       display: flex;
       gap: 6px;
@@ -2334,7 +2371,7 @@
       <button class="tab-button active" id="tab-analyze" onclick="switchTab('analyze')">
         Analyze
       </button>
-      <button class="tab-button" id="tab-chat" onclick="switchTab('chat')">
+      <button class="tab-button" id="tab-chat" onclick="switchTab('chat')" disabled title="Chat needs an API key — add one under Configuration">
         Chat
       </button>
     </div>
@@ -2378,7 +2415,7 @@
 
             <!-- API Key Input -->
             <div class="form-group">
-              <label for="api-key"><span id="api-key-label">Claude</span> API Key</label>
+              <label for="api-key"><span id="api-key-label">Claude</span> API Key <span class="label-optional">optional</span></label>
               <div class="input-wrapper">
                 <input
                   type="password"
@@ -2394,7 +2431,7 @@
                   <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM7.25 4.75a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5zM8 12a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
                 </svg>
                 <span>
-                  <strong>API keys are billed separately</strong> from <span id="api-key-notice-subscription">Claude Pro / Claude Team</span> subscriptions. Create a key at <a href="https://platform.claude.com/settings/keys" id="api-key-portal-link" target="_blank" rel="noopener noreferrer">platform.claude.com</a> and add credits before using the plugin.
+                  <strong>A key is optional.</strong> The audit, token analysis, naming checks, auto-fixes and exports all run without one. Adding a key also generates component descriptions, property recommendations and enables Chat. Keys are billed separately from <span id="api-key-notice-subscription">Claude Pro / Claude Team</span> subscriptions — create one at <a href="https://platform.claude.com/settings/keys" id="api-key-portal-link" target="_blank" rel="noopener noreferrer">platform.claude.com</a>.
                 </span>
               </div>
             </div>
@@ -2904,6 +2941,10 @@
     let currentFixableTokens = [];
     let lastAnalyzedNodeId = null;
     let currentExistingDescription = '';
+    // False when the last analysis ran without an API key. The audit, tokens,
+    // naming and readiness score are all local, so the results are complete —
+    // this only suppresses the AI-authored sections.
+    let currentAiEnabled = true;
     let currentAuditScore = 0;
     let quickActionsFixCount = 0;
     let namingItemsShown = 15; // Initial limit for naming pagination
@@ -3533,6 +3574,14 @@
         quickActions.style.display = 'none';
       });
 
+      // Called from the "add an API key" prompts in the results panel.
+      window.openApiKeyConfig = () => {
+        apiKeyCard.style.display = 'block';
+        quickActions.style.display = 'none';
+        apiKeyCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        apiKeyInput.focus();
+      };
+
       hideConfigButton.addEventListener('click', () => {
         // Unconditional by design. This used to be gated on `apiKeySaved`, so any
         // state that cleared that flag — switching provider and back, most often —
@@ -3631,6 +3680,16 @@
     }
 
     // Generate Markdown Documentation
+    /**
+     * Description text for exports. metadata.description is AI-authored only
+     * when a key is configured; otherwise it's a generated placeholder, so
+     * prefer the description actually stored on the Figma component.
+     */
+    function exportDescription(metadata) {
+      if (currentAiEnabled) return metadata.description;
+      return currentExistingDescription || '_No description set on this component in Figma._';
+    }
+
     function generateMarkdownDocumentation(metadata) {
       const data = currentAnalysisData || {};
       const audit = currentAuditResults || {};
@@ -3647,7 +3706,7 @@
       }
 
       // Description
-      content += `${metadata.description}\n\n`;
+      content += `${exportDescription(metadata)}\n\n`;
 
       // --- Variants ---
       if (metadata.variants && Object.keys(metadata.variants).length > 0) {
@@ -3886,7 +3945,7 @@
       // --- Component Specification ---
       prompt += `## Component Specification\n\n`;
       prompt += `**Name:** ${metadata.component}\n`;
-      prompt += `**Description:** ${metadata.description}\n\n`;
+      prompt += `**Description:** ${exportDescription(metadata)}\n\n`;
 
       // --- Variants ---
       if (metadata.variants && Object.keys(metadata.variants).length > 0) {
@@ -4296,7 +4355,9 @@
       } else {
         clearApiKeyLink.classList.add('hidden');
       }
-      updateAnalyzeButtonState(providerHasKey);
+      // Analysis never depended on a key, so switching providers must not
+      // disable it — only the AI-authored extras follow the key.
+      updateAnalyzeButtonState(true);
 
       // Hide any error toast left over from the previous provider
       if (statusContainer && !statusContainer.classList.contains('hidden')) {
@@ -4406,7 +4467,7 @@
         // No response from the plugin — unblock the UI and offer a retry.
         currentRequestId = null;
         hideAnalysisProgress();
-        updateAnalyzeButtonState(apiKeySaved);
+        updateAnalyzeButtonState(true);
         analysisResults.classList.add('hidden');
         updateStatus('Analysis timed out. The AI provider may be slow — try again.', 'error');
       }, ANALYSIS_WATCHDOG_MS);
@@ -4418,17 +4479,15 @@
       sendMessageToPlugin('cancel-analysis', {});
       clearAnalysisWatchdog();
       hideAnalysisProgress();
-      updateAnalyzeButtonState(apiKeySaved);
+      updateAnalyzeButtonState(true);
       analysisResults.classList.add('hidden');
       updateStatus('Analysis cancelled', 'info');
     }
 
     function handleAnalyzeComponent(forceFresh) {
-      if (!apiKeySaved) {
-        updateStatus('Please save API key first', 'error');
-        return;
-      }
-
+      // No API key required. The audit, token analysis, naming checks and
+      // readiness score are computed locally from the Figma node; a key only
+      // adds the AI-authored description and property recommendations.
       analyzeButton.disabled = true;
       updateStatus('Analyzing selected component...', 'info');
 
@@ -4473,12 +4532,22 @@
         clearApiKeyLink.classList.add('hidden');
         apiKeySaved = false;
         savedProviders = savedProviders.filter(function (p) { return p !== currentProvider; });
-        updateAnalyzeButtonState(false);
-        updateStatus('API key cleared', 'info');
+        // Clearing a key drops the AI features, not the audit — leave Analyze
+        // available and let the selection handler govern it as usual.
+        updateStatus('API key cleared — the audit still runs without one', 'info');
 
         // Show config and hide quick actions
         apiKeyCard.style.display = 'block';
         quickActions.style.display = 'none';
+        hideConfigButton.style.display = 'inline-flex';
+
+        const clearedChatTab = document.getElementById('tab-chat');
+        if (clearedChatTab) {
+          clearedChatTab.disabled = true;
+          clearedChatTab.title = 'Chat needs an API key — add one under Configuration';
+          if (currentTab === 'chat') switchTab('analyze');
+        }
+        updateChatInputState();
       }
     }
 
@@ -4672,20 +4741,25 @@
         const chatTabButton = document.getElementById('tab-chat');
         if (chatTabButton) {
           chatTabButton.disabled = false;
+          chatTabButton.title = '';
         }
       } else {
-        updateStatus('Enter API key to get started', 'info');
-        updateAnalyzeButtonState(false);
+        // No key: the local audit is fully available, so don't present this as
+        // a blocked state. The config card stays open as the obvious place to
+        // add a key, but it can be collapsed and analysis run without one.
+        updateStatus('Ready to analyze — add an API key for AI descriptions and Chat', 'info');
+        updateAnalyzeButtonState(true);
         clearApiKeyLink.classList.add('hidden');
 
-        // Show config and hide quick actions
         apiKeyCard.style.display = 'block';
         quickActions.style.display = 'none';
+        hideConfigButton.style.display = 'inline-flex';
 
         // Disable chat tab and switch back to analyze if currently on chat
         const chatTabButton = document.getElementById('tab-chat');
         if (chatTabButton) {
           chatTabButton.disabled = true;
+          chatTabButton.title = 'Chat needs an API key — add one under Configuration';
           if (currentTab === 'chat') {
             switchTab('analyze');
           }
@@ -4769,6 +4843,7 @@
       // Store the analyzed node ID and existing description for description updates
       lastAnalyzedNodeId = data.analyzedNodeId || null;
       currentExistingDescription = data.existingDescription || '';
+      currentAiEnabled = data.aiEnabled !== false;
       if (!lastAnalyzedNodeId) {
         // Fallback: extract from token context or naming issues
         if (currentFixableTokens.length > 0 && currentFixableTokens[0].context) {
@@ -6027,8 +6102,28 @@
     function updateMetadataDisplay(metadata) {
       let html = '';
 
-      // Description Action Bar (Phase 5) — with comparison awareness
-      if (lastAnalyzedNodeId && metadata.description) {
+      // Description Action Bar (Phase 5) — with comparison awareness.
+      // Without a key there is no generated description to compare against
+      // (metadata.description is a local placeholder), so offering "Compare &
+      // Update" would write that placeholder into the Figma file.
+      if (!currentAiEnabled) {
+        if (currentExistingDescription) {
+          html += `
+            <div class="description-up-to-date">
+              <span>&#10003;</span>
+              <span>Description set in Figma</span>
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="ai-locked-note">
+              <span>No description set in Figma.
+                <button type="button" onclick="openApiKeyConfig()">Add an API key</button>
+                to generate one.</span>
+            </div>
+          `;
+        }
+      } else if (lastAnalyzedNodeId && metadata.description) {
         const similarity = computeDescriptionSimilarity(currentExistingDescription, metadata.description);
         if (currentExistingDescription && similarity >= 0.8) {
           // Descriptions are similar enough — up to date
@@ -6060,7 +6155,12 @@
       // Component Info
       html += `<div class="mb-md">`;
       html += `<h3 style="font-size: 13px; font-weight: 600; margin-top: 0;">${metadata.component}</h3>`;
-      html += `<div class="description-scroll-area">${metadata.description}</div>`;
+      // metadata.description is AI-authored when a key is configured; without
+      // one it's a generated placeholder, so show what Figma actually holds.
+      const shownDescription = currentAiEnabled
+        ? metadata.description
+        : (currentExistingDescription || '<span style="color: var(--text-tertiary);">No description</span>');
+      html += `<div class="description-scroll-area">${shownDescription}</div>`;
       html += `</div>`;
 
       // Properties
@@ -6311,7 +6411,7 @@
       if (!currentSelectionInfo) {
         hint.style.display = 'block';
         hint.textContent = 'Select a component, frame, or instance to analyze';
-        if (apiKeySaved) updateAnalyzeButtonState(false);
+        updateAnalyzeButtonState(false);
         return;
       }
 
@@ -6321,11 +6421,11 @@
         hint.textContent = data.count > 1
           ? `Will analyze: ${currentSelectionInfo.name} (${typeLabel}) — ${data.count} selected`
           : `Will analyze: ${currentSelectionInfo.name} (${typeLabel})`;
-        if (apiKeySaved && !currentRequestId) updateAnalyzeButtonState(true);
+        if (!currentRequestId) updateAnalyzeButtonState(true);
       } else {
         hint.style.display = 'block';
         hint.textContent = `"${currentSelectionInfo.name}" (${typeLabel}) can't be analyzed — select a component, frame, or instance`;
-        if (apiKeySaved) updateAnalyzeButtonState(false);
+        updateAnalyzeButtonState(false);
       }
     }
 

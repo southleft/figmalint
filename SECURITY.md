@@ -6,7 +6,11 @@ FigmaLint is **open source** (ISC license). Everything below can be verified in 
 
 ## What FigmaLint is
 
-A Figma plugin that audits components for design-system compliance, accessibility, and developer readiness, and generates handoff documentation. Analysis is performed by an AI model that **you** supply an API key for. FigmaLint is a client-side tool — there is **no FigmaLint-operated backend that receives your design data**.
+A Figma plugin that audits components for design-system compliance, accessibility, and developer readiness, and generates handoff documentation. FigmaLint is a client-side tool — there is **no FigmaLint-operated backend that receives your design data**.
+
+**An API key is optional.** The audit itself — token detection, the readiness score, accessibility checks, naming analysis, and both auto-fixers — is computed locally from the Figma document and involves no model and no AI provider. Without a key, **no component data leaves the machine except the design-systems knowledge lookup described below**. A key enables the AI-authored additions (component descriptions, property recommendations, chat), which are performed by a model that **you** supply the key for.
+
+For a security review, the no-key configuration is the narrowest: it removes every AI-provider domain from the traffic path.
 
 ## Execution & sandbox
 
@@ -40,7 +44,9 @@ No fixes are written to your file without an explicit confirmation step in the U
 
 ## Billing / budget separation
 
-API usage is billed to the account that **issues the key**, entirely separate from any Claude/ChatGPT/Gemini consumer or team subscription. If you use the Azure option, usage is billed to your **Azure subscription**, under your organization's existing cloud agreement — not to any external OpenAI or Anthropic account.
+Running FigmaLint without an API key incurs no model cost at all — no provider account is contacted.
+
+When a key is configured, API usage is billed to the account that **issues the key**, entirely separate from any Claude/ChatGPT/Gemini consumer or team subscription. If you use the Azure option, usage is billed to your **Azure subscription**, under your organization's existing cloud agreement — not to any external OpenAI or Anthropic account.
 
 ## Recommended configuration for approved-provider-only environments (Azure)
 

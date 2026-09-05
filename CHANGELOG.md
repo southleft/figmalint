@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.11.0
+
+### Changed
+- **The API key is now optional.** The audit ran behind a key that most of it never needed: the scoring function is handed the AI response and never reads it, and token detection, naming checks, accessibility checks and the readiness score are all computed from the Figma node. FigmaLint now analyzes without a key and skips only the parts a model actually produces. What runs unkeyed:
+  - Design token analysis — variables, styles, hard-coded values, per-category breakdown
+  - The full readiness score and every accessibility check (contrast, touch target, focus, font size)
+  - Component readiness checks, naming issue detection, AI Interpretation / MCP readiness
+  - Both auto-fixers — token binding with scope-aware matching, and all six renaming strategies
+  - Batch mode, the instance sheet, and all three exports (Markdown, AI Prompt, JSON)
+
+  **The score is identical with or without a key** — the same checks produce it either way. Adding a key adds the generated component description, property recommendations, and the Chat tab.
+
+  This exists because teams on org plans often can't get an API key issued, and a key is billed separately from a Claude/ChatGPT/Gemini subscription. Those teams can now run the audit and export a spec to paste into whatever AI tooling their organization already approves.
+
+### Fixed
+- **Unkeyed runs no longer emit placeholder findings.** Missing AI prose used to be backfilled with generic strings — "WCAG compliant contrast ratios", "General purpose component for design systems" — which exports printed as though they were assessments. Those fields are now left empty without a key, so the Accessibility section carries only the real deterministic checks and Usage Guidelines is omitted rather than filled with filler.
+- **The description panel no longer offers to write a placeholder into Figma.** Without a key `description` is a locally generated stand-in, and "Compare & Update" would have written it to the component. The panel now shows the description Figma actually holds, and offers to add a key when there is none.
+- **Clearing a key no longer disables analysis.** It now drops the AI features and leaves the audit running.
+
 ## 2.10.1
 
 ### Fixed

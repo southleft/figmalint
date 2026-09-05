@@ -1352,6 +1352,12 @@ export async function processEnhancedAnalysis(
 ): Promise<EnhancedAnalysisResult> {
   debugLog('🎯 Starting enhanced component analysis...');
 
+  // No API key configured -> local-only analysis. The audit, token analysis,
+  // naming checks and readiness score are all computed from the Figma node
+  // (createAuditResults never reads the LLM response), so the run still
+  // produces a complete result; only the AI-authored fields are skipped.
+  const aiEnabled = options.aiEnabled !== false && !!apiKey;
+
   const selectedNode = figma.currentPage.selection[0];
   const node = options.node || selectedNode;
   if (!node) {
@@ -1397,7 +1403,12 @@ export async function processEnhancedAnalysis(
     ...tokens.effects,
     ...tokens.borders,
   ];
-  const componentHash = consistencyEngine.generateComponentHash(context, allTokensForHash);
+  // Local-only and AI-assisted runs produce different results for the same
+  // component, so they must not share a cache slot — otherwise adding an API
+  // key and re-analyzing would silently return the earlier keyless result.
+  const componentHash =
+    consistencyEngine.generateComponentHash(context, allTokensForHash) +
+    (aiEnabled ? '' : ':local');
   if (!options.bypassCache) {
     const cached = consistencyEngine.getCachedAnalysis(componentHash);
     if (cached) {
@@ -1415,7 +1426,31 @@ export async function processEnhancedAnalysis(
 
   let analysisResult: any;
 
-  if (useMCP) {
+  if (!aiEnabled) {
+    // Local-only pass. The design-systems knowledge service is not
+    // user-authenticated, so best-practice guidance still applies here — a
+    // keyless run keeps the MCP-derived readiness score.
+    debugLog('📊 Running local-only analysis (no API key configured)...');
+    reportAnalysisProgress(2, 'Running local checks');
+
+    const mcpEnhancements = useMCP
+      ? await getMCPBestPractices(context, mcpServerUrl, {})
+      : null;
+
+    reportAnalysisProgress(3, 'Applying design-system guidance');
+
+    // Every field mergClaudeAndMCPResults reads off the LLM object is guarded
+    // with a local fallback, so an empty object yields a complete result.
+    analysisResult = mergClaudeAndMCPResults({}, mcpEnhancements, {
+      node,
+      context,
+      actualProperties,
+      actualStates,
+      tokens,
+      componentDescription
+    });
+
+  } else if (useMCP) {
     debugLog(`🔄 Using hybrid LLM + MCP approach (${providerId})...`);
     reportAnalysisProgress(2, 'Analyzing with AI');
 
@@ -1478,12 +1513,16 @@ export async function processEnhancedAnalysis(
   // Figma traversal doesn't run twice per analysis.
   reportAnalysisProgress(4, 'Building audit results');
   const filteredData = filterDevelopmentRecommendations(analysisResult);
-  const result = await processAnalysisResult(filteredData, context, options, {
+  // Pass the resolved flag, not the raw option — processEnhancedAnalysis also
+  // factors in whether a key was actually supplied.
+  const result = await processAnalysisResult(filteredData, context, { ...options, aiEnabled }, {
     actualProperties,
     actualStates,
     tokens,
     componentDescription,
   });
+
+  result.aiEnabled = aiEnabled;
 
   consistencyEngine.cacheAnalysis(componentHash, result);
   return result;
@@ -1938,6 +1977,13 @@ export async function processAnalysisResult(
   try {
     debugLog('🔄 Processing analysis result...');
 
+    // Without a key there is no AI-authored prose. The generic placeholders
+    // below ("WCAG compliant contrast ratios", "General purpose component")
+    // would otherwise be exported as if they were findings — so leave those
+    // fields empty and let the deterministic audit checks speak for
+    // themselves. Exports already skip empty sections.
+    const aiEnabled = options.aiEnabled !== false;
+
     // Prefer the node resolved by the caller (instance → main component,
     // variant → component set, batch-loop node); the raw selection is only a
     // last resort and may not match the node the context was built from.
@@ -2027,13 +2073,13 @@ export async function processAnalysisResult(
         typography: tokens.typography.filter((t: DesignToken) => t.isActualToken).map((t: DesignToken) => t.name)
       },
 
-      usage: filteredData.usage || 'General purpose component for design systems',
+      usage: filteredData.usage || (aiEnabled ? 'General purpose component for design systems' : ''),
 
-      accessibility: filteredData.accessibility || {
+      accessibility: filteredData.accessibility || (aiEnabled ? {
         keyboardNavigation: 'Standard keyboard navigation support',
         screenReader: 'Screen reader accessible',
         colorContrast: 'WCAG compliant contrast ratios'
-      },
+      } : {}),
 
       audit: filteredData.audit || {
         accessibilityIssues: [],

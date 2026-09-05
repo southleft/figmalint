@@ -408,11 +408,10 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
   const isStale = () => activeAnalysisRequestId !== requestId;
 
   try {
-    // Check API key
-    if (!storedApiKey) {
-      const providerName = getProvider(selectedProvider).name;
-      throw new Error(`API key not found. Please save your ${providerName} API key first.`);
-    }
+    // An API key is optional. Without one, the analysis runs its local passes
+    // (tokens, naming, accessibility, audit score, readiness) and skips the
+    // AI-authored fields. See processEnhancedAnalysis.
+    const aiEnabled = !!storedApiKey;
 
     // Get selection
     const selection = figma.currentPage.selection;
@@ -422,7 +421,7 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
 
     // Handle batch mode
     if (options.batchMode && selection.length > 1) {
-      await handleBatchAnalysis(selection, options);
+      await handleBatchAnalysis(selection, { ...options, aiEnabled });
       return;
     }
 
@@ -522,6 +521,7 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
       enableAudit: options.enableAudit !== false, // Enable by default
       includeTokenAnalysis: options.includeTokenAnalysis !== false, // Enable by default
       ...options, // Override with any user-specified options
+      aiEnabled,
       // Always analyze the resolved node (instance → main component, variant →
       // component set, child layer → analyzable ancestor) — the raw selection
       // may point at a node we deliberately walked away from above.
@@ -534,7 +534,7 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     // Use the new MCP-enhanced analysis flow
     const result = await processEnhancedAnalysis(
       componentContext,
-      storedApiKey,
+      storedApiKey || '',
       selectedModel,
       enhancedOptions,
       selectedProvider
@@ -761,8 +761,9 @@ async function handleAnalyzeComponent(): Promise<void> {
 /**
  * Handle batch analysis of multiple components with consistency
  */
-async function handleBatchAnalysis(nodes: readonly SceneNode[], _options: EnhancedAnalysisOptions): Promise<void> {
+async function handleBatchAnalysis(nodes: readonly SceneNode[], options: EnhancedAnalysisOptions): Promise<void> {
   const results = [];
+  const aiEnabled = options.aiEnabled !== false && !!storedApiKey;
 
   // Ensure design systems knowledge is loaded
   await consistencyEngine.loadDesignSystemsKnowledge();
@@ -781,8 +782,11 @@ async function handleBatchAnalysis(nodes: readonly SceneNode[], _options: Enhanc
           ...tokenAnalysis.borders
         ];
 
-        // Generate component hash
-        const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens);
+        // Generate component hash. Keyless runs get their own cache slot so a
+        // later keyed run isn't served the earlier local-only result.
+        const componentHash =
+          consistencyEngine.generateComponentHash(componentContext, allTokens) +
+          (aiEnabled ? '' : ':local');
 
         // Check for cached analysis first
         const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
@@ -797,23 +801,28 @@ async function handleBatchAnalysis(nodes: readonly SceneNode[], _options: Enhanc
           continue;
         }
 
-        // Create deterministic prompt
-        const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
-        const batchLlmResponse = await callProvider(selectedProvider, storedApiKey!, {
-          prompt: deterministicPrompt,
-          model: selectedModel,
-          maxTokens: 4096,
-          temperature: 0.1,
-        });
-        const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
+        // Without a key, skip the LLM entirely — processAnalysisResult fills
+        // every field it would have provided from the Figma node itself.
+        let enhancedData: any = {};
+        if (aiEnabled) {
+          const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
+          const batchLlmResponse = await callProvider(selectedProvider, storedApiKey!, {
+            prompt: deterministicPrompt,
+            model: selectedModel,
+            maxTokens: 4096,
+            temperature: 0.1,
+          });
+          const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
 
-        // Filter out development-focused recommendations
-        const enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
+          // Filter out development-focused recommendations
+          enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
+        }
 
         // Process and validate the result
-        let result = await processAnalysisResult(enhancedData, componentContext, { batchMode: true, node }, {
+        let result = await processAnalysisResult(enhancedData, componentContext, { batchMode: true, node, aiEnabled }, {
           tokens: tokenAnalysis,
         });
+        result.aiEnabled = aiEnabled;
 
         // Apply consistency corrections
         const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);

@@ -5434,6 +5434,7 @@ ${scoringCriteria}
   }
   async function processEnhancedAnalysis(context, apiKey, model, options = {}, providerId = "anthropic") {
     debugLog("\u{1F3AF} Starting enhanced component analysis...");
+    const aiEnabled = options.aiEnabled !== false && !!apiKey;
     const selectedNode = figma.currentPage.selection[0];
     const node = options.node || selectedNode;
     if (!node) {
@@ -5466,7 +5467,7 @@ ${scoringCriteria}
       ...tokens.effects,
       ...tokens.borders
     ];
-    const componentHash = consistencyEngine.generateComponentHash(context, allTokensForHash);
+    const componentHash = consistencyEngine.generateComponentHash(context, allTokensForHash) + (aiEnabled ? "" : ":local");
     if (!options.bypassCache) {
       const cached = consistencyEngine.getCachedAnalysis(componentHash);
       if (cached) {
@@ -5477,7 +5478,20 @@ ${scoringCriteria}
     const mcpServerUrl = options.mcpServerUrl || "https://design-systems-mcp.southleft-llc.workers.dev/mcp";
     const useMCP = options.useMCP !== false && options.enableMCPEnhancement !== false && !!mcpServerUrl;
     let analysisResult;
-    if (useMCP) {
+    if (!aiEnabled) {
+      debugLog("\u{1F4CA} Running local-only analysis (no API key configured)...");
+      reportAnalysisProgress(2, "Running local checks");
+      const mcpEnhancements = useMCP ? await getMCPBestPractices(context, mcpServerUrl, {}) : null;
+      reportAnalysisProgress(3, "Applying design-system guidance");
+      analysisResult = mergClaudeAndMCPResults({}, mcpEnhancements, {
+        node,
+        context,
+        actualProperties,
+        actualStates,
+        tokens,
+        componentDescription
+      });
+    } else if (useMCP) {
       debugLog(`\u{1F504} Using hybrid LLM + MCP approach (${providerId})...`);
       reportAnalysisProgress(2, "Analyzing with AI");
       const llmPrompt = createFigmaDataExtractionPrompt(context, actualProperties, actualStates, tokens, componentDescription);
@@ -5525,12 +5539,13 @@ ${scoringCriteria}
     }
     reportAnalysisProgress(4, "Building audit results");
     const filteredData = filterDevelopmentRecommendations(analysisResult);
-    const result = await processAnalysisResult(filteredData, context, options, {
+    const result = await processAnalysisResult(filteredData, context, __spreadProps(__spreadValues({}, options), { aiEnabled }), {
       actualProperties,
       actualStates,
       tokens,
       componentDescription
     });
+    result.aiEnabled = aiEnabled;
     consistencyEngine.cacheAnalysis(componentHash, result);
     return result;
   }
@@ -5840,6 +5855,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     var _a, _b, _c, _d, _e;
     try {
       debugLog("\u{1F504} Processing analysis result...");
+      const aiEnabled = options.aiEnabled !== false;
       let node = options.node || null;
       if (!node) {
         const selection = figma.currentPage.selection;
@@ -5902,12 +5918,12 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           spacing: tokens.spacing.filter((t) => t.isActualToken).map((t) => t.name),
           typography: tokens.typography.filter((t) => t.isActualToken).map((t) => t.name)
         },
-        usage: filteredData.usage || "General purpose component for design systems",
-        accessibility: filteredData.accessibility || {
+        usage: filteredData.usage || (aiEnabled ? "General purpose component for design systems" : ""),
+        accessibility: filteredData.accessibility || (aiEnabled ? {
           keyboardNavigation: "Standard keyboard navigation support",
           screenReader: "Screen reader accessible",
           colorContrast: "WCAG compliant contrast ratios"
-        },
+        } : {}),
         audit: filteredData.audit || {
           accessibilityIssues: [],
           namingIssues: [],
@@ -6815,16 +6831,13 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     activeAnalysisRequestId = requestId;
     const isStale = () => activeAnalysisRequestId !== requestId;
     try {
-      if (!storedApiKey) {
-        const providerName = getProvider(selectedProvider).name;
-        throw new Error(`API key not found. Please save your ${providerName} API key first.`);
-      }
+      const aiEnabled = !!storedApiKey;
       const selection = figma.currentPage.selection;
       if (selection.length === 0) {
         throw new Error("No component selected. Please select a Figma component to analyze.");
       }
       if (options.batchMode && selection.length > 1) {
-        await handleBatchAnalysis(selection, options);
+        await handleBatchAnalysis(selection, __spreadProps(__spreadValues({}, options), { aiEnabled }));
         return;
       }
       let selectedNode = selection[0];
@@ -6901,6 +6914,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         includeTokenAnalysis: options.includeTokenAnalysis !== false
       }, options), {
         // Override with any user-specified options
+        aiEnabled,
         // Always analyze the resolved node (instance → main component, variant →
         // component set, child layer → analyzable ancestor) — the raw selection
         // may point at a node we deliberately walked away from above.
@@ -6909,7 +6923,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       figma.notify("Performing enhanced analysis with design systems knowledge...", { timeout: 3e3 });
       const result = await processEnhancedAnalysis(
         componentContext,
-        storedApiKey,
+        storedApiKey || "",
         selectedModel,
         enhancedOptions,
         selectedProvider
@@ -7072,8 +7086,9 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
   async function handleAnalyzeComponent() {
     await handleEnhancedAnalyze({ batchMode: false });
   }
-  async function handleBatchAnalysis(nodes, _options) {
+  async function handleBatchAnalysis(nodes, options) {
     const results = [];
+    const aiEnabled = options.aiEnabled !== false && !!storedApiKey;
     await consistencyEngine.loadDesignSystemsKnowledge();
     for (const node of nodes) {
       if (isValidNodeForAnalysis(node)) {
@@ -7087,7 +7102,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
             ...tokenAnalysis.effects,
             ...tokenAnalysis.borders
           ];
-          const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens);
+          const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens) + (aiEnabled ? "" : ":local");
           const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
           if (cachedAnalysis) {
             console.log(`\u2705 Using cached analysis for ${node.name}`);
@@ -7099,18 +7114,22 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
             });
             continue;
           }
-          const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
-          const batchLlmResponse = await callProvider(selectedProvider, storedApiKey, {
-            prompt: deterministicPrompt,
-            model: selectedModel,
-            maxTokens: 4096,
-            temperature: 0.1
-          });
-          const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
-          const enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
-          let result = await processAnalysisResult(enhancedData, componentContext, { batchMode: true, node }, {
+          let enhancedData = {};
+          if (aiEnabled) {
+            const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
+            const batchLlmResponse = await callProvider(selectedProvider, storedApiKey, {
+              prompt: deterministicPrompt,
+              model: selectedModel,
+              maxTokens: 4096,
+              temperature: 0.1
+            });
+            const rawEnhancedData = extractJSONFromResponse(batchLlmResponse.content);
+            enhancedData = filterDevelopmentRecommendations(rawEnhancedData);
+          }
+          let result = await processAnalysisResult(enhancedData, componentContext, { batchMode: true, node, aiEnabled }, {
             tokens: tokenAnalysis
           });
+          result.aiEnabled = aiEnabled;
           const isConsistent = consistencyEngine.validateAnalysisConsistency(result, componentContext);
           if (!isConsistent) {
             result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
