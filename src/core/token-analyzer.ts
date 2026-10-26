@@ -647,21 +647,23 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
       }
     }
 
-    // Extract spacing values ONLY if no bound variables
-    const hasPaddingVariables = 'boundVariables' in currentNode &&
-                               currentNode.boundVariables &&
-                               (['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'].some(prop =>
-                                 (currentNode.boundVariables as any)[prop]));
+    // Extract hard-coded padding per side. Each side is bound independently in
+    // Figma (horizontal and vertical padding are separate controls), so a
+    // variable on one side says nothing about the others — detaching vertical
+    // padding while horizontal stays bound must still be flagged.
+    const boundSpacing = ('boundVariables' in currentNode && currentNode.boundVariables
+      ? currentNode.boundVariables
+      : {}) as Record<string, unknown>;
 
-    if ('paddingLeft' in currentNode && typeof currentNode.paddingLeft === 'number' && !hasPaddingVariables) {
-      debugLog(`🔍 [HARD-CODED] Checking padding for ${currentNode.name} (no variables)`);
+    if ('paddingLeft' in currentNode && typeof currentNode.paddingLeft === 'number') {
+      debugLog(`🔍 [HARD-CODED] Checking padding for ${currentNode.name}`);
       const frame = currentNode as FrameNode;
       const paddings = [
-        { value: frame.paddingLeft, name: 'left' },
-        { value: frame.paddingRight, name: 'right' },
-        { value: frame.paddingTop, name: 'top' },
-        { value: frame.paddingBottom, name: 'bottom' }
-      ];
+        { value: frame.paddingLeft, name: 'left', prop: 'paddingLeft' },
+        { value: frame.paddingRight, name: 'right', prop: 'paddingRight' },
+        { value: frame.paddingTop, name: 'top', prop: 'paddingTop' },
+        { value: frame.paddingBottom, name: 'bottom', prop: 'paddingBottom' }
+      ].filter(padding => !boundSpacing[padding.prop]);
 
       paddings.forEach((padding) => {
         const padDedupKey = `${padding.value}:${currentNode.id}:${padding.name}`;
@@ -687,13 +689,50 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
               nodeId: currentNode.id,
               path: debugContext.path,
               description: debugContext.description,
-              property: `padding${padding.name.charAt(0).toUpperCase() + padding.name.slice(1)}`
+              property: padding.prop
             }
           });
         }
       });
-    } else if (hasPaddingVariables) {
-      debugLog(`🔍 [VARIABLES] ${currentNode.name} has padding variables - skipping hard-coded detection`);
+    }
+
+    // Extract hard-coded auto-layout gaps. Skipped where Figma ignores the
+    // value: no auto layout, fewer than two children, "Auto" (space-between)
+    // spacing, and the component set's own variant grid.
+    if ('layoutMode' in currentNode &&
+        (currentNode.layoutMode === 'HORIZONTAL' || currentNode.layoutMode === 'VERTICAL') &&
+        currentNode.type !== 'COMPONENT_SET' &&
+        currentNode.children.length > 1) {
+      const frame = currentNode as FrameNode;
+      const gaps = [
+        { value: frame.primaryAxisAlignItems === 'SPACE_BETWEEN' ? null : frame.itemSpacing, prop: 'itemSpacing' },
+        { value: frame.layoutWrap === 'WRAP' ? frame.counterAxisSpacing : null, prop: 'counterAxisSpacing' }
+      ];
+
+      gaps.forEach((gap) => {
+        if (boundSpacing[gap.prop] || typeof gap.value !== 'number' || gap.value <= 1) return;
+        const gapDedupKey = `${gap.value}:${currentNode.id}:${gap.prop}`;
+        if (spacingSet.has(gapDedupKey)) return;
+        debugLog(`   ⚠️ Found hard-coded ${gap.prop}: ${gap.value}px`);
+        spacingSet.add(gapDedupKey);
+
+        const debugContext = getDebugContext(currentNode);
+        spacing.push({
+          name: `hard-coded-gap-${gap.value}`,
+          value: `${gap.value}px`,
+          type: 'gap',
+          isToken: false,
+          source: 'hard-coded',
+          context: {
+            nodeType: currentNode.type,
+            nodeName: currentNode.name,
+            nodeId: currentNode.id,
+            path: debugContext.path,
+            description: debugContext.description,
+            property: gap.prop
+          }
+        });
+      });
     }
 
     // Traverse children.

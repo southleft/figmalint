@@ -618,16 +618,16 @@
           });
         }
       }
-      const hasPaddingVariables = "boundVariables" in currentNode && currentNode.boundVariables && ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"].some((prop) => currentNode.boundVariables[prop]);
-      if ("paddingLeft" in currentNode && typeof currentNode.paddingLeft === "number" && !hasPaddingVariables) {
-        debugLog(`\u{1F50D} [HARD-CODED] Checking padding for ${currentNode.name} (no variables)`);
+      const boundSpacing = "boundVariables" in currentNode && currentNode.boundVariables ? currentNode.boundVariables : {};
+      if ("paddingLeft" in currentNode && typeof currentNode.paddingLeft === "number") {
+        debugLog(`\u{1F50D} [HARD-CODED] Checking padding for ${currentNode.name}`);
         const frame = currentNode;
         const paddings = [
-          { value: frame.paddingLeft, name: "left" },
-          { value: frame.paddingRight, name: "right" },
-          { value: frame.paddingTop, name: "top" },
-          { value: frame.paddingBottom, name: "bottom" }
-        ];
+          { value: frame.paddingLeft, name: "left", prop: "paddingLeft" },
+          { value: frame.paddingRight, name: "right", prop: "paddingRight" },
+          { value: frame.paddingTop, name: "top", prop: "paddingTop" },
+          { value: frame.paddingBottom, name: "bottom", prop: "paddingBottom" }
+        ].filter((padding) => !boundSpacing[padding.prop]);
         paddings.forEach((padding) => {
           const padDedupKey = `${padding.value}:${currentNode.id}:${padding.name}`;
           if (typeof padding.value === "number" && padding.value > 1 && !spacingSet.has(padDedupKey)) {
@@ -648,13 +648,41 @@
                 nodeId: currentNode.id,
                 path: debugContext.path,
                 description: debugContext.description,
-                property: `padding${padding.name.charAt(0).toUpperCase() + padding.name.slice(1)}`
+                property: padding.prop
               }
             });
           }
         });
-      } else if (hasPaddingVariables) {
-        debugLog(`\u{1F50D} [VARIABLES] ${currentNode.name} has padding variables - skipping hard-coded detection`);
+      }
+      if ("layoutMode" in currentNode && (currentNode.layoutMode === "HORIZONTAL" || currentNode.layoutMode === "VERTICAL") && currentNode.type !== "COMPONENT_SET" && currentNode.children.length > 1) {
+        const frame = currentNode;
+        const gaps = [
+          { value: frame.primaryAxisAlignItems === "SPACE_BETWEEN" ? null : frame.itemSpacing, prop: "itemSpacing" },
+          { value: frame.layoutWrap === "WRAP" ? frame.counterAxisSpacing : null, prop: "counterAxisSpacing" }
+        ];
+        gaps.forEach((gap) => {
+          if (boundSpacing[gap.prop] || typeof gap.value !== "number" || gap.value <= 1) return;
+          const gapDedupKey = `${gap.value}:${currentNode.id}:${gap.prop}`;
+          if (spacingSet.has(gapDedupKey)) return;
+          debugLog(`   \u26A0\uFE0F Found hard-coded ${gap.prop}: ${gap.value}px`);
+          spacingSet.add(gapDedupKey);
+          const debugContext = getDebugContext(currentNode);
+          spacing.push({
+            name: `hard-coded-gap-${gap.value}`,
+            value: `${gap.value}px`,
+            type: "gap",
+            isToken: false,
+            source: "hard-coded",
+            context: {
+              nodeType: currentNode.type,
+              nodeName: currentNode.name,
+              nodeId: currentNode.id,
+              path: debugContext.path,
+              description: debugContext.description,
+              property: gap.prop
+            }
+          });
+        });
       }
       if ("children" in currentNode) {
         for (const child of currentNode.children) {
@@ -2850,8 +2878,22 @@ ${scoringCriteria}
         depth: item.depth
       }));
     }
+    // Includes each token's name, value, node and property: a cache hit returns
+    // the cached token list, so any edit that changes a finding (a new
+    // hard-coded value, a rebound variable, 8px → 12px) must miss the cache.
     generateTokenFingerprint(tokens) {
-      const fingerprint = tokens.map((token) => `${token.type}:${token.isToken}:${token.source}`).sort().join("|");
+      const fingerprint = tokens.map((token) => {
+        var _a, _b;
+        return [
+          token.type,
+          token.isToken,
+          token.source,
+          token.name,
+          token.value,
+          ((_a = token.context) == null ? void 0 : _a.nodeId) || "",
+          ((_b = token.context) == null ? void 0 : _b.property) || ""
+        ].join(":");
+      }).sort().join("|");
       return this.createHash(fingerprint);
     }
     createHash(input) {

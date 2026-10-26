@@ -3161,6 +3161,17 @@
       updateStatus('Applying fix...', 'info');
     }
 
+    // Fix buttons for one hard-coded value. Several findings can share a layer
+    // (four padding sides, a fill and a stroke), so match the property as well
+    // as the node. Color fixes report "fills[0]" for a button rendered "fills".
+    function findTokenFixButtons(nodeId, propertyPath) {
+      const byNode = `.fix-btn[data-node-id="${CSS.escape(nodeId)}"]`;
+      const exact = document.querySelectorAll(`${byNode}[data-property="${CSS.escape(propertyPath)}"]`);
+      if (exact.length > 0) return exact;
+      const baseProperty = propertyPath.replace(/\[\d+\]$/, '');
+      return document.querySelectorAll(`${byNode}[data-property="${CSS.escape(baseProperty)}"]`);
+    }
+
     // Request fix preview for a token
     function previewTokenFix(nodeId, propertyPath, currentValue) {
       // Select the node in Figma so the user can see which element will be updated
@@ -3169,7 +3180,7 @@
       // Highlight the selected token item so the user can track which one they're fixing
       document.querySelectorAll('.token-item-compact.token-item-selected')
         .forEach(el => el.classList.remove('token-item-selected'));
-      const fixBtn = document.querySelector(`.fix-btn[data-node-id="${nodeId}"]`);
+      const fixBtn = findTokenFixButtons(nodeId, propertyPath)[0];
       if (fixBtn) {
         const tokenItem = fixBtn.closest('.token-item-compact');
         if (tokenItem) tokenItem.classList.add('token-item-selected');
@@ -3223,6 +3234,10 @@
       if (!pendingBatchFixRequest) return;
       const fixes = pendingBatchFixRequest.fixes;
       pendingBatchFixRequest = null;
+      if (data && data.error) {
+        updateStatus(`Could not match values to design tokens: ${data.error}`, 'error');
+        return;
+      }
       const resolutions = (data && data.resolutions) || {};
 
       // Group by (value, property); annotate fixes with their resolved token
@@ -6797,9 +6812,8 @@
         }
 
         // Handle token fix — find the Fix button by nodeId and disable it
-        if (data.fixType === 'token' && data.nodeId) {
-          // Find fix-btn inside token-item-compact that matches this nodeId
-          const fixBtns = document.querySelectorAll(`.fix-btn[data-node-id="${data.nodeId}"]`);
+        if (data.fixType === 'token' && data.nodeId && data.propertyPath) {
+          const fixBtns = findTokenFixButtons(data.nodeId, data.propertyPath);
           fixBtns.forEach(btn => {
             btn.textContent = '\u2713';
             btn.classList.add('fix-applied');
@@ -6930,19 +6944,7 @@
                 namingSuccessCount++;
               }
             } else if (result.fixType === 'token') {
-              // Update only the specific token fix button matching both nodeId and property
-              // Try exact match first, then base property without index (fills[0] → fills)
-              let selector = `.fix-btn[data-node-id="${result.nodeId}"]`;
-              if (result.propertyPath) {
-                selector += `[data-property="${result.propertyPath}"]`;
-              }
-              let tokenBtns = document.querySelectorAll(selector);
-              if (tokenBtns.length === 0 && result.propertyPath) {
-                const baseProperty = result.propertyPath.replace(/\[\d+\]$/, '');
-                if (baseProperty !== result.propertyPath) {
-                  tokenBtns = document.querySelectorAll(`.fix-btn[data-node-id="${result.nodeId}"][data-property="${baseProperty}"]`);
-                }
-              }
+              const tokenBtns = result.propertyPath ? findTokenFixButtons(result.nodeId, result.propertyPath) : [];
               tokenBtns.forEach(btn => {
                 btn.textContent = '\u2713';
                 btn.classList.add('fix-applied');

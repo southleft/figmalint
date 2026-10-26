@@ -418,9 +418,20 @@ ${scoringCriteria}
     }));
   }
 
+  // Includes each token's name, value, node and property: a cache hit returns
+  // the cached token list, so any edit that changes a finding (a new
+  // hard-coded value, a rebound variable, 8px → 12px) must miss the cache.
   private generateTokenFingerprint(tokens: any[]): string {
     const fingerprint = tokens
-      .map(token => `${token.type}:${token.isToken}:${token.source}`)
+      .map(token => [
+        token.type,
+        token.isToken,
+        token.source,
+        token.name,
+        token.value,
+        token.context?.nodeId || '',
+        token.context?.property || '',
+      ].join(':'))
       .sort()
       .join('|');
     return this.createHash(fingerprint);

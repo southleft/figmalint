@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.11.2
+
+### Fixed
+- **Hard-coded padding is no longer hidden by a variable on another side.** Padding detection was all-or-nothing: if *any* side was bound to a variable, all four sides were skipped. Detaching vertical padding while horizontal padding stayed bound — e.g. replacing `spacing/100` with a literal `8` on top and bottom — produced no finding at all. Each side is now checked on its own.
+- **Hard-coded auto-layout gaps are now detected.** `itemSpacing` (and `counterAxisSpacing` on wrapping layouts) was never checked for hard-coded values, even though Fix could already bind them. Gaps Figma ignores — "Auto" spacing, single-child frames, and the component set's own variant grid — are skipped.
+- **Re-analyzing after an edit no longer returns a stale cached result.** The cache key only recorded each finding's type, so changing a value (8px → 12px), rebinding to a different variable, or moving which layer was hard-coded could match the earlier analysis and show "Loaded cached analysis (component unchanged)". The key now includes each finding's name, value, layer and property.
+- **Fixing one value no longer marks the layer's other values as fixed.** After a single Fix, every Fix button on that layer — other padding sides, its fill, stroke and radius — was ticked and dropped from the list, though none of them had changed. Fix All only collects unfixed items, so it then found nothing and did nothing beyond a status-line message. Buttons are now matched by layer *and* property.
+- **Fix All reports token-matching errors** instead of silently showing no matches.
+
 ## 2.11.1
 
 ### Security
