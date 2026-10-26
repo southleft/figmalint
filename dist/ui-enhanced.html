@@ -471,6 +471,14 @@
       background: var(--interactive-active);
     }
 
+    /* Analyze button while a run is in progress: it becomes the Stop control */
+    .button-primary.is-running,
+    .button-primary.is-running:hover:not(:disabled) {
+      background: var(--surface);
+      color: var(--error-text);
+      box-shadow: inset 0 0 0 1px var(--error);
+    }
+
     .button-secondary {
       background: transparent;
       color: var(--text-primary);
@@ -2545,7 +2553,6 @@
           <div id="analysis-progress" style="display: none; margin-top: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <span id="analysis-progress-label" style="font-size: 11px;">Preparing analysis…</span>
-              <button id="cancel-analysis" class="button button-secondary" style="font-size: 11px; padding: 3px 8px;">Cancel</button>
             </div>
             <div style="background: var(--bg-secondary, #eee); border-radius: 4px; height: 6px; margin-top: 6px; overflow: hidden;">
               <div id="analysis-progress-bar" style="height: 6px; width: 5%; border-radius: 4px; background: var(--figma-blue, #18a0fb); transition: width 0.3s;"></div>
@@ -3524,8 +3531,8 @@
 
       // Event Listeners
       saveKeyButton.addEventListener('click', handleSaveApiKey);
-      analyzeButton.addEventListener('click', handleAnalyzeComponent);
-      quickAnalyzeButton.addEventListener('click', handleAnalyzeComponent);
+      analyzeButton.addEventListener('click', handleAnalyzeButtonClick);
+      quickAnalyzeButton.addEventListener('click', handleAnalyzeButtonClick);
       apiKeyInput.addEventListener('input', handleApiKeyChange);
       // Typing a custom endpoint changes how the key is validated (Azure and
       // gateway keys don't follow the "sk-" convention), so re-run the inline
@@ -3564,7 +3571,6 @@
       batchModeSwitch.addEventListener('change', handleBatchModeToggle);
 
       // Analysis lifecycle controls
-      document.getElementById('cancel-analysis').addEventListener('click', handleCancelAnalysis);
       document.getElementById('reanalyze-fresh').addEventListener('click', () => handleAnalyzeComponent(true));
       document.getElementById('generate-instance-sheet').addEventListener('click', () => {
         const button = document.getElementById('generate-instance-sheet');
@@ -4471,7 +4477,26 @@
 
     const ANALYSIS_WATCHDOG_MS = 90000;
 
+    // While an analysis runs, the Analyze buttons become its Stop control —
+    // the same place the user just clicked, rather than a separate button.
+    function setAnalysisRunning(running) {
+      [analyzeButton, quickAnalyzeButton].forEach(btn => {
+        btn.classList.toggle('is-running', running);
+        btn.querySelector('span').textContent = running ? 'Stop analysis' : 'Analyze Component';
+        if (running) btn.disabled = false;
+      });
+    }
+
+    function handleAnalyzeButtonClick() {
+      if (currentRequestId) {
+        handleCancelAnalysis();
+      } else {
+        handleAnalyzeComponent();
+      }
+    }
+
     function showAnalysisProgress(label, step, total) {
+      setAnalysisRunning(true);
       const container = document.getElementById('analysis-progress');
       const labelEl = document.getElementById('analysis-progress-label');
       const bar = document.getElementById('analysis-progress-bar');
@@ -4481,6 +4506,7 @@
     }
 
     function hideAnalysisProgress() {
+      setAnalysisRunning(false);
       document.getElementById('analysis-progress').style.display = 'none';
     }
 
@@ -4511,14 +4537,13 @@
       hideAnalysisProgress();
       updateAnalyzeButtonState(true);
       analysisResults.classList.add('hidden');
-      updateStatus('Analysis cancelled', 'info');
+      updateStatus('Analysis stopped', 'info');
     }
 
     function handleAnalyzeComponent(forceFresh) {
       // No API key required. The audit, token analysis, naming checks and
       // readiness score are computed locally from the Figma node; a key only
       // adds the AI-authored description and property recommendations.
-      analyzeButton.disabled = true;
       updateStatus('Analyzing selected component...', 'info');
 
       // Reset scores immediately to avoid showing stale data
@@ -6569,8 +6594,10 @@
 
     // Update Analyze Button State
     function updateAnalyzeButtonState(enabled) {
-      analyzeButton.disabled = !enabled;
-      quickAnalyzeButton.disabled = !enabled;
+      // Selection changes mid-run must not disable the Stop control.
+      const allow = enabled || !!currentRequestId;
+      analyzeButton.disabled = !allow;
+      quickAnalyzeButton.disabled = !allow;
     }
 
     // Update Status Message

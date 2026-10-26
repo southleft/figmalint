@@ -6896,7 +6896,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         throw new Error("No component selected. Please select a Figma component to analyze.");
       }
       if (options.batchMode && selection.length > 1) {
-        await handleBatchAnalysis(selection, __spreadProps(__spreadValues({}, options), { aiEnabled }));
+        await handleBatchAnalysis(selection, __spreadProps(__spreadValues({}, options), { aiEnabled }), isStale);
         return;
       }
       let selectedNode = selection[0];
@@ -7145,12 +7145,22 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
   async function handleAnalyzeComponent() {
     await handleEnhancedAnalyze({ batchMode: false });
   }
-  async function handleBatchAnalysis(nodes, options) {
+  async function handleBatchAnalysis(nodes, options, isStale) {
     const results = [];
     const aiEnabled = options.aiEnabled !== false && !!storedApiKey;
     await consistencyEngine.loadDesignSystemsKnowledge();
+    const analyzable = nodes.filter(isValidNodeForAnalysis);
     for (const node of nodes) {
+      if (isStale()) {
+        figma.notify(`Batch analysis stopped after ${results.length} of ${analyzable.length} components`, { timeout: 3e3 });
+        return;
+      }
       if (isValidNodeForAnalysis(node)) {
+        sendMessageToUI("analysis-progress", {
+          step: analyzable.indexOf(node) + 1,
+          total: analyzable.length,
+          label: `Analyzing ${node.name}`
+        });
         try {
           const componentContext = await extractComponentContext(node);
           const tokenAnalysis = await extractDesignTokensFromNode(node);

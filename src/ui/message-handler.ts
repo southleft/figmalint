@@ -421,7 +421,7 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
 
     // Handle batch mode
     if (options.batchMode && selection.length > 1) {
-      await handleBatchAnalysis(selection, { ...options, aiEnabled });
+      await handleBatchAnalysis(selection, { ...options, aiEnabled }, isStale);
       return;
     }
 
@@ -761,15 +761,31 @@ async function handleAnalyzeComponent(): Promise<void> {
 /**
  * Handle batch analysis of multiple components with consistency
  */
-async function handleBatchAnalysis(nodes: readonly SceneNode[], options: EnhancedAnalysisOptions): Promise<void> {
+async function handleBatchAnalysis(
+  nodes: readonly SceneNode[],
+  options: EnhancedAnalysisOptions,
+  isStale: () => boolean
+): Promise<void> {
   const results = [];
   const aiEnabled = options.aiEnabled !== false && !!storedApiKey;
 
   // Ensure design systems knowledge is loaded
   await consistencyEngine.loadDesignSystemsKnowledge();
 
+  const analyzable = nodes.filter(isValidNodeForAnalysis);
   for (const node of nodes) {
+    // Stop between components when the user cancels. The UI has already
+    // reset, so nothing is sent back for a cancelled batch.
+    if (isStale()) {
+      figma.notify(`Batch analysis stopped after ${results.length} of ${analyzable.length} components`, { timeout: 3000 });
+      return;
+    }
     if (isValidNodeForAnalysis(node)) {
+      sendMessageToUI('analysis-progress', {
+        step: analyzable.indexOf(node) + 1,
+        total: analyzable.length,
+        label: `Analyzing ${node.name}`,
+      });
       try {
         // Extract context and tokens for hashing
         const componentContext = await extractComponentContext(node);

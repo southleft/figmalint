@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.4
+
+### Changed
+- **The Analyze button becomes Stop analysis while a run is in progress.** Stopping used to mean finding a small Cancel button in the progress row, often below the fold, while the Analyze button sat disabled. The button you just clicked is now the way out, and it stays clickable even if the selection changes mid-run.
+- **Batch analysis can be stopped.** It previously ran every selected component to completion regardless of Cancel. It now stops before the next component, and shows which component it's on ("Analyzing Button (2/5)").
+
+A stopped single analysis frees the UI immediately; a request already sent to the AI provider finishes in the background and its result is discarded.
+
 ## 2.11.3
 
 ### Fixed
