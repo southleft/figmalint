@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.11.3
+
+### Fixed
+- **The component set wrapper is no longer audited as part of the component.** The dashed purple frame Figma draws around a set's variants has its own fill, stroke, radius, padding and gap, none of which ever reach an instance. FigmaLint only ignored it when it matched Figma's defaults exactly (5px radius, 1px `#9747FF` stroke *and* 16px padding on every side), so most real sets slipped through: a set with 0px padding had its background counted as a hard-coded color, a set with a newer purple stroke had its stroke and radius flagged, and a wrapper background bound to a variable counted as token usage and inflated the score. The set's own styles are now skipped entirely; every variant inside it is still audited.
+- **Touch target size measures the smallest variant.** On a component set the check measured the whole wrapper, which always clears 44px, so undersized variants passed. The result now names the variant it measured.
+- **Color contrast no longer uses the wrapper as a background.** Text in a variant without its own fill was measured against the set's canvas fill. The background lookup now stops at the variant.
+
 ## 2.11.2
 
 ### Fixed

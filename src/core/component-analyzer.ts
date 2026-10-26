@@ -2263,7 +2263,9 @@ function getContrastRatio(l1: number, l2: number): number {
  */
 function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number } | null {
   let current: BaseNode | null = node.parent;
-  while (current && 'type' in current) {
+  // Stop at the component set: its fill is the canvas behind the variants,
+  // not a background any instance renders on.
+  while (current && 'type' in current && current.type !== 'COMPONENT_SET') {
     const sceneNode = current as SceneNode;
     if ('fills' in sceneNode) {
       const fills = (sceneNode as any).fills;
@@ -2291,27 +2293,38 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
 
   // 1. Touch target size (for interactive components)
   if (interactive) {
-    const width = 'width' in node ? (node as any).width : 0;
-    const height = 'height' in node ? (node as any).height : 0;
+    // A component set's bounds are the wrapper around all variants, which
+    // always clears 44px. Measure the smallest variant instead.
+    let target: SceneNode = node;
+    if (node.type === 'COMPONENT_SET') {
+      for (const variant of node.children) {
+        if (Math.min(variant.width, variant.height) < Math.min(target.width, target.height)) {
+          target = variant;
+        }
+      }
+    }
+    const width = 'width' in target ? (target as any).width : 0;
+    const height = 'height' in target ? (target as any).height : 0;
     const minDim = Math.min(width, height);
+    const where = target !== node ? ` (smallest variant: "${target.name}")` : '';
 
     if (minDim >= 44) {
       checks.push({
         check: 'Touch target size',
         status: 'pass',
-        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets recommended 44px minimum`
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets recommended 44px minimum${where}`
       });
     } else if (minDim >= 24) {
       checks.push({
         check: 'Touch target size',
         status: 'warning',
-        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px`
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px${where}`
       });
     } else {
       checks.push({
         check: 'Touch target size',
         status: 'fail',
-        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px is below WCAG 2.5.8 minimum of 24×24px`
+        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px is below WCAG 2.5.8 minimum of 24×24px${where}`
       });
     }
   }

@@ -219,6 +219,14 @@
     const borderSet = /* @__PURE__ */ new Set();
     async function traverseNode(currentNode, inVariant) {
       debugLog("\u{1F50D} Analyzing node:", currentNode.name, "Type:", currentNode.type);
+      if (currentNode.type === "COMPONENT_SET") {
+        debugLog(`\u{1F6AB} [COMPONENT SET] Skipping wrapper styles on ${currentNode.name}`);
+        for (const child of currentNode.children) {
+          if (isExcludedFromAnalysis(child.name)) continue;
+          await traverseNode(child, true);
+        }
+        return;
+      }
       const isDefaultVariantFrame = hasDefaultVariantFrameStyles(currentNode, inVariant);
       const skipHardCoded = VECTOR_GEOMETRY_TYPES.has(currentNode.type);
       const stylePromises = [];
@@ -654,7 +662,7 @@
           }
         });
       }
-      if ("layoutMode" in currentNode && (currentNode.layoutMode === "HORIZONTAL" || currentNode.layoutMode === "VERTICAL") && currentNode.type !== "COMPONENT_SET" && currentNode.children.length > 1) {
+      if ("layoutMode" in currentNode && (currentNode.layoutMode === "HORIZONTAL" || currentNode.layoutMode === "VERTICAL") && currentNode.children.length > 1) {
         const frame = currentNode;
         const gaps = [
           { value: frame.primaryAxisAlignItems === "SPACE_BETWEEN" ? null : frame.itemSpacing, prop: "itemSpacing" },
@@ -6107,7 +6115,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
   }
   function findBackgroundColor(node) {
     let current = node.parent;
-    while (current && "type" in current) {
+    while (current && "type" in current && current.type !== "COMPONENT_SET") {
       const sceneNode = current;
       if ("fills" in sceneNode) {
         const fills = sceneNode.fills;
@@ -6128,26 +6136,35 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     const checks = [];
     const interactive = isInteractiveComponent(node, states);
     if (interactive) {
-      const width = "width" in node ? node.width : 0;
-      const height = "height" in node ? node.height : 0;
+      let target = node;
+      if (node.type === "COMPONENT_SET") {
+        for (const variant of node.children) {
+          if (Math.min(variant.width, variant.height) < Math.min(target.width, target.height)) {
+            target = variant;
+          }
+        }
+      }
+      const width = "width" in target ? target.width : 0;
+      const height = "height" in target ? target.height : 0;
       const minDim = Math.min(width, height);
+      const where = target !== node ? ` (smallest variant: "${target.name}")` : "";
       if (minDim >= 44) {
         checks.push({
           check: "Touch target size",
           status: "pass",
-          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets recommended 44px minimum`
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets recommended 44px minimum${where}`
         });
       } else if (minDim >= 24) {
         checks.push({
           check: "Touch target size",
           status: "warning",
-          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px`
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px${where}`
         });
       } else {
         checks.push({
           check: "Touch target size",
           status: "fail",
-          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px is below WCAG 2.5.8 minimum of 24\xD724px`
+          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px is below WCAG 2.5.8 minimum of 24\xD724px${where}`
         });
       }
     }

@@ -141,6 +141,19 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
   async function traverseNode(currentNode: SceneNode, inVariant: boolean): Promise<void> {
     debugLog('🔍 Analyzing node:', currentNode.name, 'Type:', currentNode.type);
 
+    // The component set itself is canvas chrome — Figma's dashed purple
+    // wrapper around the variants. Its fill, stroke, radius, padding and gap
+    // never reach an instance, so neither hard-coded values nor variable
+    // bindings on it say anything about the component. Audit the variants.
+    if (currentNode.type === 'COMPONENT_SET') {
+      debugLog(`🚫 [COMPONENT SET] Skipping wrapper styles on ${currentNode.name}`);
+      for (const child of currentNode.children) {
+        if (isExcludedFromAnalysis(child.name)) continue;
+        await traverseNode(child, true);
+      }
+      return;
+    }
+
     // Compute the default-variant-frame-style check once per node (it reads
     // static node properties, so the result is stable for the whole visit).
     const isDefaultVariantFrame = hasDefaultVariantFrameStyles(currentNode, inVariant);
@@ -697,11 +710,11 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     }
 
     // Extract hard-coded auto-layout gaps. Skipped where Figma ignores the
-    // value: no auto layout, fewer than two children, "Auto" (space-between)
-    // spacing, and the component set's own variant grid.
+    // value: no auto layout, fewer than two children, and "Auto"
+    // (space-between) spacing. The component set's variant grid never gets
+    // here — see the early return at the top of traverseNode.
     if ('layoutMode' in currentNode &&
         (currentNode.layoutMode === 'HORIZONTAL' || currentNode.layoutMode === 'VERTICAL') &&
-        currentNode.type !== 'COMPONENT_SET' &&
         currentNode.children.length > 1) {
       const frame = currentNode as FrameNode;
       const gaps = [
