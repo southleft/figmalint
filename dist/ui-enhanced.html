@@ -3371,8 +3371,8 @@
               // We'll append directly to the existing group's items div
               const severityIcon = issue.severity === 'error' ? ICO.xCircle : issue.severity === 'warning' ? ICO.warnTriangle : ICO.info;
               const severityClass = issue.severity === 'error' ? 'fail' : issue.severity === 'warning' ? 'warning' : 'info';
-              const escapedCurrent = issue.currentName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-              const escapedSuggested = issue.suggestedName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+              const escapedCurrent = jsAttr(issue.currentName);
+              const escapedSuggested = jsAttr(issue.suggestedName);
               const isAlreadyFixed = fixedNamingNodeIds.has(issue.nodeId);
 
               const itemEl = document.createElement('div');
@@ -3392,9 +3392,9 @@
                     <span class="naming-issue-arrow">&rarr;</span>
                     <code style="font-size: 10px; background: var(--surface); padding: 1px 4px; border-radius: 2px;">${escapeHtml(issue.suggestedName)}</code>
                   </span>
-                  <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">${issue.reason}</div>
+                  <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">${escapeHtml(issue.reason)}</div>
                 </div>
-                <button class="audit-action-button${isAlreadyFixed ? ' fix-applied' : ''}" data-node-id="${issue.nodeId}" onclick="event.stopPropagation();previewNamingFix('${issue.nodeId}', '${escapedCurrent}', '${escapedSuggested}')" title="Rename this layer"${isAlreadyFixed ? ' disabled' : ''}>${isAlreadyFixed ? '\u2713' : 'Rename'}</button>
+                <button class="audit-action-button${isAlreadyFixed ? ' fix-applied' : ''}" data-node-id="${issue.nodeId}" onclick="event.stopPropagation();previewNamingFix('${issue.nodeId}', ${escapedCurrent}, ${escapedSuggested})" title="Rename this layer"${isAlreadyFixed ? ' disabled' : ''}>${isAlreadyFixed ? '\u2713' : 'Rename'}</button>
               `;
               lastGroupItems.appendChild(itemEl);
               lastGroupItems.style.maxHeight = lastGroupItems.scrollHeight + 'px';
@@ -3417,8 +3417,8 @@
 
         const severityIcon = issue.severity === 'error' ? ICO.xCircle : issue.severity === 'warning' ? ICO.warnTriangle : ICO.info;
         const severityClass = issue.severity === 'error' ? 'fail' : issue.severity === 'warning' ? 'warning' : 'info';
-        const escapedCurrent = issue.currentName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        const escapedSuggested = issue.suggestedName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const escapedCurrent = jsAttr(issue.currentName);
+        const escapedSuggested = jsAttr(issue.suggestedName);
         const isAlreadyFixed = fixedNamingNodeIds.has(issue.nodeId);
 
         html += `
@@ -3430,9 +3430,9 @@
                 <span class="naming-issue-arrow">&rarr;</span>
                 <code style="font-size: 10px; background: var(--surface); padding: 1px 4px; border-radius: 2px;">${escapeHtml(issue.suggestedName)}</code>
               </span>
-              <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">${issue.reason}</div>
+              <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">${escapeHtml(issue.reason)}</div>
             </div>
-            <button class="audit-action-button${isAlreadyFixed ? ' fix-applied' : ''}" data-node-id="${issue.nodeId}" onclick="event.stopPropagation();previewNamingFix('${issue.nodeId}', '${escapedCurrent}', '${escapedSuggested}')" title="Rename this layer"${isAlreadyFixed ? ' disabled' : ''}>${isAlreadyFixed ? '\u2713' : 'Rename'}</button>
+            <button class="audit-action-button${isAlreadyFixed ? ' fix-applied' : ''}" data-node-id="${issue.nodeId}" onclick="event.stopPropagation();previewNamingFix('${issue.nodeId}', ${escapedCurrent}, ${escapedSuggested})" title="Rename this layer"${isAlreadyFixed ? ' disabled' : ''}>${isAlreadyFixed ? '\u2713' : 'Rename'}</button>
           </div>
         `;
       }
@@ -3482,10 +3482,25 @@
 
 
     // Helper to escape HTML
+    // Escapes for both element content and quoted attribute values. Figma layer
+    // names, variable names, AI output and knowledge-service results all reach
+    // innerHTML, so anything not authored in this file goes through here.
     function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+      if (text === null || text === undefined) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Encodes a value as a JS string literal for an inline handler attribute:
+    // onclick="fn(${jsAttr(value)})". JSON.stringify handles quotes and
+    // backslashes; the HTML escape stops the attribute parser from decoding
+    // entities in the value (e.g. &#39;) back into live quotes.
+    function jsAttr(value) {
+      return escapeHtml(JSON.stringify(String(value ?? '')));
     }
 
     // Initialize UI
@@ -5077,7 +5092,7 @@
                 ${state.found
                   ? '<span class="audit-status pass">✓</span>'
                   : '<span class="audit-status fail">✗</span>'}
-                <span class="audit-label">${state.name.charAt(0).toUpperCase() + state.name.slice(1).toLowerCase()} state ${state.found ? 'defined' : 'missing'}</span>
+                <span class="audit-label">${escapeHtml(state.name.charAt(0).toUpperCase() + state.name.slice(1).toLowerCase())} state ${state.found ? 'defined' : 'missing'}</span>
               </div>
             `;
           });
@@ -5199,7 +5214,7 @@
               <span class="audit-status ${status}">${
                 status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
               }</span>
-              <span class="audit-label">${item.check}</span>
+              <span class="audit-label">${escapeHtml(item.check)}</span>
             </div>
           `;
         });
@@ -5242,8 +5257,8 @@
               <span class="audit-status ${status}">${
                 status === 'pass' ? ICO.checkCircle : status === 'warning' ? ICO.warnTriangle : ICO.xCircle
               }</span>
-              <span class="audit-label">${item.check}</span>
-              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${item.suggestion}</span></div>` : ''}
+              <span class="audit-label">${escapeHtml(item.check)}</span>
+              ${item.suggestion ? `<div class="tooltip" style="margin-left: 4px;"><div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div><span class="tooltiptext">${escapeHtml(item.suggestion)}</span></div>` : ''}
             </div>
           `;
         });
@@ -5274,13 +5289,13 @@
             <div class="audit-item" style="cursor: pointer; flex-direction: column; align-items: flex-start; gap: 2px;" onclick="selectFigmaNode('${item.nodeId}')" title="Click to select in Figma">
               <div style="display: flex; align-items: center; gap: 6px; width: 100%;">
                 <span class="audit-status warning">${ICO.info}</span>
-                <span class="audit-label" style="font-weight: 500;">${item.name}</span>
+                <span class="audit-label" style="font-weight: 500;">${escapeHtml(item.name)}</span>
                 <div class="tooltip" style="margin-left: auto;">
                   <div class="info-icon" style="font-size: 9px; width: 14px; height: 14px;">i</div>
-                  <span class="tooltiptext">${item.reason}</span>
+                  <span class="tooltiptext">${escapeHtml(item.reason)}</span>
                 </div>
               </div>
-              <span style="font-size: 10px; color: var(--text-secondary); padding-left: 24px;">${item.parentPath}</span>
+              <span style="font-size: 10px; color: var(--text-secondary); padding-left: 24px;">${escapeHtml(item.parentPath)}</span>
             </div>
           `;
         });
@@ -5381,8 +5396,8 @@
           const issue = entry.issue;
           const severityIcon = issue.severity === 'error' ? ICO.xCircle : issue.severity === 'warning' ? ICO.warnTriangle : ICO.info;
           const severityClass = issue.severity === 'error' ? 'fail' : issue.severity === 'warning' ? 'warning' : 'info';
-          const escapedCurrent = issue.currentName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-          const escapedSuggested = issue.suggestedName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          const escapedCurrent = jsAttr(issue.currentName);
+          const escapedSuggested = jsAttr(issue.suggestedName);
 
           html += `
             <div class="naming-tree-item" data-node-id="${issue.nodeId}" onclick="if(event.target.tagName!=='BUTTON')selectFigmaNode('${issue.nodeId}')" title="Click to select this layer in Figma">
@@ -5393,9 +5408,9 @@
                   <span class="naming-issue-arrow">&rarr;</span>
                   <code style="font-size: 10px; background: var(--surface); padding: 1px 4px; border-radius: 2px;">${escapeHtml(issue.suggestedName)}</code>
                 </span>
-                <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">${issue.reason}</div>
+                <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">${escapeHtml(issue.reason)}</div>
               </div>
-              <button class="audit-action-button" data-node-id="${issue.nodeId}" onclick="event.stopPropagation();previewNamingFix('${issue.nodeId}', '${escapedCurrent}', '${escapedSuggested}')" title="Rename this layer">Rename</button>
+              <button class="audit-action-button" data-node-id="${issue.nodeId}" onclick="event.stopPropagation();previewNamingFix('${issue.nodeId}', ${escapedCurrent}, ${escapedSuggested})" title="Rename this layer">Rename</button>
             </div>
           `;
           itemIndex++;
@@ -5448,20 +5463,20 @@
 
         properties.forEach(prop => {
           html += '<tr>';
-          html += `<td>${toTitleCase(prop.name)}</td>`;
+          html += `<td>${escapeHtml(toTitleCase(prop.name))}</td>`;
           html += '<td><div class="property-values-cell">';
           prop.values.forEach(value => {
             // Detect hash/ID values (hex strings > 20 chars) and display as "Instance ref"
             const isHash = /^[a-f0-9]{20,}$/i.test(value);
             const displayValue = isHash ? 'Instance ref' : value;
-            html += `<span class="property-value" ${isHash ? `title="${value}"` : ''}>${displayValue}</span>`;
+            html += `<span class="property-value" ${isHash ? `title="${escapeHtml(value)}"` : ''}>${escapeHtml(displayValue)}</span>`;
           });
           html += '</div></td>';
           // Apply hash detection to default column too
           const defaultVal = prop.default || '-';
           const isDefaultHash = /^[a-f0-9]{20,}$/i.test(defaultVal);
           const displayDefault = isDefaultHash ? 'Instance ref' : defaultVal;
-          html += `<td><span class="property-default-value" ${isDefaultHash ? `title="${defaultVal}"` : ''}>${displayDefault}</span></td>`;
+          html += `<td><span class="property-default-value" ${isDefaultHash ? `title="${escapeHtml(defaultVal)}"` : ''}>${escapeHtml(displayDefault)}</span></td>`;
           html += '</tr>';
         });
 
@@ -5556,13 +5571,13 @@
           html += `
             <div class="recommendation-card" id="rec-card-${index}" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                <span style="font-weight: 600; font-size: 12px;">${rec.name}</span>
-                <span style="background: ${typeColor}; color: var(--text-on-color); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 9px; text-transform: uppercase; font-weight: 500;">${rec.type}</span>
+                <span style="font-weight: 600; font-size: 12px;">${escapeHtml(rec.name)}</span>
+                <span style="background: ${typeColor}; color: var(--text-on-color); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 9px; text-transform: uppercase; font-weight: 500;">${escapeHtml(rec.type)}</span>
                 ${actionHtml}
               </div>
-              <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 6px 0;">${rec.description}</p>
+              <p style="font-size: 11px; color: var(--text-secondary); margin: 0 0 6px 0;">${escapeHtml(rec.description)}</p>
               <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                ${rec.examples.map(example => `<span class="property-value">${example}</span>`).join('')}
+                ${rec.examples.map(example => `<span class="property-value">${escapeHtml(example)}</span>`).join('')}
               </div>
             </div>
           `;
@@ -5680,10 +5695,10 @@
           actualTokens.forEach(token => {
             html += `
               <div class="token-item-compact">
-                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-swatch" style="background: ${escapeHtml(token.value)};" title="${escapeHtml(token.value)}"></div>
                 <div class="token-details">
-                  <div class="token-name">${token.name}</div>
-                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                  <div class="token-name">${escapeHtml(token.name)}</div>
+                  <div class="token-usage" title="${escapeHtml(token.recommendation)}">${escapeHtml(token.recommendation)}</div>
                 </div>
               </div>
             `;
@@ -5708,16 +5723,16 @@
               if (token.context?.hasMatchingToken === false) {
                 fixButton = `<span class="no-match-label" title="Add a variable matching this value to enable auto-fix">No matching token</span>`;
               } else {
-                fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property || 'fills[0]'}" data-value="${token.value}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property || 'fills[0]'}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
+                fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${escapeHtml(token.context.property || 'fills[0]')}" data-value="${escapeHtml(token.value)}" onclick="event.stopPropagation();previewTokenFix(${jsAttr(token.context.nodeId)}, ${jsAttr(token.context.property || 'fills[0]')}, ${jsAttr(token.value)})" title="Fix this hard-coded value">Fix</button>`;
               }
             }
 
             html += `
               <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
-                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-swatch" style="background: ${escapeHtml(token.value)};" title="${escapeHtml(token.value)}"></div>
                 <div class="token-details">
-                  <div class="token-name">${token.value}</div>
-                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                  <div class="token-name">${escapeHtml(token.value)}</div>
+                  <div class="token-usage" title="${escapeHtml(contextInfo)} - ${escapeHtml(token.suggestion)}">${escapeHtml(token.suggestion)}</div>
                 </div>
                 <div class="token-actions">
                   ${fixButton}
@@ -5735,10 +5750,10 @@
           aiSuggestions.forEach(token => {
             html += `
               <div class="token-item-compact suggestion">
-                <div class="token-swatch" style="background: ${token.value};" title="${token.value}"></div>
+                <div class="token-swatch" style="background: ${escapeHtml(token.value)};" title="${escapeHtml(token.value)}"></div>
                 <div class="token-details">
-                  <div class="token-name">${token.name}</div>
-                  <div class="token-usage" title="${token.recommendation || token.suggestion || 'AI suggested token'}">${token.recommendation || token.suggestion || 'AI suggested token'}</div>
+                  <div class="token-name">${escapeHtml(token.name)}</div>
+                  <div class="token-usage" title="${escapeHtml(token.recommendation || token.suggestion || 'AI suggested token')}">${escapeHtml(token.recommendation || token.suggestion || 'AI suggested token')}</div>
                 </div>
               </div>
             `;
@@ -5766,8 +5781,8 @@
             html += `
               <div class="token-item-compact">
                 <div class="token-details">
-                  <div class="token-name">${token.name}</div>
-                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                  <div class="token-name">${escapeHtml(token.name)}</div>
+                  <div class="token-usage" title="${escapeHtml(token.recommendation)}">${escapeHtml(token.recommendation)}</div>
                 </div>
               </div>
             `;
@@ -5784,8 +5799,8 @@
             html += `
               <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
                 <div class="token-details">
-                  <div class="token-name">${token.type}</div>
-                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                  <div class="token-name">${escapeHtml(token.type)}</div>
+                  <div class="token-usage" title="${escapeHtml(contextInfo)} - ${escapeHtml(token.suggestion)}">${escapeHtml(token.suggestion)}</div>
                 </div>
               </div>
             `;
@@ -5813,8 +5828,8 @@
             html += `
               <div class="token-item-compact">
                 <div class="token-details">
-                  <div class="token-name">${token.name}</div>
-                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                  <div class="token-name">${escapeHtml(token.name)}</div>
+                  <div class="token-usage" title="${escapeHtml(token.recommendation)}">${escapeHtml(token.recommendation)}</div>
                 </div>
               </div>
             `;
@@ -5863,15 +5878,15 @@
                 if (token.context?.hasMatchingToken === false) {
                   fixButton = `<span class="no-match-label" title="Add a variable matching this value to enable auto-fix">No matching token</span>`;
                 } else {
-                  fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" data-value="${token.value}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
+                  fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${escapeHtml(token.context.property)}" data-value="${escapeHtml(token.value)}" onclick="event.stopPropagation();previewTokenFix(${jsAttr(token.context.nodeId)}, ${jsAttr(token.context.property)}, ${jsAttr(token.value)})" title="Fix this hard-coded value">Fix</button>`;
                 }
               }
 
               html += `
                 <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
                   <div class="token-details">
-                    <div class="token-name">${token.value}</div>
-                    <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
+                    <div class="token-name">${escapeHtml(token.value)}</div>
+                    <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${escapeHtml(contextInfo)}</div>
                     <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">Use appropriate stroke weight token (e.g., stroke.thin, stroke.medium)</div>
                   </div>
                   <div class="token-actions">
@@ -5913,16 +5928,16 @@
                 if (token.context?.hasMatchingToken === false) {
                   fixButton = `<span class="no-match-label" title="Add a variable matching this value to enable auto-fix">No matching token</span>`;
                 } else {
-                  fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" data-value="${token.value}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
+                  fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${escapeHtml(token.context.property)}" data-value="${escapeHtml(token.value)}" onclick="event.stopPropagation();previewTokenFix(${jsAttr(token.context.nodeId)}, ${jsAttr(token.context.property)}, ${jsAttr(token.value)})" title="Fix this hard-coded value">Fix</button>`;
                 }
               }
 
               html += `
                 <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
                   <div class="token-details">
-                    <div class="token-name">${token.value}</div>
-                    <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
-                    <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion}</div>
+                    <div class="token-name">${escapeHtml(token.value)}</div>
+                    <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${escapeHtml(contextInfo)}</div>
+                    <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${escapeHtml(token.suggestion)}</div>
                   </div>
                   <div class="token-actions">
                     ${fixButton}
@@ -5955,8 +5970,8 @@
             html += `
               <div class="token-item-compact">
                 <div class="token-details">
-                  <div class="token-name">${token.name}</div>
-                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                  <div class="token-name">${escapeHtml(token.name)}</div>
+                  <div class="token-usage" title="${escapeHtml(token.recommendation)}">${escapeHtml(token.recommendation)}</div>
                 </div>
               </div>
             `;
@@ -5993,16 +6008,16 @@
               if (token.context?.hasMatchingToken === false) {
                 fixButton = `<span class="no-match-label" title="Add a variable matching this value to enable auto-fix">No matching token</span>`;
               } else {
-                fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${token.context.property}" data-value="${token.value}" onclick="event.stopPropagation();previewTokenFix('${token.context.nodeId}', '${token.context.property}', '${token.value}')" title="Fix this hard-coded value">Fix</button>`;
+                fixButton = `<button class="fix-btn" data-node-id="${token.context.nodeId}" data-property="${escapeHtml(token.context.property)}" data-value="${escapeHtml(token.value)}" onclick="event.stopPropagation();previewTokenFix(${jsAttr(token.context.nodeId)}, ${jsAttr(token.context.property)}, ${jsAttr(token.value)})" title="Fix this hard-coded value">Fix</button>`;
               }
             }
 
             html += `
               <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
                 <div class="token-details">
-                  <div class="token-name">${token.value}</div>
-                  <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${contextInfo}</div>
-                  <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${token.suggestion || 'Create or use existing spacing token'}</div>
+                  <div class="token-name">${escapeHtml(token.value)}</div>
+                  <div class="token-usage" style="font-size: 10px; color: var(--text-secondary);">${escapeHtml(contextInfo)}</div>
+                  <div class="token-usage" style="font-size: 10px; margin-top: 2px; font-style: italic;">${escapeHtml(token.suggestion || 'Create or use existing spacing token')}</div>
                 </div>
                 <div class="token-actions">
                   ${fixButton}
@@ -6032,10 +6047,10 @@
           actualTypographyTokens.forEach(token => {
             html += `
               <div class="token-item-compact">
-                <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
+                <div class="token-preview-text" style="font-size: ${escapeHtml(token.value || '14px')}; font-weight: ${escapeHtml(token.context && token.context.fontWeight ? token.context.fontWeight : '400')};">Aa</div>
                 <div class="token-details">
-                  <div class="token-name">${token.name}</div>
-                  <div class="token-usage" title="${token.recommendation}">${token.recommendation}</div>
+                  <div class="token-name">${escapeHtml(token.name)}</div>
+                  <div class="token-usage" title="${escapeHtml(token.recommendation)}">${escapeHtml(token.recommendation)}</div>
                 </div>
               </div>
             `;
@@ -6053,10 +6068,10 @@
 
             html += `
               <div class="token-item-compact warning" ${token.context?.nodeId ? `onclick="selectFigmaNode('${token.context.nodeId}')" style="cursor: pointer;" title="Click to select in Figma"` : ''}>
-                <div class="token-preview-text" style="font-size: ${token.value || '14px'}; font-weight: ${token.context && token.context.fontWeight ? token.context.fontWeight : '400'};">Aa</div>
+                <div class="token-preview-text" style="font-size: ${escapeHtml(token.value || '14px')}; font-weight: ${escapeHtml(token.context && token.context.fontWeight ? token.context.fontWeight : '400')};">Aa</div>
                 <div class="token-details">
-                  <div class="token-name">${token.value}</div>
-                  <div class="token-usage" title="${contextInfo} - ${token.suggestion}">${token.suggestion}</div>
+                  <div class="token-name">${escapeHtml(token.value)}</div>
+                  <div class="token-usage" title="${escapeHtml(contextInfo)} - ${escapeHtml(token.suggestion)}">${escapeHtml(token.suggestion)}</div>
                 </div>
               </div>
             `;
@@ -6154,12 +6169,12 @@
 
       // Component Info
       html += `<div class="mb-md">`;
-      html += `<h3 style="font-size: 13px; font-weight: 600; margin-top: 0;">${metadata.component}</h3>`;
+      html += `<h3 style="font-size: 13px; font-weight: 600; margin-top: 0;">${escapeHtml(metadata.component)}</h3>`;
       // metadata.description is AI-authored when a key is configured; without
       // one it's a generated placeholder, so show what Figma actually holds.
       const shownDescription = currentAiEnabled
-        ? metadata.description
-        : (currentExistingDescription || '<span style="color: var(--text-tertiary);">No description</span>');
+        ? escapeHtml(metadata.description)
+        : (currentExistingDescription ? escapeHtml(currentExistingDescription) : '<span style="color: var(--text-tertiary);">No description</span>');
       html += `<div class="description-scroll-area">${shownDescription}</div>`;
       html += `</div>`;
 
@@ -6173,7 +6188,7 @@
           // Handle both object format and string format
           const propName = typeof prop === 'string' ? prop : (prop.name || prop);
           const formattedPropName = toTitleCase(propName);
-          html += `<span class="property-value">${formattedPropName}</span>`;
+          html += `<span class="property-value">${escapeHtml(formattedPropName)}</span>`;
         });
         html += '</div></div>';
       }
@@ -6190,7 +6205,7 @@
           html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">States</h4>';
           html += '<div style="display: flex; flex-wrap: wrap; gap: 4px;">';
           uniqueStates.forEach(state => {
-            html += `<span class="property-value" style="background: #E7F9F0; color: var(--success);">${state}</span>`;
+            html += `<span class="property-value" style="background: #E7F9F0; color: var(--success);">${escapeHtml(state)}</span>`;
           });
           html += '</div></div>';
         }
@@ -6242,7 +6257,7 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--success); margin-top: 0;">What AI Reads Well</h4>';
         html += '<ul style="margin: 0; padding-left: 16px; font-size: 12px; list-style: disc;">';
         mcpData.strengths.forEach(strength => {
-          html += `<li style="margin-bottom: 2px;">${strength}</li>`;
+          html += `<li style="margin-bottom: 2px;">${escapeHtml(strength)}</li>`;
         });
         html += '</ul>';
         html += '</div>';
@@ -6254,7 +6269,7 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--error);">Where AI Gets Confused</h4>';
         html += '<ul style="margin: 0; padding-left: 16px; font-size: 12px; list-style: disc;">';
         mcpData.gaps.forEach(gap => {
-          html += `<li style="margin-bottom: 2px;">${gap}</li>`;
+          html += `<li style="margin-bottom: 2px;">${escapeHtml(gap)}</li>`;
         });
         html += '</ul>';
         html += '</div>';
@@ -6266,7 +6281,7 @@
         html += '<h4 style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--primary);">How to Improve AI Understanding</h4>';
         html += '<ul style="margin: 0; padding-left: 16px; font-size: 12px; list-style: disc;">';
         mcpData.recommendations.forEach(rec => {
-          html += `<li style="margin-bottom: 2px;">${rec}</li>`;
+          html += `<li style="margin-bottom: 2px;">${escapeHtml(rec)}</li>`;
         });
         html += '</ul>';
         html += '</div>';
@@ -7404,8 +7419,8 @@
               </div>
               ${uniqueSources.map(source => `
                 <div class="chat-source">
-                  <div class="chat-source-title">${source.title}</div>
-                  <div class="chat-source-content">${source.content.substring(0, 150)}${source.content.length > 150 ? '...' : ''}</div>
+                  <div class="chat-source-title">${escapeHtml(source.title)}</div>
+                  <div class="chat-source-content">${escapeHtml(source.content.substring(0, 150))}${source.content.length > 150 ? '...' : ''}</div>
                 </div>
               `).join('')}
             </div>
@@ -7451,8 +7466,10 @@
     }
 
     function formatChatContent(content) {
-      // Robust markdown-to-HTML converter for chat messages
-      const lines = content.split('\n');
+      // Robust markdown-to-HTML converter for chat messages. The content is
+      // HTML-escaped before any markdown is applied, so model output and
+      // echoed layer names can only ever produce the tags generated below.
+      const lines = escapeHtml(content).split('\n');
       const htmlLines = [];
       let currentBlock = null;      // 'paragraph' | 'ol' | 'ul' | 'code'
       let currentBlockContent = [];
@@ -7480,10 +7497,6 @@
           .replace(/(\s|^)\*([^*\s][^*]*)\*(\s|$)/g, '$1<em>$2</em>$3');
       }
 
-      function escapeCodeHtml(text) {
-        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      }
-
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmedLine = line.trim();
@@ -7501,7 +7514,7 @@
           continue;
         }
         if (currentBlock === 'code') {
-          currentBlockContent.push(escapeCodeHtml(line));
+          currentBlockContent.push(line);
           continue;
         }
 
@@ -7609,7 +7622,7 @@
       if (hasComponent && currentMetadata) {
         // Show component context
         contextIndicator.classList.remove('hidden');
-        componentInfo.innerHTML = `Currently analyzing: <strong>${currentMetadata.component}</strong>`;
+        componentInfo.innerHTML = `Currently analyzing: <strong>${escapeHtml(currentMetadata.component)}</strong>`;
 
         // Update suggestions for component-specific questions
         chatSuggestions.innerHTML = `

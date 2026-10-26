@@ -457,7 +457,7 @@ export function isOpenRouterEndpoint(endpoint: string): boolean {
  * the error message users see when they paste an unsupported URL.
  */
 export const SUPPORTED_CUSTOM_ENDPOINT_HOSTS =
-  '*.openai.azure.com, *.ai.azure.com, *.cognitiveservices.azure.com, openrouter.ai';
+  '*.openai.azure.com, *.ai.azure.com, *.cognitiveservices.azure.com, openrouter.ai, api.langdock.com';
 
 /**
  * Normalize a custom OpenAI-compatible endpoint so a base URL works as well as a

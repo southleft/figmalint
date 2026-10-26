@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.11.1
+
+### Security
+- **Text from Figma files, AI responses and the knowledge service is now escaped before it's rendered.** Several panels inserted values straight into the plugin UI as HTML: the component name, layer and variable names, property names and values, audit messages, AI property recommendations and descriptions, chat messages, and chat source excerpts. A component or layer named with markup — say, in a file shared with you — would run as HTML in the plugin window when analyzed. Every one of those values now goes through a single escaping helper, which also escapes quotes so values placed in attributes can't break out of them. (#5)
+- **The Rename and Fix buttons can no longer be hijacked by a layer name.** Layer names and token values were spliced into the buttons' inline click handlers with only a quote replacement, so a name containing a backslash or an HTML entity such as `&#39;` could close the string and run code. They're now passed as properly encoded string literals.
+- **Chat formatting escapes the whole message first.** Only fenced code blocks were escaped before; paragraphs, headings, list items and inline code were inserted as written.
+
+### Added
+- **Langdock is on the network allowlist.** `api.langdock.com` can now be used as a custom OpenAI-compatible endpoint under the OpenAI provider — e.g. `https://api.langdock.com/openai/eu/v1/chat/completions` (or the `/us/` region), with your Langdock API key and model name. (#6)
+
 ## 2.11.0
 
 ### Changed

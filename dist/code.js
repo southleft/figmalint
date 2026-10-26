@@ -2404,7 +2404,7 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   function isOpenRouterEndpoint(endpoint) {
     return /(^|\/\/|\.)openrouter\.ai(?:[:/]|$)/i.test(endpoint.trim());
   }
-  var SUPPORTED_CUSTOM_ENDPOINT_HOSTS = "*.openai.azure.com, *.ai.azure.com, *.cognitiveservices.azure.com, openrouter.ai";
+  var SUPPORTED_CUSTOM_ENDPOINT_HOSTS = "*.openai.azure.com, *.ai.azure.com, *.cognitiveservices.azure.com, openrouter.ai, api.langdock.com";
   function normalizeChatCompletionsEndpoint(endpoint) {
     const trimmed = endpoint.trim().replace(/\/+$/, "");
     if (/\/chat\/completions$/i.test(trimmed)) return trimmed;

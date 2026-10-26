@@ -24,6 +24,7 @@ For a security review, the no-key configuration is the narrowest: it removes eve
   | `generativelanguage.googleapis.com` | Google (Gemini) API | Only if you select Google |
   | `*.openai.azure.com`, `*.ai.azure.com`, `*.cognitiveservices.azure.com` | Azure OpenAI / Azure AI Foundry | Only if you configure a custom Azure endpoint |
   | `openrouter.ai` | OpenRouter (multi-vendor gateway) | Only if you select OpenRouter |
+  | `api.langdock.com` | Langdock (OpenAI-compatible gateway) | Only if you configure a custom Langdock endpoint |
   | `design-systems-mcp.southleft-llc.workers.dev` | FigmaLint design-systems knowledge service | Best-practice lookups during analysis and the chat feature |
 
   There is **no analytics, telemetry, crash-reporting, or tracking endpoint** — the list above is exhaustive.
