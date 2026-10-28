@@ -87,6 +87,8 @@ export interface DesignToken {
     property?: string;
     /** Whether a matching design token variable exists for this hard-coded value */
     hasMatchingToken?: boolean;
+    /** Name of the best-matching variable, which a Fix would bind */
+    matchingTokenName?: string;
   };
 }
 

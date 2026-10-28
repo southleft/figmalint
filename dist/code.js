@@ -5876,7 +5876,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     return cheatSheet.slice(0, 5);
   }
   async function enrichTokensWithMatches(tokens) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     const categories = ["colors", "spacing", "typography", "effects", "borders"];
     for (const category of categories) {
       for (const token of tokens[category]) {
@@ -5886,11 +5886,13 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           if (isColorProperty) {
             const matches = await findMatchingColorVariable(token.value || "", 0.1, colorFieldFromPropertyPath(token.context.property));
             token.context.hasMatchingToken = matches.length > 0;
+            token.context.matchingTokenName = (_c = matches[0]) == null ? void 0 : _c.variableName;
           } else {
             const pixelValue = parseFloat(token.value || "0");
             if (!isNaN(pixelValue)) {
               const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
               token.context.hasMatchingToken = matches.length > 0;
+              token.context.matchingTokenName = (_d = matches[0]) == null ? void 0 : _d.variableName;
             } else {
               token.context.hasMatchingToken = false;
             }
@@ -8359,7 +8361,7 @@ Respond naturally and helpfully to the user's question.`;
   // src/code.ts
   var PLUGIN_WINDOW_SIZE = { width: 400, height: 700 };
   try {
-    figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
+    figma.showUI(__html__, __spreadProps(__spreadValues({}, PLUGIN_WINDOW_SIZE), { themeColors: true }));
     console.log("\u2705 FigmaLint - UI shown successfully");
   } catch (error) {
     console.log("\u2139\uFE0F UI might already be shown in inspect panel:", error);

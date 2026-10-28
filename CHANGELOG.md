@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.12.0
+
+### Changed
+- **The panel is organized around the selected component and its problems.** The top bar names what Analyze will run on and holds the one action (Analyze, or Stop analysis during a run). Results open with a one-line verdict, for example "13 problems, 8 fixable here", with the readiness score beside it as a secondary number. Problems are grouped (Accessibility, Interactive states, Hard-coded values, Layer names, Component setup), and passing checks fold into one line under their group instead of a row each.
+- **AI settings no longer fill the first screen.** Without a key, a single row says AI features are off and the audit runs without them, with an Add API key button that opens the form. With a key, the row names the model in use.
+- **Results are split into tabs.** Audit holds the problems and fixes, Properties holds the property table, description and states, and Handoff holds export and the AI-readability notes. Properties and Handoff unlock after an analysis.
+- **Hard-coded values show the variable a Fix will apply** ("4px top padding on `control`, matches `spacing/050`"), or say that no variable has the value. One Fix all button covers every fixable value, and long lists show the first 12 with a Show more link.
+- **Fixes update the verdict and group counts in place.** Fixed rows stay in the list, dimmed, so it doesn't jump under the pointer.
+- **The plugin follows Figma's light or dark theme.**
+- **Visual refresh:** hairline dividers in place of boxed cards, sentence-case labels in place of capitals, monospace for layer and variable names, and a single violet accent for actions.
+
+### Fixed
+- **Analyze was enabled with nothing selected** after the plugin loaded or the AI provider changed.
+- **The AI prompt export option disappeared** after the first analysis, because the export menu was rebuilt without it.
+- **A "Save your API key to continue" message appeared on launch**, although the audit doesn't need a key.
+
 ## 2.11.4
 
 ### Changed

@@ -7,7 +7,7 @@ const PLUGIN_WINDOW_SIZE = { width: 400, height: 700 };
 
 // Plugin initialization
 try {
-  figma.showUI(__html__, PLUGIN_WINDOW_SIZE);
+  figma.showUI(__html__, { ...PLUGIN_WINDOW_SIZE, themeColors: true });
   console.log('✅ FigmaLint - UI shown successfully');
 } catch (error) {
   console.log('ℹ️ UI might already be shown in inspect panel:', error);

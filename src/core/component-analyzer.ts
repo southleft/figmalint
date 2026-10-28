@@ -1944,11 +1944,13 @@ export async function enrichTokensWithMatches(tokens: TokenAnalysis): Promise<vo
         if (isColorProperty) {
           const matches = await findMatchingColorVariable(token.value || '', 0.1, colorFieldFromPropertyPath(token.context.property));
           token.context.hasMatchingToken = matches.length > 0;
+          token.context.matchingTokenName = matches[0]?.variableName;
         } else {
           const pixelValue = parseFloat(token.value || '0');
           if (!isNaN(pixelValue)) {
             const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
             token.context.hasMatchingToken = matches.length > 0;
+            token.context.matchingTokenName = matches[0]?.variableName;
           } else {
             token.context.hasMatchingToken = false;
           }
