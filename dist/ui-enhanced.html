@@ -388,18 +388,46 @@
     .verdict {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
-      padding: 16px var(--gutter) 14px;
-      border-bottom: 1px solid var(--line);
+      gap: 4px 16px;
+      padding: 18px var(--gutter) 16px;
     }
-    .verdict h2 { font-size: 17px; line-height: 1.25; font-weight: 650; letter-spacing: -0.01em; }
+    .verdict h2 { font-size: 19px; line-height: 1.2; font-weight: 700; letter-spacing: -0.015em; }
     .verdict p { color: var(--ink-2); margin-top: 4px; }
-    .score { text-align: right; line-height: 1.1; }
-    .score b { display: block; font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .verdict p:empty { display: none; }
+    .verdict-jumps { grid-column: 1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .verdict-jumps:empty { display: none; }
+    .jump {
+      font: inherit;
+      font-size: var(--font-size-xs);
+      color: var(--ink);
+      background: var(--canvas);
+      border: 0;
+      border-radius: 999px;
+      padding: 4px 10px 4px 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .jump:hover { background: var(--line); }
+    .jump b { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .jump-mark { width: 7px; height: 7px; border-radius: 50%; }
+    .jump.sev-fail .jump-mark { background: var(--fail); }
+    .jump.sev-warn .jump-mark { background: var(--warn); }
+    .jump.sev-done { color: var(--ink-3); }
+    .jump.sev-done .jump-mark { background: var(--pass); }
+
+    .score { grid-column: 2; grid-row: 1 / span 2; text-align: right; line-height: 1.1; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .score b { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
     .score small { color: var(--ink-3); font-size: var(--font-size-xs); }
+    .meter { display: block; width: 56px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+    .meter i { display: block; height: 4px; width: 0; border-radius: 2px; background: var(--ink-3); transition: width var(--transition-slow); }
     .score.is-good b { color: var(--pass); }
+    .score.is-good .meter i { background: var(--pass); }
     .score.is-fair b { color: var(--warn); }
+    .score.is-fair .meter i { background: var(--warn); }
     .score.is-poor b { color: var(--fail); }
+    .score.is-poor .meter i { background: var(--fail); }
 
     .results-meta {
       display: flex;
@@ -407,19 +435,67 @@
       justify-content: space-between;
       gap: 8px;
       padding: 4px 8px 4px var(--gutter);
-      border-bottom: 1px solid var(--line);
+      border-top: 1px solid var(--line);
       color: var(--ink-3);
       font-size: var(--font-size-xs);
     }
     .results-meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .results-meta-actions { display: inline-flex; flex-shrink: 0; }
 
-    /* ---- Issue groups ---- */
-    .group { border-bottom: 1px solid var(--line); padding-bottom: 6px; }
-    .group-head { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 8px 8px 2px var(--gutter); }
-    .group-head h3 { font-size: var(--font-size-sm); font-weight: 650; }
-    .group-count { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-    .group.is-done .group-count { color: var(--pass); }
+    /* ---- Issue groups: blocks separated by a band of canvas ---- */
+    .group { border-top: 8px solid var(--canvas); }
+    .group-head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 6px 8px 6px 8px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .group-toggle {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      min-width: 0;
+    }
+    .group-toggle:hover { background: var(--canvas); }
+    .group-head h3 { font-size: var(--font-size-md); font-weight: 700; letter-spacing: -0.005em; }
+    .chevron {
+      width: 6px;
+      height: 6px;
+      border-right: 1.5px solid var(--ink-3);
+      border-bottom: 1.5px solid var(--ink-3);
+      transform: rotate(45deg);
+      margin: 0 2px 3px;
+      transition: transform var(--transition-fast);
+    }
+    .group.is-collapsed .chevron { transform: rotate(-45deg); margin-bottom: 0; }
+    .group.is-collapsed .group-body { display: none; }
+    .group.is-collapsed .group-head { border-bottom-color: transparent; }
+    .group-body { padding: 4px 0 8px; }
+    .group-count {
+      font-size: var(--font-size-xs);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      border-radius: 999px;
+      padding: 1px 7px;
+      background: var(--canvas);
+      color: var(--ink-2);
+    }
+    .group-count.sev-fail { background: var(--fail-tint); color: var(--fail); }
+    .group-count.sev-warn { background: var(--warn-tint); color: var(--warn); }
+    .group.is-done .group-count { background: var(--pass-tint); color: var(--pass); }
     .group-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
     .select-quiet {
       width: auto !important;
@@ -435,32 +511,53 @@
 
     .issue {
       display: grid;
-      grid-template-columns: 8px minmax(0, 1fr) auto;
+      grid-template-columns: 14px minmax(0, 1fr) auto;
       gap: 10px;
       align-items: center;
-      padding: 6px var(--gutter);
+      padding: 8px var(--gutter);
     }
     .issue[onclick] { cursor: pointer; }
     .issue[onclick]:hover { background: var(--canvas); }
-    .issue .dot { width: 8px; height: 8px; border-radius: 50%; align-self: start; margin-top: 5px; }
-    .issue.fail .dot { background: var(--fail); }
-    .issue.warn .dot { box-shadow: inset 0 0 0 2px var(--warn); }
-    .issue.info .dot { box-shadow: inset 0 0 0 2px var(--line-strong); }
-    .issue-title { color: var(--ink); line-height: 1.5; }
+    /* Severity by shape as well as color: circle fails, triangle warns, ring notes */
+    .issue .dot {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      align-self: start;
+      margin-top: 2px;
+    }
+    .issue.fail .dot { background: var(--fail); border-radius: 50%; }
+    .issue.warn .dot { background: var(--warn); clip-path: polygon(50% 4%, 100% 92%, 0 92%); }
+    .issue.fail .dot::after, .issue.warn .dot::after {
+      content: "!";
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: var(--surface);
+      font-size: 9.5px;
+      font-weight: 800;
+      font-style: normal;
+      line-height: 1;
+    }
+    .issue.warn .dot::after { padding-top: 3px; }
+    .issue.info .dot { width: 10px; height: 10px; margin: 4px 2px 0; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--line-strong); }
+    .issue-title { color: var(--ink); font-weight: 500; line-height: 1.5; }
+    .issue-title code { font-weight: 500; }
     .issue-title .swatch {
       display: inline-block;
-      width: 11px;
-      height: 11px;
+      width: 13px;
+      height: 13px;
       border-radius: 3px;
-      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
-      vertical-align: -1px;
-      margin-right: 5px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+      vertical-align: -2px;
+      margin-right: 6px;
     }
-    .issue-detail { color: var(--ink-2); font-size: var(--font-size-xs); line-height: 1.45; }
+    .issue-detail { color: var(--ink-2); font-size: var(--font-size-xs); line-height: 1.45; margin-top: 1px; }
     .issue-path { color: var(--ink-3); font-family: var(--mono); font-size: 10px; }
     .issue-path::before { content: "in "; font-family: var(--font-family); }
     .rename-arrow { color: var(--ink-3); margin: 0 4px; }
-    .issue.is-fixed .issue-title, .issue.is-fixed .issue-detail, .issue.is-fixed .dot { opacity: 0.45; }
+    .issue.is-fixed .issue-title, .issue.is-fixed .issue-detail, .issue.is-fixed .dot { opacity: 0.4; }
     .issue.token-item-selected { background: var(--accent-tint); }
     .issue.is-overflow { display: none; }
     .group.show-overflow .issue.is-overflow { display: grid; }
@@ -472,19 +569,19 @@
       color: var(--accent);
       background: none;
       border: 0;
-      padding: 4px var(--gutter) 6px 32px;
+      padding: 6px var(--gutter) 6px 38px;
       cursor: pointer;
     }
     .show-more:hover { text-decoration: underline; }
 
-    /* Passing checks fold into one line under their group */
+    /* Passing checks fold into one quiet line under their group */
     .passed {
-      padding: 4px var(--gutter) 6px 32px;
+      padding: 6px var(--gutter) 4px 38px;
       color: var(--pass);
       font-size: var(--font-size-xs);
       position: relative;
     }
-    .passed span:not(.passed-mark) { color: var(--ink-2); }
+    .passed span:not(.passed-mark) { color: var(--ink-3); }
     .passed-mark {
       display: inline-block;
       width: 8px;
@@ -495,14 +592,13 @@
       margin-right: 7px;
       vertical-align: 2px;
     }
-    .group > .passed .passed-mark, .group > details.passed .passed-mark { position: absolute; left: var(--gutter); top: 9px; margin: 0; }
+    .group-body > .passed .passed-mark, .group-body > details.passed .passed-mark { position: absolute; left: calc(var(--gutter) + 3px); top: 11px; margin: 0; }
     details.passed summary { list-style: none; color: var(--pass); }
     details.passed summary::-webkit-details-marker { display: none; }
     details.passed summary::after { content: " Show"; color: var(--accent); font-weight: 600; }
     details.passed[open] summary::after { content: " Hide"; }
     .token-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
     .group.is-passed .group-head h3 { color: var(--ink-2); }
-    .group.is-passed > .passed { padding-left: 32px; }
 
     /* ---- Properties and Handoff panels ---- */
     .panel-section { padding: 14px var(--gutter) 16px; border-bottom: 1px solid var(--line); }
@@ -1359,6 +1455,7 @@
               <h2 id="verdict-title">Analyzing…</h2>
               <p id="verdict-detail"></p>
             </div>
+            <div class="verdict-jumps" id="verdict-jumps"></div>
             <div id="audit-score" class="score" title="Readiness score: how much of the component passes the audit, weighted by impact">
               <b>--</b><small>readiness</small>
             </div>
@@ -3030,10 +3127,11 @@
       statusContainer.classList.add('hidden');
 
       // Reset scores immediately to avoid showing stale data
-      auditScore.innerHTML = '<b>--</b><small>readiness</small>';
+      auditScore.innerHTML = '<b>--</b><span class="meter" aria-hidden="true"><i></i></span><small>readiness</small>';
       auditScore.className = 'score';
       document.getElementById('verdict-title').textContent = 'Analyzing…';
       document.getElementById('verdict-detail').textContent = '';
+      document.getElementById('verdict-jumps').innerHTML = '';
       document.getElementById('results-header').style.display = 'none';
       currentAuditScore = 0;
 
@@ -3591,6 +3689,35 @@
       });
     }
 
+    // Group header: the title toggles the group; actions sit to the right.
+    // The count pill takes the color of the group's worst problem.
+    function groupHead({ title, count, severity, actions = '' }) {
+      return `
+        <div class="group-head">
+          <button class="group-toggle" aria-expanded="true" onclick="toggleGroup(this)">
+            <span class="chevron" aria-hidden="true"></span>
+            <h3>${title}</h3>
+            ${count !== undefined ? `<span class="group-count sev-${severity}">${count}</span>` : ''}
+          </button>
+          ${actions ? `<span class="group-actions">${actions}</span>` : ''}
+        </div>`;
+    }
+
+    function toggleGroup(button) {
+      const section = button.closest('.group');
+      const collapsed = section.classList.toggle('is-collapsed');
+      button.setAttribute('aria-expanded', String(!collapsed));
+    }
+
+    function jumpToGroup(key) {
+      const section = document.getElementById(`group-${key}`);
+      if (!section) return;
+      section.classList.remove('is-collapsed');
+      const toggle = section.querySelector('.group-toggle');
+      if (toggle) toggle.setAttribute('aria-expanded', 'true');
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     // ---- Verdict: the one-line answer above the groups ----
     let verdictState = null;
 
@@ -3598,7 +3725,14 @@
       if (!verdictState) return;
       const titleEl = document.getElementById('verdict-title');
       const detailEl = document.getElementById('verdict-detail');
+      const jumpsEl = document.getElementById('verdict-jumps');
       const total = verdictState.parts.reduce((sum, [n]) => sum + n, 0);
+
+      // One chip per group with problems; each jumps to its group
+      jumpsEl.innerHTML = verdictState.jumps.map(j => `
+        <button class="jump sev-${j.count > 0 ? j.severity : 'done'}" onclick="jumpToGroup('${j.key}')">
+          <span class="jump-mark" aria-hidden="true"></span>${j.title} <b>${j.count}</b>
+        </button>`).join('');
       const remaining = Math.max(0, total - verdictState.fixed);
       const fixable = Math.max(0, verdictState.fixable - verdictState.fixed);
 
@@ -3615,14 +3749,10 @@
 
       const plural = n => n === 1 ? '' : 's';
       titleEl.textContent = `${remaining} problem${plural(remaining)}` + (fixable > 0 ? `, ${fixable} fixable here` : '');
-      if (verdictState.fixed > 0) {
-        detailEl.textContent = `Fixed ${verdictState.fixed} so far. Analyze again to update the score.`;
-      } else {
-        const parts = verdictState.parts.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
-        detailEl.textContent = parts.length > 1
-          ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}.`
-          : `${parts[0]}.`;
-      }
+      // The chips carry the breakdown; the sentence only reports progress
+      detailEl.textContent = verdictState.fixed > 0
+        ? `Fixed ${verdictState.fixed} so far. Analyze again to update the score.`
+        : '';
     }
 
     // A fix landed: drop it from its group's count and from the verdict
@@ -3636,6 +3766,8 @@
       }
       if (verdictState) {
         verdictState.fixed += amount;
+        const jump = verdictState.jumps.find(j => j.key === groupKey);
+        if (jump) jump.count = Math.max(0, jump.count - amount);
         renderVerdict();
       }
     }
@@ -3840,9 +3972,21 @@
       const hardCodedCount = collectHardCodedValues(currentAnalysisData && currentAnalysisData.tokens).length;
       const order = ['accessibility', 'states', 'tokens', 'naming', 'readiness', 'detached'];
       const passedGroups = [];
+      const jumps = [];
+      const worst = items => items.some(i => i.status === 'fail') ? 'fail' : 'warn';
+      const severities = {
+        accessibility: worst(audit.accessibility || []),
+        states: 'fail',
+        naming: (currentNamingIssues || []).some(i => i.severity === 'error') ? 'fail' : 'warn',
+        readiness: worst(audit.componentReadiness || []),
+        detached: 'info'
+      };
       order.forEach(key => {
         if (key === 'tokens') {
-          if (hardCodedCount > 0) html += '<div id="token-slot"></div>';
+          if (hardCodedCount > 0) {
+            html += '<div id="token-slot"></div>';
+            jumps.push({ key, title: 'Hard-coded values', count: hardCodedCount, severity: 'warn' });
+          }
           return;
         }
         const g = groups[key];
@@ -3852,21 +3996,24 @@
           return;
         }
         const count = g.info ? detachedItems.length : (key === 'naming' ? currentNamingIssues.length : g.problems.length);
+        if (!g.info) jumps.push({ key, title: g.title, count, severity: severities[key] });
         html += `
           <section class="group${g.info ? ' is-info' : ''}" id="group-${key}">
-            <div class="group-head"><h3>${g.title}</h3><span class="group-count">${count}</span>${g.head ? `<span class="group-actions">${g.head}</span>` : ''}</div>
-            ${g.problems.join('')}
-            ${g.passed.length ? `<div class="passed"><span class="passed-mark" aria-hidden="true"></span>${g.passed.length} passed: <span>${g.passed.map(escapeHtml).join(', ')}</span></div>` : ''}
+            ${groupHead({ title: g.title, count, severity: severities[key], actions: g.head })}
+            <div class="group-body">
+              ${g.problems.join('')}
+              ${g.passed.length ? `<div class="passed"><span class="passed-mark" aria-hidden="true"></span>${g.passed.length} passed: <span>${g.passed.map(escapeHtml).join(', ')}</span></div>` : ''}
+            </div>
           </section>`;
       });
 
       if (passedGroups.length > 0 || hardCodedCount === 0) {
-        html += '<section class="group is-passed"><div class="group-head"><h3>Passed</h3></div>';
+        html += `<section class="group is-passed" id="group-passed">${groupHead({ title: 'Passed' })}<div class="group-body">`;
         passedGroups.forEach(g => {
           html += `<div class="passed"><span class="passed-mark" aria-hidden="true"></span>${g.title}: <span>${g.passed.map(escapeHtml).join(', ')}</span></div>`;
         });
         if (hardCodedCount === 0) html += '<div id="token-slot"></div>';
-        html += '</section>';
+        html += '</div></section>';
       }
 
       auditContent.innerHTML = html;
@@ -3878,7 +4025,7 @@
       const score = weightedTotalScore > 0 ? Math.min(100, Math.round(rawPercentage)) : 0;
       console.log(`Audit scoring: ${weightedPassScore} weighted points out of ${weightedTotalScore} total = ${score}% (simple: ${passCount}/${totalCount})`);
 
-      auditScore.innerHTML = `<b>${score}</b><small>readiness</small>`;
+      auditScore.innerHTML = `<b>${score}</b><span class="meter" aria-hidden="true"><i style="width: ${score}%;"></i></span><small>readiness</small>`;
       auditScore.className = `score ${score >= 80 ? 'is-good' : score >= 60 ? 'is-fair' : 'is-poor'}`;
 
       // Store globally so AI Interpretation section can reference it
@@ -3896,7 +4043,8 @@
           [countProblems('readiness'), 'setup problem', 'setup problems']
         ],
         fixable: hardCoded.filter(isFixableHardCoded).length + (currentNamingIssues ? currentNamingIssues.length : 0),
-        fixed: 0
+        fixed: 0,
+        jumps
       };
       renderVerdict();
     }
@@ -4095,13 +4243,17 @@
       const overflow = items.length - HARD_CODED_INITIAL_LIMIT;
       tokenSuggestions.innerHTML = `
         <section class="group" id="group-tokens">
-          <div class="group-head">
-            <h3>Hard-coded values</h3><span class="group-count">${items.length}</span>
-            ${fixable > 1 ? `<span class="group-actions"><button class="button button-quiet fix-all" onclick="batchFixAllTokens('section-hardcoded')">Fix all ${fixable}</button></span>` : ''}
+          ${groupHead({
+            title: 'Hard-coded values',
+            count: items.length,
+            severity: 'warn',
+            actions: fixable > 1 ? `<button class="button button-quiet fix-all" onclick="batchFixAllTokens('section-hardcoded')">Fix all ${fixable}</button>` : ''
+          })}
+          <div class="group-body">
+            <div id="section-hardcoded">${items.map(renderHardCodedRow).join('')}</div>
+            ${overflow > 0 ? `<button class="show-more" onclick="this.closest('.group').classList.add('show-overflow');this.remove()">Show ${overflow} more</button>` : ''}
+            ${inUseHtml}${aiHtml}
           </div>
-          <div id="section-hardcoded">${items.map(renderHardCodedRow).join('')}</div>
-          ${overflow > 0 ? `<button class="show-more" onclick="this.closest('.group').classList.add('show-overflow');this.remove()">Show ${overflow} more</button>` : ''}
-          ${inUseHtml}${aiHtml}
         </section>`;
     }
 
@@ -4825,7 +4977,7 @@
       }
       previewHtml += '</div></div>';
 
-      showFixModal(`Rename All (${data.strategy})`, previewHtml, {
+      showFixModal(`Rename layers (${data.strategy})`, previewHtml, {
         type: 'naming-strategy',
         strategy: data.strategy
       });
