@@ -43,6 +43,7 @@
   - **Names never collide.** A name that would repeat keeps its full path, then its collection name, then a number.
   - **Library variables are counted and left alone,** with a note to set them in the library file.
   - The row updates in place. One undo reverts the change.
+  - **Only when the names will match.** Path-based names are correct only when your code's variables are generated from these Figma variables, as with Tokens Studio, Style Dictionary or a Figma export. The dialog says so, and the button stays disabled until you confirm the preview names match your code.
 
 ### Fixed
 - **Analyze could return a stale result after you edited the component.** Results were cached under a fingerprint of a summary of the component. Edits the summary didn't capture, such as fixing one of several layers with the same hard-coded color, or changing auto layout, code syntax or annotations, produced the same fingerprint, so the old result came back as "Loaded cached analysis (component unchanged)". Analyze, including batch analysis, now always runs fresh. The Run fresh button is gone because every run is fresh. Restoring the last analysis when you reopen the plugin still works.

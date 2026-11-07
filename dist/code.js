@@ -5619,7 +5619,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           status: unmapped.length === 0 ? "pass" : "warning",
           value: `${mapped.length} of ${found.length}`
         }, unmapped.some((v) => !v.remote) ? { action: "set-code-syntax" } : {}), {
-          suggestion: unmapped.length === 0 ? "Every variable has code syntax, so AI tools get your real token names" : `${unmapped.length} variable${unmapped.length === 1 ? " has" : "s have"} no code syntax, so AI tools name ${unmapped.length === 1 ? "it" : "them"} from the Figma path, like \`var(--${unmapped[0].name.replace(/\s+/g, "-").replace(/\//g, "\\/")})\`, which won't match your code.${unmapped.some((v) => v.remote) ? " Variables from a library have to be set in the library file." : ""}`
+          suggestion: unmapped.length === 0 ? "Every variable has code syntax, so AI tools get your real token names" : `${unmapped.length} variable${unmapped.length === 1 ? " has" : "s have"} no code syntax, so AI tools name ${unmapped.length === 1 ? "it" : "them"} from the Figma path, like \`var(--${unmapped[0].name.replace(/\s+/g, "-").replace(/\//g, "\\/")})\`, which won't match your code. Set code syntax to the names your code uses.${unmapped.some((v) => v.remote) ? " Variables from a library have to be set in the library file." : ""}`
         }));
       }
     }

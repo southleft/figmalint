@@ -859,6 +859,9 @@
     .cs-examples code { background: none; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cs-examples .cs-web { color: var(--accent); }
     .cs-loading, .cs-more { color: var(--ink-3); grid-template-columns: 1fr !important; }
+    .cs-callout { font-size: 11px; line-height: 1.5; color: var(--ink-2); background: var(--warn-tint); border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; }
+    .cs-callout b { color: var(--ink); font-weight: 600; }
+    .cs-confirm { margin-top: 12px; padding: 10px 12px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); }
     .cs-notes p { color: var(--ink-2); font-size: 11px; line-height: 1.45; margin-top: 8px; }
 
     /* ---- Fix confirmation ---- */
@@ -2167,7 +2170,8 @@
       } else if (type === 'naming-strategy') {
         sendMessageToPlugin('apply-naming-strategy', { strategy: pendingFix.strategy });
       } else if (type === 'code-syntax') {
-        if (!codeSyntaxState.plan || codeSyntaxState.plan.targets.length === 0) return;
+        const matches = document.getElementById('cs-matches');
+        if (!codeSyntaxState.plan || codeSyntaxState.plan.targets.length === 0 || !(matches && matches.checked)) return;
         sendMessageToPlugin('apply-code-syntax', codeSyntaxOptions());
         hideFixModal();
         updateStatus('Setting code syntax…', 'info');
@@ -4859,7 +4863,10 @@
       codeSyntaxState.plan = null;
       showFixModal('Set code syntax', `
         <div class="cs-form" id="cs-form">
-          <p class="cs-lead">Code syntax is a variable\u2019s name in your code. AI tools and Dev Mode use it instead of the Figma path. FigmaLint builds each name from the variable\u2019s path and never changes code syntax that\u2019s already set.</p>
+          <p class="cs-lead">Code syntax is a variable\u2019s exact name in your code. Dev Mode and AI tools use it instead of the Figma path, so it has to match your code.</p>
+          <div class="cs-callout">
+            <b>Fill in names from the variable path only if your code\u2019s variables are generated from these Figma variables</b>, for example with Tokens Studio, Style Dictionary or a Figma export. Then <code>bg/base</code> is <code>--bg-base</code> in both places. If your code uses its own names, set code syntax by hand to match them instead.
+          </div>
           <div class="cs-scope" role="radiogroup" aria-label="Which variables">
             <label class="cs-choice">
               <input type="radio" name="cs-scope" value="file"${codeSyntaxState.scope === 'file' ? ' checked' : ''} onchange="updateCodeSyntaxOption('scope', 'file')">
@@ -4885,6 +4892,10 @@
             <ul class="cs-examples" id="cs-examples"><li class="cs-loading">Reading variables…</li></ul>
           </div>
           <div class="cs-notes" id="cs-notes"></div>
+          <label class="cs-check cs-confirm">
+            <input type="checkbox" id="cs-matches" onchange="syncCodeSyntaxConfirm()">
+            <span>I checked a few names in the preview and they match our code</span>
+          </label>
         </div>`, { type: 'code-syntax' });
       const confirmButton = document.getElementById('modal-confirm-btn');
       confirmButton.textContent = 'Set code syntax';
@@ -4929,11 +4940,19 @@
       }
       document.getElementById('cs-notes').innerHTML = notes.map(n => `<p>${n}</p>`).join('');
 
+      syncCodeSyntaxConfirm();
       const confirmButton = document.getElementById('modal-confirm-btn');
-      confirmButton.disabled = plan.targets.length === 0;
       confirmButton.textContent = plan.targets.length === 0
         ? 'Set code syntax'
         : `Set code syntax on ${plural(plan.targets.length, 'variable', 'variables')}`;
+    }
+
+    // Writing hundreds of names is only right if they match the code, so the
+    // button waits for that confirmation
+    function syncCodeSyntaxConfirm() {
+      const plan = codeSyntaxState.plan;
+      const matches = document.getElementById('cs-matches');
+      document.getElementById('modal-confirm-btn').disabled = !plan || plan.targets.length === 0 || !(matches && matches.checked);
     }
 
     // Update the AI handoff row in place, without re-running the analysis
