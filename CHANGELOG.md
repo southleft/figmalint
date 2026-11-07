@@ -26,6 +26,7 @@
 - **The scorecard says what's wrong in words.** Each category row has the same status tile as its section and a plain result, such as "No focus state", "2 hard-coded values", "1 generic name" or "Both pass". The per-check squares and the coverage bar are gone.
 
 ### Fixed
+- **The Stop analysis label was nearly invisible in dark mode.** It picked up the dark text meant for the purple Analyze button.
 - OpenAI errors no longer show up as "Network error … Failed to fetch". OpenAI leaves the CORS header off chat error responses, which hid the real cause in Figma. The plugin now asks OpenAI's models endpoint and reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available to the account.
 - **Long error messages ran off the screen.** The in-panel banner now wraps any text. The canvas toast shows only the first sentence, and OpenAI's masked copy of your key is left out of the message.
 - **Analyze was enabled with nothing selected** after the plugin loaded or the AI provider changed.

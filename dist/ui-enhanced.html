@@ -215,11 +215,13 @@
     .button:disabled { opacity: 0.45; cursor: not-allowed; }
     /* Analyze becomes the Stop control while a run is in progress */
     .button-primary.is-running,
-    .button-primary.is-running:hover:not(:disabled) {
+    .button-primary.is-running:hover:not(:disabled),
+    html.figma-dark .button-primary.is-running {
       background: var(--surface);
       color: var(--fail);
       box-shadow: inset 0 0 0 1px var(--fail);
     }
+    .button-primary.is-running:hover:not(:disabled) { background: var(--fail-tint); }
 
     /* Row-level action: tinted so a column of them reads as one control set */
     .fix, .audit-action-button {
