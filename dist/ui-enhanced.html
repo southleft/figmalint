@@ -1639,7 +1639,6 @@
               <a href="#" id="results-node-name" hidden></a>
               <span class="results-meta-actions">
                 <button id="generate-instance-sheet" class="button button-quiet" title="Place a grid of every variant next to the component">Instance sheet</button>
-                <button id="reanalyze-fresh" class="button button-quiet" title="Analyze again without using the cached result">Run fresh</button>
               </span>
             </div>
           </div>
@@ -2385,7 +2384,6 @@
       batchModeSwitch.addEventListener('change', handleBatchModeToggle);
 
       // Analysis lifecycle controls
-      document.getElementById('reanalyze-fresh').addEventListener('click', () => handleAnalyzeComponent(true));
       document.getElementById('generate-instance-sheet').addEventListener('click', () => {
         const button = document.getElementById('generate-instance-sheet');
         button.disabled = true;
@@ -3218,8 +3216,6 @@
     // --- Analysis lifecycle state ---
     let currentRequestId = null;        // id of the in-flight analysis
     let analysisWatchdogTimer = null;   // re-enables the UI if the plugin never responds
-    let lastResultFromCache = false;    // last result was served from the component cache
-    let lastResultNodeId = null;        // node the last result belongs to
     let currentSelectionInfo = null;    // primary selection info from batch-selection-update
 
     const ANALYSIS_WATCHDOG_MS = 90000;
@@ -3318,7 +3314,7 @@
       updateStatus('Analysis stopped', 'info');
     }
 
-    function handleAnalyzeComponent(forceFresh) {
+    function handleAnalyzeComponent() {
       // No API key required. The audit, token analysis, naming checks and
       // readiness score are computed locally from the Figma node; a key only
       // adds the AI-authored description and property recommendations.
@@ -3339,20 +3335,12 @@
 
       currentRequestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-      // Re-running a cached result for the same node forces a fresh analysis —
-      // the first click returns instantly from cache, the second refreshes.
-      const rerunOfCachedResult = lastResultFromCache
-        && currentSelectionInfo
-        && lastResultNodeId
-        && currentSelectionInfo.id === lastResultNodeId;
-
       sendMessageToPlugin('analyze-enhanced', {
         batchMode: batchMode,
         includeAudit: true,
         includeTokens: true,
         includeValidation: true,
-        requestId: currentRequestId,
-        bypassCache: forceFresh === true || rerunOfCachedResult
+        requestId: currentRequestId
       });
 
       showAnalysisProgress('Preparing analysis…', 0, 4);
@@ -3606,10 +3594,6 @@
       hideAnalysisProgress();
       document.getElementById('restore-banner').style.display = 'none';
 
-      // Track cache state so a repeat click can force a fresh analysis
-      lastResultFromCache = data.fromCache === true;
-      lastResultNodeId = (data.analyzedNode && data.analyzedNode.id) || data.analyzedNodeId || null;
-
       // Results header: which node these results belong to, and when
       const header = document.getElementById('results-header');
       const nameLink = document.getElementById('results-node-name');
@@ -3617,10 +3601,7 @@
       if (data.analyzedNode && data.analyzedNode.name) {
         const typeLabel = String(data.analyzedNode.type || '').toLowerCase().replace(/_/g, ' ');
         const when = data.analyzedAt ? new Date(data.analyzedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-        const badges = [
-          data.fromCache ? 'cached' : '',
-          data.restored ? 'restored' : ''
-        ].filter(Boolean).join(', ');
+        const badges = data.restored ? 'restored' : '';
         nameLink.textContent = data.analyzedNode.name;
         nameLink.onclick = (e) => {
           e.preventDefault();
@@ -3632,10 +3613,8 @@
         header.style.display = 'none';
       }
 
-      if (data.fromCache) {
-        updateStatus('Loaded from cache (component unchanged) — click Analyze again for a fresh run', 'success');
-      } else if (data.restored) {
-        updateStatus('Restored previous analysis — Re-analyze for fresh results', 'success');
+      if (data.restored) {
+        updateStatus('Restored the previous analysis. Analyze again for current results.', 'success');
       }
 
       // Store analysis data globally for scoring

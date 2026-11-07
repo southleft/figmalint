@@ -2610,598 +2610,6 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     await figma.clientStorage.deleteAsync(STORAGE_KEYS.apiKey(providerId));
   }
 
-  // src/core/consistency-engine.ts
-  var _ComponentConsistencyEngine = class _ComponentConsistencyEngine {
-    constructor(config = {}) {
-      this.cache = /* @__PURE__ */ new Map();
-      this.designSystemsKnowledge = null;
-      this.knowledgeLoadPromise = null;
-      this.config = __spreadValues({
-        enableCaching: true,
-        enableMCPIntegration: true,
-        mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp",
-        consistencyThreshold: 0.95
-      }, config);
-    }
-    /**
-     * Generate a deterministic hash for a component based on its structure
-     */
-    generateComponentHash(context, tokens) {
-      var _a, _b;
-      const hashInput = {
-        name: context.name,
-        type: context.type,
-        hierarchy: this.normalizeHierarchy(context.hierarchy),
-        frameStructure: context.frameStructure,
-        detectedStyles: context.detectedStyles,
-        tokenFingerprint: this.generateTokenFingerprint(tokens),
-        // Editing the component description must invalidate the cached analysis
-        // (the description feeds the audit's description checks and prompts).
-        existingDescription: context.existingDescription || "",
-        // Don't include dynamic context that could vary
-        staticProperties: {
-          hasInteractiveElements: ((_a = context.additionalContext) == null ? void 0 : _a.hasInteractiveElements) || false,
-          componentFamily: ((_b = context.additionalContext) == null ? void 0 : _b.componentFamily) || "generic"
-        }
-      };
-      return this.createHash(JSON.stringify(hashInput));
-    }
-    /**
-     * Get cached analysis if available and valid
-     */
-    getCachedAnalysis(hash) {
-      if (!this.config.enableCaching) return null;
-      const cached = this.cache.get(hash);
-      if (!cached) return null;
-      const isExpired = Date.now() - cached.timestamp > 24 * 60 * 60 * 1e3;
-      if (isExpired) {
-        this.cache.delete(hash);
-        return null;
-      }
-      console.log("\u2705 Using cached analysis for component hash:", hash);
-      return cached;
-    }
-    /**
-     * Cache analysis result
-     */
-    cacheAnalysis(hash, result) {
-      var _a;
-      if (!this.config.enableCaching) return;
-      this.cache.set(hash, {
-        hash,
-        result,
-        timestamp: Date.now(),
-        mcpKnowledgeVersion: ((_a = this.designSystemsKnowledge) == null ? void 0 : _a.version) || "1.0.0"
-      });
-      console.log("\u{1F4BE} Cached analysis for component hash:", hash);
-    }
-    /**
-    * Load design systems knowledge from MCP server.
-    *
-    * Memoized: the knowledge is loaded once (in the background at plugin init)
-    * and reused for KNOWLEDGE_TTL_MS. Without the guard, every Analyze click
-    * re-ran an MCP connectivity check plus four knowledge queries (~1-5s of
-    * fixed network latency per analysis). Concurrent callers share one in-flight
-    * load instead of racing.
-    */
-    async loadDesignSystemsKnowledge() {
-      const knowledge = this.designSystemsKnowledge;
-      if (knowledge && Date.now() - knowledge.lastUpdated < _ComponentConsistencyEngine.KNOWLEDGE_TTL_MS) {
-        return;
-      }
-      if (this.knowledgeLoadPromise) {
-        return this.knowledgeLoadPromise;
-      }
-      const load = this.doLoadDesignSystemsKnowledge();
-      this.knowledgeLoadPromise = load;
-      try {
-        await load;
-      } finally {
-        this.knowledgeLoadPromise = null;
-      }
-    }
-    async doLoadDesignSystemsKnowledge() {
-      if (!this.config.enableMCPIntegration) {
-        console.log("\u{1F4DA} MCP integration disabled, using fallback knowledge");
-        this.loadFallbackKnowledge();
-        return;
-      }
-      try {
-        console.log("\u{1F504} Loading design systems knowledge from MCP...");
-        const connectivityTest = await this.testMCPConnectivity();
-        if (!connectivityTest) {
-          console.warn("\u26A0\uFE0F MCP server not accessible, using fallback knowledge");
-          this.loadFallbackKnowledge();
-          return;
-        }
-        const [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge] = await Promise.allSettled([
-          this.queryMCP("component analysis best practices"),
-          this.queryMCP("design token naming conventions and patterns"),
-          this.queryMCP("design system accessibility requirements"),
-          this.queryMCP("design system component scoring methodology")
-        ]);
-        this.designSystemsKnowledge = {
-          version: "1.0.0",
-          components: this.processComponentKnowledge(
-            componentKnowledge.status === "fulfilled" ? componentKnowledge.value : null
-          ),
-          tokens: this.processKnowledgeContent(
-            tokenKnowledge.status === "fulfilled" ? tokenKnowledge.value : null
-          ),
-          accessibility: this.processKnowledgeContent(
-            accessibilityKnowledge.status === "fulfilled" ? accessibilityKnowledge.value : null
-          ),
-          scoring: this.processKnowledgeContent(
-            scoringKnowledge.status === "fulfilled" ? scoringKnowledge.value : null
-          ),
-          lastUpdated: Date.now()
-        };
-        const successfulQueries = [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge].filter((result) => result.status === "fulfilled").length;
-        if (successfulQueries > 0) {
-          console.log(`\u2705 Design systems knowledge loaded successfully (${successfulQueries}/4 queries successful)`);
-        } else {
-          console.warn("\u26A0\uFE0F All MCP queries failed, using fallback knowledge");
-          this.loadFallbackKnowledge();
-        }
-      } catch (error) {
-        console.warn("\u26A0\uFE0F Failed to load design systems knowledge:", error);
-        this.loadFallbackKnowledge();
-      }
-    }
-    /**
-    * Test MCP server connectivity using MCP initialization instead of health endpoint
-    */
-    async testMCPConnectivity() {
-      var _a, _b;
-      try {
-        console.log("\u{1F517} Testing MCP server connectivity...");
-        const timeoutPromise = new Promise(
-          (_, reject) => setTimeout(() => reject(new Error("Connectivity test timeout")), 5e3)
-        );
-        const initPayload = {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: {
-            protocolVersion: "2024-11-05",
-            capabilities: { roots: { listChanged: true } },
-            clientInfo: { name: "figmalint", version: "2.0.0" }
-          }
-        };
-        if (!this.config.mcpServerUrl) {
-          throw new Error("MCP server URL not configured");
-        }
-        const fetchPromise = fetch(this.config.mcpServerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(initPayload)
-        });
-        const response = await Promise.race([fetchPromise, timeoutPromise]);
-        if (response.ok) {
-          const data = await response.json();
-          if ((_b = (_a = data.result) == null ? void 0 : _a.serverInfo) == null ? void 0 : _b.name) {
-            console.log(`\u2705 MCP server accessible: ${data.result.serverInfo.name}`);
-            return true;
-          }
-        }
-        console.warn(`\u26A0\uFE0F MCP server returned ${response.status}`);
-        return false;
-      } catch (error) {
-        console.warn("\u26A0\uFE0F MCP server connectivity test failed:", error);
-        return false;
-      }
-    }
-    /**
-     * Query the design systems MCP server using proper JSON-RPC protocol
-     */
-    async queryMCP(query) {
-      try {
-        console.log(`\u{1F50D} Querying MCP for: "${query}"`);
-        const timeoutPromise = new Promise(
-          (_, reject) => setTimeout(() => reject(new Error("MCP query timeout")), 5e3)
-        );
-        if (!this.config.mcpServerUrl) {
-          throw new Error("MCP server URL not configured");
-        }
-        const searchPayload = {
-          jsonrpc: "2.0",
-          id: Math.floor(Math.random() * 1e3) + 2,
-          // Random ID > 1 (1 is used for init)
-          method: "tools/call",
-          params: {
-            name: "search_design_knowledge",
-            arguments: {
-              query,
-              limit: 5,
-              category: "components"
-            }
-          }
-        };
-        const fetchPromise = fetch(this.config.mcpServerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(searchPayload)
-        });
-        const response = await Promise.race([fetchPromise, timeoutPromise]);
-        if (!response.ok) {
-          throw new Error(`MCP query failed: ${response.status} ${response.statusText}`);
-        }
-        const result = await response.json();
-        console.log(`\u2705 MCP query successful for: "${query}"`);
-        if (result.result && result.result.content) {
-          return {
-            results: result.result.content.map((item) => ({
-              title: item.title || "Design System Knowledge",
-              content: item.content || item.description || "Knowledge content",
-              category: "design-systems"
-            }))
-          };
-        }
-        return { results: [] };
-      } catch (error) {
-        console.warn(`\u26A0\uFE0F MCP query failed for "${query}":`, error);
-        return this.getFallbackKnowledgeForQuery(query);
-      }
-    }
-    /**
-     * Create deterministic analysis prompt with MCP knowledge
-     */
-    createDeterministicPrompt(context) {
-      const basePrompt = this.createBasePrompt(context);
-      const mcpGuidance = this.getMCPGuidance(context);
-      const scoringCriteria = this.getScoringCriteria(context);
-      return `${basePrompt}
-
-**CONSISTENCY REQUIREMENTS:**
-- Use DETERMINISTIC analysis based on the exact component structure provided
-- Apply CONSISTENT scoring criteria for identical components
-- Follow established design system patterns and conventions
-- Provide REPRODUCIBLE results for the same input
-
-**DESIGN SYSTEMS GUIDANCE:**
-${mcpGuidance}
-
-**SCORING METHODOLOGY:**
-${scoringCriteria}
-
-**DETERMINISTIC SETTINGS:**
-- Analysis must be based solely on the provided component structure
-- Scores must be calculated using objective criteria
-- Recommendations must follow established design system patterns
-- Response format must be exactly as specified (JSON only)
-
-**RESPONSE FORMAT (JSON only - no explanatory text):**
-{
-  "component": "Component name and purpose",
-  "description": "Detailed component description based on structure analysis",
-  "score": {
-    "overall": 85,
-    "breakdown": {
-      "structure": 90,
-      "tokens": 80,
-      "accessibility": 85,
-      "consistency": 90
-    }
-  },
-  "props": [...],
-  "states": [...],
-  "slots": [...],
-  "variants": {...},
-  "usage": "Usage guidelines",
-  "accessibility": {...},
-  "tokens": {...},
-  "audit": {...},
-  "mcpReadiness": {...}
-}`;
-    }
-    /**
-     * Validate analysis result for consistency
-     */
-    validateAnalysisConsistency(result, context) {
-      var _a, _b, _c, _d, _e;
-      const issues = [];
-      if (!((_a = result.metadata) == null ? void 0 : _a.component)) issues.push("Missing component name");
-      if (!((_b = result.metadata) == null ? void 0 : _b.description)) issues.push("Missing component description");
-      if (!this.isValidScore((_d = (_c = result.metadata) == null ? void 0 : _c.mcpReadiness) == null ? void 0 : _d.score)) {
-        issues.push("Invalid or missing MCP readiness score");
-      }
-      const family = (_e = context.additionalContext) == null ? void 0 : _e.componentFamily;
-      if (family && !this.validateComponentFamilyConsistency(result, family)) {
-        issues.push(`Inconsistent analysis for ${family} component family`);
-      }
-      if (!this.validateTokenRecommendations(result.tokens)) {
-        issues.push("Inconsistent token recommendations");
-      }
-      if (issues.length > 0) {
-        console.warn("\u26A0\uFE0F Analysis consistency issues found:", issues);
-        return false;
-      }
-      return true;
-    }
-    /**
-     * Apply consistency corrections to analysis result
-     */
-    applyConsistencyCorrections(result, context) {
-      var _a;
-      const corrected = __spreadValues({}, result);
-      if ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) {
-        corrected.metadata = this.applyComponentFamilyCorrections(
-          corrected.metadata,
-          context.additionalContext.componentFamily
-        );
-      }
-      corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
-      corrected.metadata.mcpReadiness = this.ensureConsistentScoring(
-        corrected.metadata.mcpReadiness || {},
-        context
-      );
-      return corrected;
-    }
-    // Private helper methods
-    normalizeHierarchy(hierarchy) {
-      return hierarchy.map((item) => ({
-        name: item.name.toLowerCase().trim(),
-        type: item.type,
-        depth: item.depth
-      }));
-    }
-    // Includes each token's name, value, node and property: a cache hit returns
-    // the cached token list, so any edit that changes a finding (a new
-    // hard-coded value, a rebound variable, 8px → 12px) must miss the cache.
-    generateTokenFingerprint(tokens) {
-      const fingerprint = tokens.map((token) => {
-        var _a, _b;
-        return [
-          token.type,
-          token.isToken,
-          token.source,
-          token.name,
-          token.value,
-          ((_a = token.context) == null ? void 0 : _a.nodeId) || "",
-          ((_b = token.context) == null ? void 0 : _b.property) || ""
-        ].join(":");
-      }).sort().join("|");
-      return this.createHash(fingerprint);
-    }
-    createHash(input) {
-      let hash = 0;
-      if (input.length === 0) return hash.toString();
-      for (let i = 0; i < input.length; i++) {
-        const char = input.charCodeAt(i);
-        hash = (hash << 5) - hash + char;
-        hash = hash & hash;
-      }
-      return Math.abs(hash).toString(36);
-    }
-    createBasePrompt(context) {
-      var _a, _b, _c, _d;
-      return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
-
-**Component Analysis Context:**
-- Component Name: ${context.name}
-- Component Type: ${context.type}
-- Layer Structure: ${JSON.stringify(context.hierarchy, null, 2)}
-- Frame Structure: ${JSON.stringify(context.frameStructure)}
-- Detected Styles: ${JSON.stringify(context.detectedStyles)}
-- Component Family: ${((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic"}
-- Interactive Elements: ${((_b = context.additionalContext) == null ? void 0 : _b.hasInteractiveElements) || false}
-- Design Patterns: ${((_d = (_c = context.additionalContext) == null ? void 0 : _c.designPatterns) == null ? void 0 : _d.join(", ")) || "none"}`;
-    }
-    getMCPGuidance(context) {
-      var _a;
-      if (!this.designSystemsKnowledge) {
-        return this.getFallbackGuidance(context);
-      }
-      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
-      const guidance = this.designSystemsKnowledge.components[family] || this.designSystemsKnowledge.components.generic;
-      return guidance || this.getFallbackGuidance(context);
-    }
-    getScoringCriteria(_context) {
-      var _a;
-      if (!((_a = this.designSystemsKnowledge) == null ? void 0 : _a.scoring)) {
-        return this.getFallbackScoringCriteria();
-      }
-      return this.designSystemsKnowledge.scoring;
-    }
-    processComponentKnowledge(knowledge) {
-      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
-        console.log("\u{1F4DD} No component knowledge available, using defaults");
-        return this.getDefaultComponentKnowledge();
-      }
-      const processed = {};
-      knowledge.results.forEach((result) => {
-        if (result.title && result.content) {
-          const componentType = this.extractComponentType(result.title);
-          processed[componentType] = result.content;
-        }
-      });
-      const defaults = this.getDefaultComponentKnowledge();
-      return __spreadValues(__spreadValues({}, defaults), processed);
-    }
-    extractComponentType(title) {
-      const titleLower = title.toLowerCase();
-      if (titleLower.includes("button")) return "button";
-      if (titleLower.includes("avatar")) return "avatar";
-      if (titleLower.includes("input") || titleLower.includes("field")) return "input";
-      if (titleLower.includes("card")) return "card";
-      if (titleLower.includes("badge") || titleLower.includes("tag")) return "badge";
-      return "generic";
-    }
-    processKnowledgeContent(knowledge) {
-      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
-        return "";
-      }
-      return knowledge.results.map((result) => result.content).filter((content) => content).join("\n\n");
-    }
-    getDefaultComponentKnowledge() {
-      return {
-        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
-        avatar: "Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
-        card: "Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
-        badge: "Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
-        input: "Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
-        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).",
-        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
-      };
-    }
-    getFallbackKnowledgeForQuery(query) {
-      return {
-        results: [
-          {
-            title: `Fallback guidance for ${query}`,
-            content: this.getFallbackContentForQuery(query),
-            category: "fallback"
-          }
-        ]
-      };
-    }
-    getFallbackContentForQuery(query) {
-      if (query.includes("component analysis")) {
-        return "Components should follow consistent naming, use design tokens, implement proper states, and maintain accessibility standards.";
-      }
-      if (query.includes("token")) {
-        return "Design tokens should use semantic naming patterns like semantic-color-primary, spacing-md-16px, and text-size-lg-18px.";
-      }
-      if (query.includes("accessibility")) {
-        return "Ensure WCAG 2.1 AA compliance with proper ARIA labels, keyboard support, and color contrast.";
-      }
-      if (query.includes("scoring")) {
-        return "Score components based on structure (25%), token usage (25%), accessibility (25%), and consistency (25%).";
-      }
-      return "Follow established design system best practices for consistency and scalability.";
-    }
-    getFallbackGuidance(context) {
-      var _a;
-      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
-      const guidanceMap = {
-        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
-        avatar: "Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
-        card: "Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
-        badge: "Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
-        input: "Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
-        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
-      };
-      return guidanceMap[family] || guidanceMap.generic;
-    }
-    getFallbackScoringCriteria() {
-      return `
-    **MCP Readiness Scoring (0-100):**
-    - **Structure (25%)**: Clear hierarchy, logical organization, proper nesting
-    - **Tokens (25%)**: Design token usage vs hard-coded values
-    - **Accessibility (25%)**: WCAG compliance, keyboard support, ARIA labels
-    - **Consistency (25%)**: Naming conventions, pattern adherence, scalability
-
-    **Score Calculation:**
-    - 90-100: Production ready, comprehensive implementation
-    - 80-89: Good implementation, minor improvements needed
-    - 70-79: Solid foundation, some important gaps
-    - 60-69: Basic implementation, significant improvements needed
-    - Below 60: Major issues, substantial rework required
-    `;
-    }
-    loadFallbackKnowledge() {
-      this.designSystemsKnowledge = {
-        version: "1.0.0-fallback",
-        components: {
-          button: "Button components require comprehensive state management",
-          avatar: "Avatar components should support size variants and interactive states",
-          card: "Card components need consistent spacing and content hierarchy",
-          badge: "Badge components should use semantic colors for status indication",
-          input: "Input components require comprehensive accessibility and validation",
-          generic: "Generic components should follow basic design system principles"
-        },
-        tokens: "Use semantic token naming: semantic-color-primary, spacing-md-16px, text-size-lg-18px",
-        accessibility: "Ensure WCAG 2.1 AA compliance with proper ARIA labels and keyboard support",
-        scoring: this.getFallbackScoringCriteria(),
-        lastUpdated: Date.now()
-      };
-    }
-    isValidScore(score) {
-      return typeof score === "number" && score >= 0 && score <= 100;
-    }
-    validateComponentFamilyConsistency(result, family) {
-      const metadata = result.metadata;
-      switch (family) {
-        case "button":
-          return this.validateButtonComponent(metadata);
-        case "avatar":
-          return this.validateAvatarComponent(metadata);
-        case "input":
-          return this.validateInputComponent(metadata);
-        default:
-          return true;
-      }
-    }
-    validateButtonComponent(metadata) {
-      var _a;
-      const hasInteractiveStates = (_a = metadata.states) == null ? void 0 : _a.some(
-        (state) => ["hover", "focus", "active", "disabled"].includes(state.toLowerCase())
-      );
-      return hasInteractiveStates || false;
-    }
-    validateAvatarComponent(metadata) {
-      var _a, _b, _c;
-      const hasSizeVariants = ((_b = (_a = metadata.variants) == null ? void 0 : _a.size) == null ? void 0 : _b.length) > 0;
-      const hasSizeProps = (_c = metadata.props) == null ? void 0 : _c.some(
-        (prop) => prop.name.toLowerCase().includes("size")
-      );
-      return hasSizeVariants || hasSizeProps || false;
-    }
-    validateInputComponent(metadata) {
-      var _a;
-      const hasFormStates = (_a = metadata.states) == null ? void 0 : _a.some(
-        (state) => ["focus", "error", "disabled", "filled"].includes(state.toLowerCase())
-      );
-      return hasFormStates || false;
-    }
-    validateTokenRecommendations(tokens) {
-      var _a;
-      const hasSemanticColors = (_a = tokens.colors) == null ? void 0 : _a.some(
-        (token) => token.name.includes("semantic-") || token.name.includes("primary") || token.name.includes("secondary")
-      );
-      return hasSemanticColors !== false;
-    }
-    applyComponentFamilyCorrections(metadata, family) {
-      var _a, _b, _c;
-      const corrected = __spreadValues({}, metadata);
-      switch (family) {
-        case "button":
-          if (!((_a = corrected.states) == null ? void 0 : _a.includes("hover"))) {
-            corrected.states = [...corrected.states || [], "hover", "focus", "active", "disabled"];
-          }
-          break;
-        case "avatar":
-          if (!((_b = corrected.variants) == null ? void 0 : _b.size) && !((_c = corrected.props) == null ? void 0 : _c.some((p) => p.name.includes("size")))) {
-            corrected.variants = __spreadProps(__spreadValues({}, corrected.variants), { size: ["small", "medium", "large"] });
-          }
-          break;
-      }
-      return corrected;
-    }
-    applyTokenConsistencyCorrections(tokens) {
-      if (!tokens) return tokens;
-      const corrected = __spreadValues({}, tokens);
-      return corrected;
-    }
-    ensureConsistentScoring(mcpReadiness, _context) {
-      return __spreadProps(__spreadValues({}, mcpReadiness), {
-        score: mcpReadiness.score || 0
-      });
-    }
-  };
-  /** Knowledge is refreshed at most this often; every Analyze click awaits it. */
-  _ComponentConsistencyEngine.KNOWLEDGE_TTL_MS = 30 * 60 * 1e3;
-  var ComponentConsistencyEngine = _ComponentConsistencyEngine;
-  var consistencyEngine = new ComponentConsistencyEngine({
-    enableCaching: true,
-    enableMCPIntegration: true,
-    mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
-  });
-
   // src/fixes/naming-fixer.ts
   var NamingStrategy = /* @__PURE__ */ ((NamingStrategy2) => {
     NamingStrategy2["SEMANTIC"] = "semantic";
@@ -5573,21 +4981,6 @@ ${scoringCriteria}
     debugLog(`  States: ${actualStates.length}`);
     debugLog(`  Tokens: ${Object.keys(tokens).length} categories`);
     debugLog(`  Description: ${componentDescription ? "Present" : "Missing"}`);
-    const allTokensForHash = [
-      ...tokens.colors,
-      ...tokens.spacing,
-      ...tokens.typography,
-      ...tokens.effects,
-      ...tokens.borders
-    ];
-    const componentHash = consistencyEngine.generateComponentHash(context, allTokensForHash) + (aiEnabled ? "" : ":local");
-    if (!options.bypassCache) {
-      const cached = consistencyEngine.getCachedAnalysis(componentHash);
-      if (cached) {
-        console.log("\u2705 Returning cached analysis (component unchanged)");
-        return __spreadProps(__spreadValues({}, cached.result), { fromCache: true });
-      }
-    }
     const mcpServerUrl = options.mcpServerUrl || "https://design-systems-mcp.southleft-llc.workers.dev/mcp";
     const useMCP = options.useMCP !== false && options.enableMCPEnhancement !== false && !!mcpServerUrl;
     let analysisResult;
@@ -5659,7 +5052,6 @@ ${scoringCriteria}
       componentDescription
     });
     result.aiEnabled = aiEnabled;
-    consistencyEngine.cacheAnalysis(componentHash, result);
     return result;
   }
   function serializeHierarchy(hierarchy, maxDepth = 4, maxChildrenPerNode = 12) {
@@ -6841,6 +6233,598 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     return false;
   }
 
+  // src/core/consistency-engine.ts
+  var _ComponentConsistencyEngine = class _ComponentConsistencyEngine {
+    constructor(config = {}) {
+      this.cache = /* @__PURE__ */ new Map();
+      this.designSystemsKnowledge = null;
+      this.knowledgeLoadPromise = null;
+      this.config = __spreadValues({
+        enableCaching: true,
+        enableMCPIntegration: true,
+        mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp",
+        consistencyThreshold: 0.95
+      }, config);
+    }
+    /**
+     * Generate a deterministic hash for a component based on its structure
+     */
+    generateComponentHash(context, tokens) {
+      var _a, _b;
+      const hashInput = {
+        name: context.name,
+        type: context.type,
+        hierarchy: this.normalizeHierarchy(context.hierarchy),
+        frameStructure: context.frameStructure,
+        detectedStyles: context.detectedStyles,
+        tokenFingerprint: this.generateTokenFingerprint(tokens),
+        // Editing the component description must invalidate the cached analysis
+        // (the description feeds the audit's description checks and prompts).
+        existingDescription: context.existingDescription || "",
+        // Don't include dynamic context that could vary
+        staticProperties: {
+          hasInteractiveElements: ((_a = context.additionalContext) == null ? void 0 : _a.hasInteractiveElements) || false,
+          componentFamily: ((_b = context.additionalContext) == null ? void 0 : _b.componentFamily) || "generic"
+        }
+      };
+      return this.createHash(JSON.stringify(hashInput));
+    }
+    /**
+     * Get cached analysis if available and valid
+     */
+    getCachedAnalysis(hash) {
+      if (!this.config.enableCaching) return null;
+      const cached = this.cache.get(hash);
+      if (!cached) return null;
+      const isExpired = Date.now() - cached.timestamp > 24 * 60 * 60 * 1e3;
+      if (isExpired) {
+        this.cache.delete(hash);
+        return null;
+      }
+      console.log("\u2705 Using cached analysis for component hash:", hash);
+      return cached;
+    }
+    /**
+     * Cache analysis result
+     */
+    cacheAnalysis(hash, result) {
+      var _a;
+      if (!this.config.enableCaching) return;
+      this.cache.set(hash, {
+        hash,
+        result,
+        timestamp: Date.now(),
+        mcpKnowledgeVersion: ((_a = this.designSystemsKnowledge) == null ? void 0 : _a.version) || "1.0.0"
+      });
+      console.log("\u{1F4BE} Cached analysis for component hash:", hash);
+    }
+    /**
+    * Load design systems knowledge from MCP server.
+    *
+    * Memoized: the knowledge is loaded once (in the background at plugin init)
+    * and reused for KNOWLEDGE_TTL_MS. Without the guard, every Analyze click
+    * re-ran an MCP connectivity check plus four knowledge queries (~1-5s of
+    * fixed network latency per analysis). Concurrent callers share one in-flight
+    * load instead of racing.
+    */
+    async loadDesignSystemsKnowledge() {
+      const knowledge = this.designSystemsKnowledge;
+      if (knowledge && Date.now() - knowledge.lastUpdated < _ComponentConsistencyEngine.KNOWLEDGE_TTL_MS) {
+        return;
+      }
+      if (this.knowledgeLoadPromise) {
+        return this.knowledgeLoadPromise;
+      }
+      const load = this.doLoadDesignSystemsKnowledge();
+      this.knowledgeLoadPromise = load;
+      try {
+        await load;
+      } finally {
+        this.knowledgeLoadPromise = null;
+      }
+    }
+    async doLoadDesignSystemsKnowledge() {
+      if (!this.config.enableMCPIntegration) {
+        console.log("\u{1F4DA} MCP integration disabled, using fallback knowledge");
+        this.loadFallbackKnowledge();
+        return;
+      }
+      try {
+        console.log("\u{1F504} Loading design systems knowledge from MCP...");
+        const connectivityTest = await this.testMCPConnectivity();
+        if (!connectivityTest) {
+          console.warn("\u26A0\uFE0F MCP server not accessible, using fallback knowledge");
+          this.loadFallbackKnowledge();
+          return;
+        }
+        const [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge] = await Promise.allSettled([
+          this.queryMCP("component analysis best practices"),
+          this.queryMCP("design token naming conventions and patterns"),
+          this.queryMCP("design system accessibility requirements"),
+          this.queryMCP("design system component scoring methodology")
+        ]);
+        this.designSystemsKnowledge = {
+          version: "1.0.0",
+          components: this.processComponentKnowledge(
+            componentKnowledge.status === "fulfilled" ? componentKnowledge.value : null
+          ),
+          tokens: this.processKnowledgeContent(
+            tokenKnowledge.status === "fulfilled" ? tokenKnowledge.value : null
+          ),
+          accessibility: this.processKnowledgeContent(
+            accessibilityKnowledge.status === "fulfilled" ? accessibilityKnowledge.value : null
+          ),
+          scoring: this.processKnowledgeContent(
+            scoringKnowledge.status === "fulfilled" ? scoringKnowledge.value : null
+          ),
+          lastUpdated: Date.now()
+        };
+        const successfulQueries = [componentKnowledge, tokenKnowledge, accessibilityKnowledge, scoringKnowledge].filter((result) => result.status === "fulfilled").length;
+        if (successfulQueries > 0) {
+          console.log(`\u2705 Design systems knowledge loaded successfully (${successfulQueries}/4 queries successful)`);
+        } else {
+          console.warn("\u26A0\uFE0F All MCP queries failed, using fallback knowledge");
+          this.loadFallbackKnowledge();
+        }
+      } catch (error) {
+        console.warn("\u26A0\uFE0F Failed to load design systems knowledge:", error);
+        this.loadFallbackKnowledge();
+      }
+    }
+    /**
+    * Test MCP server connectivity using MCP initialization instead of health endpoint
+    */
+    async testMCPConnectivity() {
+      var _a, _b;
+      try {
+        console.log("\u{1F517} Testing MCP server connectivity...");
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("Connectivity test timeout")), 5e3)
+        );
+        const initPayload = {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: { roots: { listChanged: true } },
+            clientInfo: { name: "figmalint", version: "2.0.0" }
+          }
+        };
+        if (!this.config.mcpServerUrl) {
+          throw new Error("MCP server URL not configured");
+        }
+        const fetchPromise = fetch(this.config.mcpServerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(initPayload)
+        });
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (response.ok) {
+          const data = await response.json();
+          if ((_b = (_a = data.result) == null ? void 0 : _a.serverInfo) == null ? void 0 : _b.name) {
+            console.log(`\u2705 MCP server accessible: ${data.result.serverInfo.name}`);
+            return true;
+          }
+        }
+        console.warn(`\u26A0\uFE0F MCP server returned ${response.status}`);
+        return false;
+      } catch (error) {
+        console.warn("\u26A0\uFE0F MCP server connectivity test failed:", error);
+        return false;
+      }
+    }
+    /**
+     * Query the design systems MCP server using proper JSON-RPC protocol
+     */
+    async queryMCP(query) {
+      try {
+        console.log(`\u{1F50D} Querying MCP for: "${query}"`);
+        const timeoutPromise = new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("MCP query timeout")), 5e3)
+        );
+        if (!this.config.mcpServerUrl) {
+          throw new Error("MCP server URL not configured");
+        }
+        const searchPayload = {
+          jsonrpc: "2.0",
+          id: Math.floor(Math.random() * 1e3) + 2,
+          // Random ID > 1 (1 is used for init)
+          method: "tools/call",
+          params: {
+            name: "search_design_knowledge",
+            arguments: {
+              query,
+              limit: 5,
+              category: "components"
+            }
+          }
+        };
+        const fetchPromise = fetch(this.config.mcpServerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(searchPayload)
+        });
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (!response.ok) {
+          throw new Error(`MCP query failed: ${response.status} ${response.statusText}`);
+        }
+        const result = await response.json();
+        console.log(`\u2705 MCP query successful for: "${query}"`);
+        if (result.result && result.result.content) {
+          return {
+            results: result.result.content.map((item) => ({
+              title: item.title || "Design System Knowledge",
+              content: item.content || item.description || "Knowledge content",
+              category: "design-systems"
+            }))
+          };
+        }
+        return { results: [] };
+      } catch (error) {
+        console.warn(`\u26A0\uFE0F MCP query failed for "${query}":`, error);
+        return this.getFallbackKnowledgeForQuery(query);
+      }
+    }
+    /**
+     * Create deterministic analysis prompt with MCP knowledge
+     */
+    createDeterministicPrompt(context) {
+      const basePrompt = this.createBasePrompt(context);
+      const mcpGuidance = this.getMCPGuidance(context);
+      const scoringCriteria = this.getScoringCriteria(context);
+      return `${basePrompt}
+
+**CONSISTENCY REQUIREMENTS:**
+- Use DETERMINISTIC analysis based on the exact component structure provided
+- Apply CONSISTENT scoring criteria for identical components
+- Follow established design system patterns and conventions
+- Provide REPRODUCIBLE results for the same input
+
+**DESIGN SYSTEMS GUIDANCE:**
+${mcpGuidance}
+
+**SCORING METHODOLOGY:**
+${scoringCriteria}
+
+**DETERMINISTIC SETTINGS:**
+- Analysis must be based solely on the provided component structure
+- Scores must be calculated using objective criteria
+- Recommendations must follow established design system patterns
+- Response format must be exactly as specified (JSON only)
+
+**RESPONSE FORMAT (JSON only - no explanatory text):**
+{
+  "component": "Component name and purpose",
+  "description": "Detailed component description based on structure analysis",
+  "score": {
+    "overall": 85,
+    "breakdown": {
+      "structure": 90,
+      "tokens": 80,
+      "accessibility": 85,
+      "consistency": 90
+    }
+  },
+  "props": [...],
+  "states": [...],
+  "slots": [...],
+  "variants": {...},
+  "usage": "Usage guidelines",
+  "accessibility": {...},
+  "tokens": {...},
+  "audit": {...},
+  "mcpReadiness": {...}
+}`;
+    }
+    /**
+     * Validate analysis result for consistency
+     */
+    validateAnalysisConsistency(result, context) {
+      var _a, _b, _c, _d, _e;
+      const issues = [];
+      if (!((_a = result.metadata) == null ? void 0 : _a.component)) issues.push("Missing component name");
+      if (!((_b = result.metadata) == null ? void 0 : _b.description)) issues.push("Missing component description");
+      if (!this.isValidScore((_d = (_c = result.metadata) == null ? void 0 : _c.mcpReadiness) == null ? void 0 : _d.score)) {
+        issues.push("Invalid or missing MCP readiness score");
+      }
+      const family = (_e = context.additionalContext) == null ? void 0 : _e.componentFamily;
+      if (family && !this.validateComponentFamilyConsistency(result, family)) {
+        issues.push(`Inconsistent analysis for ${family} component family`);
+      }
+      if (!this.validateTokenRecommendations(result.tokens)) {
+        issues.push("Inconsistent token recommendations");
+      }
+      if (issues.length > 0) {
+        console.warn("\u26A0\uFE0F Analysis consistency issues found:", issues);
+        return false;
+      }
+      return true;
+    }
+    /**
+     * Apply consistency corrections to analysis result
+     */
+    applyConsistencyCorrections(result, context) {
+      var _a;
+      const corrected = __spreadValues({}, result);
+      if ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) {
+        corrected.metadata = this.applyComponentFamilyCorrections(
+          corrected.metadata,
+          context.additionalContext.componentFamily
+        );
+      }
+      corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
+      corrected.metadata.mcpReadiness = this.ensureConsistentScoring(
+        corrected.metadata.mcpReadiness || {},
+        context
+      );
+      return corrected;
+    }
+    // Private helper methods
+    normalizeHierarchy(hierarchy) {
+      return hierarchy.map((item) => ({
+        name: item.name.toLowerCase().trim(),
+        type: item.type,
+        depth: item.depth
+      }));
+    }
+    // Includes each token's name, value, node and property: a cache hit returns
+    // the cached token list, so any edit that changes a finding (a new
+    // hard-coded value, a rebound variable, 8px → 12px) must miss the cache.
+    generateTokenFingerprint(tokens) {
+      const fingerprint = tokens.map((token) => {
+        var _a, _b;
+        return [
+          token.type,
+          token.isToken,
+          token.source,
+          token.name,
+          token.value,
+          ((_a = token.context) == null ? void 0 : _a.nodeId) || "",
+          ((_b = token.context) == null ? void 0 : _b.property) || ""
+        ].join(":");
+      }).sort().join("|");
+      return this.createHash(fingerprint);
+    }
+    createHash(input) {
+      let hash = 0;
+      if (input.length === 0) return hash.toString();
+      for (let i = 0; i < input.length; i++) {
+        const char = input.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash).toString(36);
+    }
+    createBasePrompt(context) {
+      var _a, _b, _c, _d;
+      return `You are an expert design system architect analyzing a Figma component for comprehensive metadata and design token recommendations.
+
+**Component Analysis Context:**
+- Component Name: ${context.name}
+- Component Type: ${context.type}
+- Layer Structure: ${JSON.stringify(context.hierarchy, null, 2)}
+- Frame Structure: ${JSON.stringify(context.frameStructure)}
+- Detected Styles: ${JSON.stringify(context.detectedStyles)}
+- Component Family: ${((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic"}
+- Interactive Elements: ${((_b = context.additionalContext) == null ? void 0 : _b.hasInteractiveElements) || false}
+- Design Patterns: ${((_d = (_c = context.additionalContext) == null ? void 0 : _c.designPatterns) == null ? void 0 : _d.join(", ")) || "none"}`;
+    }
+    getMCPGuidance(context) {
+      var _a;
+      if (!this.designSystemsKnowledge) {
+        return this.getFallbackGuidance(context);
+      }
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const guidance = this.designSystemsKnowledge.components[family] || this.designSystemsKnowledge.components.generic;
+      return guidance || this.getFallbackGuidance(context);
+    }
+    getScoringCriteria(_context) {
+      var _a;
+      if (!((_a = this.designSystemsKnowledge) == null ? void 0 : _a.scoring)) {
+        return this.getFallbackScoringCriteria();
+      }
+      return this.designSystemsKnowledge.scoring;
+    }
+    processComponentKnowledge(knowledge) {
+      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
+        console.log("\u{1F4DD} No component knowledge available, using defaults");
+        return this.getDefaultComponentKnowledge();
+      }
+      const processed = {};
+      knowledge.results.forEach((result) => {
+        if (result.title && result.content) {
+          const componentType = this.extractComponentType(result.title);
+          processed[componentType] = result.content;
+        }
+      });
+      const defaults = this.getDefaultComponentKnowledge();
+      return __spreadValues(__spreadValues({}, defaults), processed);
+    }
+    extractComponentType(title) {
+      const titleLower = title.toLowerCase();
+      if (titleLower.includes("button")) return "button";
+      if (titleLower.includes("avatar")) return "avatar";
+      if (titleLower.includes("input") || titleLower.includes("field")) return "input";
+      if (titleLower.includes("card")) return "card";
+      if (titleLower.includes("badge") || titleLower.includes("tag")) return "badge";
+      return "generic";
+    }
+    processKnowledgeContent(knowledge) {
+      if (!knowledge || !knowledge.results || !Array.isArray(knowledge.results)) {
+        return "";
+      }
+      return knowledge.results.map((result) => result.content).filter((content) => content).join("\n\n");
+    }
+    getDefaultComponentKnowledge() {
+      return {
+        button: "Button components require comprehensive state management (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
+        avatar: "Avatar components should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
+        card: "Card components need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
+        badge: "Badge components are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
+        input: "Form input components require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
+        icon: "Icon components should be scalable and consistent. Score based on sizing flexibility (35%), accessibility (35%), and style consistency (30%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
+      };
+    }
+    getFallbackKnowledgeForQuery(query) {
+      return {
+        results: [
+          {
+            title: `Fallback guidance for ${query}`,
+            content: this.getFallbackContentForQuery(query),
+            category: "fallback"
+          }
+        ]
+      };
+    }
+    getFallbackContentForQuery(query) {
+      if (query.includes("component analysis")) {
+        return "Components should follow consistent naming, use design tokens, implement proper states, and maintain accessibility standards.";
+      }
+      if (query.includes("token")) {
+        return "Design tokens should use semantic naming patterns like semantic-color-primary, spacing-md-16px, and text-size-lg-18px.";
+      }
+      if (query.includes("accessibility")) {
+        return "Ensure WCAG 2.1 AA compliance with proper ARIA labels, keyboard support, and color contrast.";
+      }
+      if (query.includes("scoring")) {
+        return "Score components based on structure (25%), token usage (25%), accessibility (25%), and consistency (25%).";
+      }
+      return "Follow established design system best practices for consistency and scalability.";
+    }
+    getFallbackGuidance(context) {
+      var _a;
+      const family = ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) || "generic";
+      const guidanceMap = {
+        button: "Buttons require all interactive states (default, hover, focus, active, disabled). Score based on state completeness (45%), semantic token usage (35%), and accessibility (20%).",
+        avatar: "Avatars should support multiple sizes and states. Interactive avatars need hover/focus states. Score based on size variants (25%), state coverage (25%), image handling (25%), and fallback mechanisms (25%).",
+        card: "Cards need consistent spacing, proper content hierarchy, and optional interactive states. Score based on content structure (30%), spacing consistency (25%), optional interactivity (25%), and token usage (20%).",
+        badge: "Badges are typically status indicators with semantic color usage. Score based on semantic color mapping (40%), size variants (30%), content clarity (20%), and accessibility (10%).",
+        input: "Form inputs require comprehensive state management and accessibility. Score based on state completeness (35%), accessibility compliance (30%), validation feedback (20%), and token usage (15%).",
+        generic: "Generic components should follow basic design system principles. Score based on structure clarity (35%), token usage (35%), and accessibility basics (30%)."
+      };
+      return guidanceMap[family] || guidanceMap.generic;
+    }
+    getFallbackScoringCriteria() {
+      return `
+    **MCP Readiness Scoring (0-100):**
+    - **Structure (25%)**: Clear hierarchy, logical organization, proper nesting
+    - **Tokens (25%)**: Design token usage vs hard-coded values
+    - **Accessibility (25%)**: WCAG compliance, keyboard support, ARIA labels
+    - **Consistency (25%)**: Naming conventions, pattern adherence, scalability
+
+    **Score Calculation:**
+    - 90-100: Production ready, comprehensive implementation
+    - 80-89: Good implementation, minor improvements needed
+    - 70-79: Solid foundation, some important gaps
+    - 60-69: Basic implementation, significant improvements needed
+    - Below 60: Major issues, substantial rework required
+    `;
+    }
+    loadFallbackKnowledge() {
+      this.designSystemsKnowledge = {
+        version: "1.0.0-fallback",
+        components: {
+          button: "Button components require comprehensive state management",
+          avatar: "Avatar components should support size variants and interactive states",
+          card: "Card components need consistent spacing and content hierarchy",
+          badge: "Badge components should use semantic colors for status indication",
+          input: "Input components require comprehensive accessibility and validation",
+          generic: "Generic components should follow basic design system principles"
+        },
+        tokens: "Use semantic token naming: semantic-color-primary, spacing-md-16px, text-size-lg-18px",
+        accessibility: "Ensure WCAG 2.1 AA compliance with proper ARIA labels and keyboard support",
+        scoring: this.getFallbackScoringCriteria(),
+        lastUpdated: Date.now()
+      };
+    }
+    isValidScore(score) {
+      return typeof score === "number" && score >= 0 && score <= 100;
+    }
+    validateComponentFamilyConsistency(result, family) {
+      const metadata = result.metadata;
+      switch (family) {
+        case "button":
+          return this.validateButtonComponent(metadata);
+        case "avatar":
+          return this.validateAvatarComponent(metadata);
+        case "input":
+          return this.validateInputComponent(metadata);
+        default:
+          return true;
+      }
+    }
+    validateButtonComponent(metadata) {
+      var _a;
+      const hasInteractiveStates = (_a = metadata.states) == null ? void 0 : _a.some(
+        (state) => ["hover", "focus", "active", "disabled"].includes(state.toLowerCase())
+      );
+      return hasInteractiveStates || false;
+    }
+    validateAvatarComponent(metadata) {
+      var _a, _b, _c;
+      const hasSizeVariants = ((_b = (_a = metadata.variants) == null ? void 0 : _a.size) == null ? void 0 : _b.length) > 0;
+      const hasSizeProps = (_c = metadata.props) == null ? void 0 : _c.some(
+        (prop) => prop.name.toLowerCase().includes("size")
+      );
+      return hasSizeVariants || hasSizeProps || false;
+    }
+    validateInputComponent(metadata) {
+      var _a;
+      const hasFormStates = (_a = metadata.states) == null ? void 0 : _a.some(
+        (state) => ["focus", "error", "disabled", "filled"].includes(state.toLowerCase())
+      );
+      return hasFormStates || false;
+    }
+    validateTokenRecommendations(tokens) {
+      var _a;
+      const hasSemanticColors = (_a = tokens.colors) == null ? void 0 : _a.some(
+        (token) => token.name.includes("semantic-") || token.name.includes("primary") || token.name.includes("secondary")
+      );
+      return hasSemanticColors !== false;
+    }
+    applyComponentFamilyCorrections(metadata, family) {
+      var _a, _b, _c;
+      const corrected = __spreadValues({}, metadata);
+      switch (family) {
+        case "button":
+          if (!((_a = corrected.states) == null ? void 0 : _a.includes("hover"))) {
+            corrected.states = [...corrected.states || [], "hover", "focus", "active", "disabled"];
+          }
+          break;
+        case "avatar":
+          if (!((_b = corrected.variants) == null ? void 0 : _b.size) && !((_c = corrected.props) == null ? void 0 : _c.some((p) => p.name.includes("size")))) {
+            corrected.variants = __spreadProps(__spreadValues({}, corrected.variants), { size: ["small", "medium", "large"] });
+          }
+          break;
+      }
+      return corrected;
+    }
+    applyTokenConsistencyCorrections(tokens) {
+      if (!tokens) return tokens;
+      const corrected = __spreadValues({}, tokens);
+      return corrected;
+    }
+    ensureConsistentScoring(mcpReadiness, _context) {
+      return __spreadProps(__spreadValues({}, mcpReadiness), {
+        score: mcpReadiness.score || 0
+      });
+    }
+  };
+  /** Knowledge is refreshed at most this often; every Analyze click awaits it. */
+  _ComponentConsistencyEngine.KNOWLEDGE_TTL_MS = 30 * 60 * 1e3;
+  var ComponentConsistencyEngine = _ComponentConsistencyEngine;
+  var consistencyEngine = new ComponentConsistencyEngine({
+    enableCaching: true,
+    enableMCPIntegration: true,
+    mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
+  });
+
   // src/ui/message-handler.ts
   var storedApiKey = null;
   var selectedModel = "claude-sonnet-5";
@@ -7192,14 +7176,10 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           name: selectedNode.name,
           type: selectedNode.type
         },
-        analyzedAt: Date.now(),
-        fromCache: result.fromCache === true
+        analyzedAt: Date.now()
       });
       sendMessageToUI("enhanced-analysis-result", payload);
-      figma.notify(
-        result.fromCache ? "Loaded cached analysis (component unchanged)." : "Enhanced analysis complete! Check the results panel.",
-        { timeout: 3e3 }
-      );
+      figma.notify("Analysis complete", { timeout: 2e3 });
       try {
         await figma.clientStorage.setAsync(LAST_ANALYSIS_STORAGE_KEY, payload);
       } catch (storageError) {
@@ -7356,25 +7336,6 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         try {
           const componentContext = await extractComponentContext(node);
           const tokenAnalysis = await extractDesignTokensFromNode(node);
-          const allTokens = [
-            ...tokenAnalysis.colors,
-            ...tokenAnalysis.spacing,
-            ...tokenAnalysis.typography,
-            ...tokenAnalysis.effects,
-            ...tokenAnalysis.borders
-          ];
-          const componentHash = consistencyEngine.generateComponentHash(componentContext, allTokens) + (aiEnabled ? "" : ":local");
-          const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
-          if (cachedAnalysis) {
-            console.log(`\u2705 Using cached analysis for ${node.name}`);
-            results.push({
-              node: node.name,
-              success: true,
-              data: cachedAnalysis.result.metadata,
-              cached: true
-            });
-            continue;
-          }
           let enhancedData = {};
           if (aiEnabled) {
             const deterministicPrompt = consistencyEngine.createDeterministicPrompt(componentContext);
@@ -7395,7 +7356,6 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           if (!isConsistent) {
             result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
           }
-          consistencyEngine.cacheAnalysis(componentHash, result);
           results.push({
             node: node.name,
             success: true,
@@ -7411,10 +7371,9 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         }
       }
     }
-    const cachedCount = results.filter((r) => r.success && r.cached).length;
-    const analyzedCount = results.filter((r) => r.success && !r.cached).length;
+    const analyzedCount = results.filter((r) => r.success).length;
     sendMessageToUI("batch-analysis-result", { results });
-    figma.notify(`Batch analysis complete: ${analyzedCount} analyzed, ${cachedCount} from cache`, { timeout: 3e3 });
+    figma.notify(`Batch analysis complete: ${analyzedCount} analyzed`, { timeout: 3e3 });
   }
   async function handleClearApiKey() {
     try {

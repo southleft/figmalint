@@ -240,8 +240,6 @@ export interface EnhancedAnalysisOptions {
   node?: SceneNode;
   mcpServerUrl?: string;
   useMCP?: boolean;
-  /** Skip the component-hash cache and force a fresh LLM analysis. */
-  bypassCache?: boolean;
   /** UI-generated id used to drop results of cancelled/superseded analyses. */
   requestId?: string;
   /**
@@ -293,8 +291,6 @@ export interface EnhancedAnalysisResult {
   recommendations?: Array<{ name: string; type: string; description: string; examples: string[] }>;
   namingIssues?: NamingIssue[];
   existingDescription?: string;
-  /** True when served from the component-hash cache (no LLM call was made). */
-  fromCache?: boolean;
   /**
    * False when this result was produced without an API key. The UI uses it to
    * hide the AI-authored sections rather than render them empty.

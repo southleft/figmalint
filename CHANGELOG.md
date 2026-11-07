@@ -38,6 +38,7 @@
 - **The AI review prompt** now tells the model what actually reaches AI tools (props, variables, auto layout, description), so its strengths and gaps focus on those.
 
 ### Fixed
+- **Analyze could return a stale result after you edited the component.** Results were cached under a fingerprint of a summary of the component. Edits the summary didn't capture, such as fixing one of several layers with the same hard-coded color, or changing auto layout, code syntax or annotations, produced the same fingerprint, so the old result came back as "Loaded cached analysis (component unchanged)". Analyze, including batch analysis, now always runs fresh. The Run fresh button is gone because every run is fresh. Restoring the last analysis when you reopen the plugin still works.
 - **A "Status" property (success, warning…) was counted as interactive states.** Only State or Interaction properties count now.
 - **The Stop analysis label was nearly invisible in dark mode.** It picked up the dark text meant for the purple Analyze button.
 - OpenAI errors no longer show up as "Network error … Failed to fetch". OpenAI leaves the CORS header off chat error responses, which hid the real cause in Figma. The plugin now asks OpenAI's models endpoint and reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available to the account.

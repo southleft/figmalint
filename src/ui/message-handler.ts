@@ -560,15 +560,9 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
         type: selectedNode.type,
       },
       analyzedAt: Date.now(),
-      fromCache: result.fromCache === true,
     };
     sendMessageToUI('enhanced-analysis-result', payload);
-    figma.notify(
-      result.fromCache
-        ? 'Loaded cached analysis (component unchanged).'
-        : 'Enhanced analysis complete! Check the results panel.',
-      { timeout: 3000 }
-    );
+    figma.notify('Analysis complete', { timeout: 2000 });
 
     // Persist so reopening the plugin can restore without a paid re-analysis.
     // Results can be large; a failed write (quota) must never fail the analysis.
@@ -792,33 +786,6 @@ async function handleBatchAnalysis(
         // Extract context and tokens for hashing
         const componentContext = await extractComponentContext(node);
         const tokenAnalysis = await extractDesignTokensFromNode(node);
-        const allTokens = [
-          ...tokenAnalysis.colors,
-          ...tokenAnalysis.spacing,
-          ...tokenAnalysis.typography,
-          ...tokenAnalysis.effects,
-          ...tokenAnalysis.borders
-        ];
-
-        // Generate component hash. Keyless runs get their own cache slot so a
-        // later keyed run isn't served the earlier local-only result.
-        const componentHash =
-          consistencyEngine.generateComponentHash(componentContext, allTokens) +
-          (aiEnabled ? '' : ':local');
-
-        // Check for cached analysis first
-        const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
-        if (cachedAnalysis) {
-          console.log(`✅ Using cached analysis for ${node.name}`);
-          results.push({
-            node: node.name,
-            success: true,
-            data: cachedAnalysis.result.metadata,
-            cached: true
-          });
-          continue;
-        }
-
         // Without a key, skip the LLM entirely — processAnalysisResult fills
         // every field it would have provided from the Figma node itself.
         let enhancedData: any = {};
@@ -848,9 +815,6 @@ async function handleBatchAnalysis(
           result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
         }
 
-        // Cache for future consistency
-        consistencyEngine.cacheAnalysis(componentHash, result);
-
         results.push({
           node: node.name,
           success: true,
@@ -867,11 +831,10 @@ async function handleBatchAnalysis(
     }
   }
 
-  const cachedCount = results.filter(r => r.success && (r as any).cached).length;
-  const analyzedCount = results.filter(r => r.success && !(r as any).cached).length;
+  const analyzedCount = results.filter(r => r.success).length;
 
   sendMessageToUI('batch-analysis-result', { results });
-  figma.notify(`Batch analysis complete: ${analyzedCount} analyzed, ${cachedCount} from cache`, { timeout: 3000 });
+  figma.notify(`Batch analysis complete: ${analyzedCount} analyzed`, { timeout: 3000 });
 }
 
 

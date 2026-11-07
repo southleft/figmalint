@@ -6,7 +6,6 @@ import { debugLog } from '../utils/debug';
 import { extractDesignTokensFromNode } from './token-analyzer';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
-import { consistencyEngine } from './consistency-engine';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
 import { findMatchingColorVariable, findBestMatchingVariable, colorFieldFromPropertyPath } from '../fixes/token-fixer';
 
@@ -1394,29 +1393,8 @@ export async function processEnhancedAnalysis(
   debugLog(`  Tokens: ${Object.keys(tokens).length} categories`);
   debugLog(`  Description: ${componentDescription ? 'Present' : 'Missing'}`);
 
-  // Serve structurally identical components from the analysis cache — this
-  // skips the entire LLM round trip (and its cost) when re-analyzing an
-  // unchanged component. `bypassCache` forces a fresh analysis.
-  const allTokensForHash = [
-    ...tokens.colors,
-    ...tokens.spacing,
-    ...tokens.typography,
-    ...tokens.effects,
-    ...tokens.borders,
-  ];
-  // Local-only and AI-assisted runs produce different results for the same
-  // component, so they must not share a cache slot — otherwise adding an API
-  // key and re-analyzing would silently return the earlier keyless result.
-  const componentHash =
-    consistencyEngine.generateComponentHash(context, allTokensForHash) +
-    (aiEnabled ? '' : ':local');
-  if (!options.bypassCache) {
-    const cached = consistencyEngine.getCachedAnalysis(componentHash);
-    if (cached) {
-      console.log('✅ Returning cached analysis (component unchanged)');
-      return { ...cached.result, fromCache: true };
-    }
-  }
+  // Every Analyze is a fresh analysis. A cache keyed on a summary of the
+  // component served stale results after edits the summary didn't capture.
 
   // Check if MCP server is available. Default to the hosted design-systems MCP
   // server — it is the only MCP endpoint in manifest.json's networkAccess
@@ -1524,8 +1502,6 @@ export async function processEnhancedAnalysis(
   });
 
   result.aiEnabled = aiEnabled;
-
-  consistencyEngine.cacheAnalysis(componentHash, result);
   return result;
 }
 
