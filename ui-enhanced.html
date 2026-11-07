@@ -787,6 +787,7 @@
     .issue-value.st-pass { color: var(--pass); }
     .issue-value.st-warn { color: var(--warn); }
     .issue-value.st-fail { color: var(--fail); }
+    .issue-end { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; align-self: start; }
     .issue-value.st-info { color: var(--ink-3); font-weight: 500; font-size: 12px; }
     .issue.fail .issue-detail, .issue.warn .issue-detail { color: var(--ink-2); margin-top: 4px; }
 
@@ -837,6 +838,28 @@
     .marked-list.is-good li::before { content: "✓"; background: var(--pass-tint); color: var(--pass); }
     .marked-list.is-gap li::before { content: "?"; background: var(--warn-tint); color: var(--warn); }
     .marked-list.is-todo li::before { content: "+"; background: var(--accent-tint); color: var(--accent); }
+
+    /* Set code syntax */
+    .cs-lead { color: var(--ink-2); font-size: var(--font-size-xs); line-height: 1.5; margin-bottom: 12px; }
+    .cs-scope { display: grid; gap: 6px; margin-bottom: 12px; }
+    .cs-choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; }
+    .cs-choice:has(input:checked) { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--accent-tint); }
+    .cs-choice input { margin-top: 2px; accent-color: var(--accent); }
+    .cs-choice b { font-weight: 600; }
+    .cs-choice small { display: block; color: var(--ink-2); font-size: 11px; font-weight: 400; margin-top: 2px; }
+    .cs-count { color: var(--ink-3); font-size: 11px; white-space: nowrap; }
+    .cs-options { display: grid; gap: 8px; margin-bottom: 12px; }
+    .cs-field { display: flex; align-items: center; gap: 10px; font-size: var(--font-size-xs); color: var(--ink-2); }
+    .cs-field input { flex: 1; font-family: var(--mono) !important; }
+    .cs-check { display: flex; align-items: center; gap: 8px; font-size: var(--font-size-xs); color: var(--ink-2); cursor: pointer; }
+    .cs-check input { accent-color: var(--accent); }
+    .cs-preview { background: var(--canvas); border-radius: 8px; padding: 8px 10px; }
+    .cs-examples { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+    .cs-examples li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; font-size: 11px; }
+    .cs-examples code { background: none; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cs-examples .cs-web { color: var(--accent); }
+    .cs-loading, .cs-more { color: var(--ink-3); grid-template-columns: 1fr !important; }
+    .cs-notes p { color: var(--ink-2); font-size: 11px; line-height: 1.45; margin-top: 8px; }
 
     /* ---- Fix confirmation ---- */
     .modal-overlay {
@@ -2068,6 +2091,9 @@
       const modal = document.getElementById('fix-modal');
       modal.classList.remove('active');
       pendingFix = null;
+      const confirmButton = document.getElementById('modal-confirm-btn');
+      confirmButton.textContent = 'Apply';
+      confirmButton.disabled = false;
       // Clear any token item selection highlight
       document.querySelectorAll('.token-item-compact.token-item-selected')
         .forEach(el => el.classList.remove('token-item-selected'));
@@ -2140,6 +2166,12 @@
         });
       } else if (type === 'naming-strategy') {
         sendMessageToPlugin('apply-naming-strategy', { strategy: pendingFix.strategy });
+      } else if (type === 'code-syntax') {
+        if (!codeSyntaxState.plan || codeSyntaxState.plan.targets.length === 0) return;
+        sendMessageToPlugin('apply-code-syntax', codeSyntaxOptions());
+        hideFixModal();
+        updateStatus('Setting code syntax…', 'info');
+        return;
       }
 
       hideFixModal();
@@ -3417,6 +3449,15 @@
           document.getElementById('restore-banner').style.display = 'none';
           updateStatus('No saved analysis to restore', 'info');
           break;
+        case 'code-syntax-preview':
+          renderCodeSyntaxPreview(data);
+          break;
+        case 'code-syntax-applied':
+          handleCodeSyntaxApplied(data);
+          break;
+        case 'code-syntax-error':
+          updateStatus(`Couldn\u2019t set code syntax: ${data.error}`, 'error');
+          break;
         case 'tokens-refreshed':
           handleTokensRefreshed(data);
           break;
@@ -3802,6 +3843,25 @@
       return { pass: 'Yes', warning: 'Missing', fail: 'Missing' }[item.status] || '';
     }
 
+    // A measured check: name, target, value, the explanation when it needs work,
+    // and a fix when the panel can apply one
+    const CHECK_ACTIONS = {
+      'set-code-syntax': '<button class="fix" onclick="event.stopPropagation();openCodeSyntaxModal()">Set code syntax</button>'
+    };
+    function checkRow(item) {
+      const severity = ({ pass: 'pass', warning: 'warn', info: 'info' })[item.status] || 'fail';
+      return issueRow({
+        severity,
+        title: escapeHtml(item.check),
+        sub: escapeHtml(CHECK_TARGETS[item.check] || ''),
+        value: escapeHtml(item.value || checkValue(item)),
+        // `backticks` in check text mark code: render it as code so it doesn't wrap mid-name
+        detail: severity === 'pass' ? '' : escapeHtml(item.suggestion || '').replace(/`([^`]+)`/g, '<code class="nowrap">$1</code>'),
+        action: severity === 'pass' ? '' : (CHECK_ACTIONS[item.action] || ''),
+        attrs: `data-check="${escapeHtml(item.check)}"${severity === 'pass' && item.suggestion ? ` title="${escapeHtml(item.suggestion)}"` : ''}`
+      });
+    }
+
     function issueRow({ severity, title, detail = '', action = '', attrs = '', extraClass = '', sub = '', value = '' }) {
       const label = { pass: 'Passes', fail: 'Fails', warn: 'Warning', info: 'Note' }[severity] || '';
       return `
@@ -3812,7 +3872,9 @@
             ${sub ? `<div class="issue-sub">${sub}</div>` : ''}
             ${detail ? `<div class="issue-detail">${detail}</div>` : ''}
           </div>
-          ${value ? `<span class="issue-value st-${severity}">${value}</span>` : ''}${action}
+          ${value && action
+            ? `<span class="issue-end"><span class="issue-value st-${severity}">${value}</span>${action}</span>`
+            : `${value ? `<span class="issue-value st-${severity}">${value}</span>` : ''}${action}`}
         </div>`;
     }
 
@@ -4196,15 +4258,7 @@
           }
           const severity = statusOf(item);
           if (severity !== 'info') auditModel.checks[key].push(severity);
-          rows[key].push(issueRow({
-            severity,
-            title: escapeHtml(item.check),
-            sub: escapeHtml(CHECK_TARGETS[item.check] || ''),
-            value: escapeHtml(item.value || checkValue(item)),
-            // `backticks` in check text mark code: render it as code so it doesn't wrap mid-name
-            detail: severity === 'pass' ? '' : escapeHtml(item.suggestion || '').replace(/`([^`]+)`/g, '<code class="nowrap">$1</code>'),
-            attrs: severity === 'pass' && item.suggestion ? `title="${escapeHtml(item.suggestion)}"` : ''
-          }));
+          rows[key].push(checkRow(item));
         });
       });
 
@@ -4783,6 +4837,131 @@
       const when = data.analyzedAt ? new Date(data.analyzedAt).toLocaleString() : 'previous session';
       text.textContent = `Restore last analysis for "${data.nodeName}" (${when})?`;
       banner.style.display = 'flex';
+    }
+
+    // ---- Variable code syntax ----
+    // Code syntax belongs to the variable, so the default scope is every
+    // variable in the file that has none; this component's is the narrower option.
+    const codeSyntaxState = { scope: 'file', prefix: '', dropTopGroup: false, requestId: 0, plan: null };
+    let codeSyntaxTimer = null;
+
+    function codeSyntaxOptions() {
+      return {
+        nodeId: lastAnalyzedNodeId,
+        scope: codeSyntaxState.scope,
+        prefix: codeSyntaxState.prefix,
+        dropTopGroup: codeSyntaxState.dropTopGroup
+      };
+    }
+
+    function openCodeSyntaxModal() {
+      if (!lastAnalyzedNodeId) return;
+      codeSyntaxState.plan = null;
+      showFixModal('Set code syntax', `
+        <div class="cs-form" id="cs-form">
+          <p class="cs-lead">Code syntax is a variable\u2019s name in your code. AI tools and Dev Mode use it instead of the Figma path. FigmaLint builds each name from the variable\u2019s path and never changes code syntax that\u2019s already set.</p>
+          <div class="cs-scope" role="radiogroup" aria-label="Which variables">
+            <label class="cs-choice">
+              <input type="radio" name="cs-scope" value="file"${codeSyntaxState.scope === 'file' ? ' checked' : ''} onchange="updateCodeSyntaxOption('scope', 'file')">
+              <span><b>All variables in this file</b> <span class="cs-count" id="cs-file-count"></span>
+              <small>Recommended. Variables are shared, so other components use them too.</small></span>
+            </label>
+            <label class="cs-choice">
+              <input type="radio" name="cs-scope" value="component"${codeSyntaxState.scope === 'component' ? ' checked' : ''} onchange="updateCodeSyntaxOption('scope', 'component')">
+              <span><b>Only this component\u2019s variables</b> <span class="cs-count" id="cs-component-count"></span></span>
+            </label>
+          </div>
+          <div class="cs-options">
+            <label class="cs-field"><span>Prefix</span>
+              <input type="text" id="cs-prefix" value="${escapeHtml(codeSyntaxState.prefix)}" placeholder="None, or e.g. ds" autocomplete="off" spellcheck="false" oninput="updateCodeSyntaxOption('prefix', this.value)">
+            </label>
+            <label class="cs-check">
+              <input type="checkbox"${codeSyntaxState.dropTopGroup ? ' checked' : ''} onchange="updateCodeSyntaxOption('dropTopGroup', this.checked)">
+              <span>Leave out the top group <span id="cs-top-group"></span></span>
+            </label>
+          </div>
+          <div class="cs-preview">
+            <div class="preview-label">Preview</div>
+            <ul class="cs-examples" id="cs-examples"><li class="cs-loading">Reading variables…</li></ul>
+          </div>
+          <div class="cs-notes" id="cs-notes"></div>
+        </div>`, { type: 'code-syntax' });
+      const confirmButton = document.getElementById('modal-confirm-btn');
+      confirmButton.textContent = 'Set code syntax';
+      confirmButton.disabled = true;
+      requestCodeSyntaxPreview();
+    }
+
+    function requestCodeSyntaxPreview() {
+      codeSyntaxState.requestId++;
+      sendMessageToPlugin('preview-code-syntax', { ...codeSyntaxOptions(), requestId: codeSyntaxState.requestId });
+    }
+
+    function updateCodeSyntaxOption(key, value) {
+      codeSyntaxState[key] = value;
+      clearTimeout(codeSyntaxTimer);
+      codeSyntaxTimer = setTimeout(requestCodeSyntaxPreview, key === 'prefix' ? 200 : 0);
+    }
+
+    function renderCodeSyntaxPreview(plan) {
+      if (plan.requestId !== codeSyntaxState.requestId || !document.getElementById('cs-form')) return;
+      codeSyntaxState.plan = plan;
+      const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+      document.getElementById('cs-file-count').textContent = `${plan.fileMissing.toLocaleString()} without code syntax`;
+      document.getElementById('cs-component-count').textContent = `${plan.componentMissing.toLocaleString()} without code syntax`;
+      document.getElementById('cs-top-group').textContent = plan.topGroupExample ? `(\u201c${plan.topGroupExample}\u201d)` : '';
+
+      document.getElementById('cs-examples').innerHTML = plan.targets.length === 0
+        ? '<li class="cs-loading">Nothing to set. Every variable in this scope already has code syntax.</li>'
+        : plan.targets.slice(0, 5).map(t => `<li><code>${escapeHtml(t.name)}</code><code class="cs-web">${escapeHtml(t.web)}</code></li>`).join('')
+          + (plan.targets.length > 5 ? `<li class="cs-more">and ${plural(plan.targets.length - 5, 'more', 'more')}</li>` : '');
+
+      const notes = [];
+      if (plan.existingCount > 0) {
+        const example = plan.existingExamples[0];
+        notes.push(`${plural(plan.existingCount, 'variable already has', 'variables already have')} code syntax${example ? `, like <code>${escapeHtml(example.web)}</code>` : ''}. ${plan.existingCount === 1 ? 'It stays' : 'They stay'} as ${plan.existingCount === 1 ? 'it is' : 'they are'}; match the prefix to it if you can.`);
+      }
+      if (plan.disambiguated > 0) {
+        notes.push(`${plural(plan.disambiguated, 'name', 'names')} would repeat, so ${plan.disambiguated === 1 ? 'it keeps its' : 'they keep their'} full path or collection name to stay unique.`);
+      }
+      if (plan.libraryMissing > 0) {
+        notes.push(`${plural(plan.libraryMissing, 'variable', 'variables')} in this component ${plan.libraryMissing === 1 ? 'comes' : 'come'} from a library. Set ${plan.libraryMissing === 1 ? 'it' : 'those'} in the library file.`);
+      }
+      document.getElementById('cs-notes').innerHTML = notes.map(n => `<p>${n}</p>`).join('');
+
+      const confirmButton = document.getElementById('modal-confirm-btn');
+      confirmButton.disabled = plan.targets.length === 0;
+      confirmButton.textContent = plan.targets.length === 0
+        ? 'Set code syntax'
+        : `Set code syntax on ${plural(plan.targets.length, 'variable', 'variables')}`;
+    }
+
+    // Update the AI handoff row in place, without re-running the analysis
+    function handleCodeSyntaxApplied(result) {
+      const parts = [`Set code syntax on ${result.updated.toLocaleString()} variable${result.updated === 1 ? '' : 's'}.`];
+      if (result.failed > 0) parts.push(`${result.failed} couldn\u2019t be changed.`);
+      if (result.libraryMissing > 0) parts.push(`${result.libraryMissing} library variable${result.libraryMissing === 1 ? '' : 's'} need${result.libraryMissing === 1 ? 's' : ''} setting in the library file.`);
+      updateStatus(parts.join(' '), result.failed > 0 ? 'warning' : 'success');
+
+      const items = currentAuditResults && currentAuditResults.aiHandoff;
+      const index = items ? items.findIndex(c => c.check === 'Variables mapped to code') : -1;
+      if (index < 0) return;
+      const item = items[index];
+      const remaining = result.componentTotal - result.componentMapped;
+      item.value = `${result.componentMapped} of ${result.componentTotal}`;
+      item.status = remaining === 0 ? 'pass' : 'warning';
+      item.suggestion = remaining === 0
+        ? 'Every variable has code syntax, so AI tools get your real token names'
+        : `${remaining} variable${remaining === 1 ? ' still has' : 's still have'} no code syntax.${result.libraryMissing > 0 ? ' Variables from a library have to be set in the library file.' : ''}`;
+      if (remaining <= result.libraryMissing) delete item.action;
+
+      const row = document.querySelector('#group-handoff .issue[data-check="Variables mapped to code"]');
+      if (row) row.outerHTML = checkRow(item);
+      if (auditModel) {
+        auditModel.checks.handoff = items.filter(c => c.status !== 'info').map(c => ({ pass: 'pass', warning: 'warn' })[c.status] || 'fail');
+        renderScorecard();
+      }
+      updateMCPReadiness(currentMetadata && currentMetadata.mcpReadiness);
     }
 
     // Lightweight token refresh after fixes (no LLM round trip)

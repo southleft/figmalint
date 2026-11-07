@@ -208,7 +208,9 @@ export type UIMessageType =
   | 'preview-naming-strategy'
   | 'apply-naming-strategy'
   | 'preview-batch-fix'
-  | 'generate-instance-sheet';
+  | 'generate-instance-sheet'
+  | 'preview-code-syntax'
+  | 'apply-code-syntax';
 
 // Auto-fix Types
 export interface FixRequest {
@@ -258,6 +260,8 @@ export interface AuditCheck {
   suggestion: string;
   /** The measured result, shown beside the check (e.g. "7.2:1", "3 of 12") */
   value?: string;
+  /** A fix the panel can apply for this check */
+  action?: 'set-code-syntax';
 }
 
 export interface DetachedInstanceInfo {

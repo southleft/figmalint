@@ -37,6 +37,13 @@
 - **Layer names can't dominate the score.** Their combined weight is capped, so many generic names can't outweigh variables or accessibility.
 - **The AI review prompt** now tells the model what actually reaches AI tools (props, variables, auto layout, description), so its strengths and gaps focus on those.
 
+- **Set code syntax from the panel.** The "Variables mapped to code" check has a "Set code syntax" button. It fills in each variable's Web code syntax from its path (`bg/neutral/weak` becomes `var(--bg-neutral-weak)`), with an optional prefix and the option to leave out the top-level group. The preview shows the resulting names first.
+  - **Whole file by default.** Code syntax belongs to the variable, and variables are shared across components, so the default covers every variable in the file without code syntax. Only this component's variables is the narrower option.
+  - **Existing code syntax is never changed.** Examples of it appear in the preview so you can match your convention.
+  - **Names never collide.** A name that would repeat keeps its full path, then its collection name, then a number.
+  - **Library variables are counted and left alone,** with a note to set them in the library file.
+  - The row updates in place. One undo reverts the change.
+
 ### Fixed
 - **Analyze could return a stale result after you edited the component.** Results were cached under a fingerprint of a summary of the component. Edits the summary didn't capture, such as fixing one of several layers with the same hard-coded color, or changing auto layout, code syntax or annotations, produced the same fingerprint, so the old result came back as "Loaded cached analysis (component unchanged)". Analyze, including batch analysis, now always runs fresh. The Run fresh button is gone because every run is fresh. Restoring the last analysis when you reopen the plugin still works.
 - **A "Status" property (success, warning…) was counted as interactive states.** Only State or Interaction properties count now.

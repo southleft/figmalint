@@ -42,6 +42,7 @@ import {
   RenamePreview,
 } from '../fixes/naming-fixer';
 import { FixRequest, FixPreviewRequest, BatchFixRequest } from '../types';
+import { planCodeSyntax, applyCodeSyntax, CodeSyntaxOptions } from '../fixes/code-syntax-fixer';
 
 // Plugin state
 let storedApiKey: string | null = null;
@@ -170,6 +171,12 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         break;
       case 'preview-batch-fix':
         await handlePreviewBatchFix(data);
+        break;
+      case 'preview-code-syntax':
+        await handlePreviewCodeSyntax(data);
+        break;
+      case 'apply-code-syntax':
+        await handleApplyCodeSyntax(data);
         break;
       case 'generate-instance-sheet':
         await handleGenerateInstanceSheet(data);
@@ -2370,4 +2377,24 @@ async function buildInstanceSheet(
 function shortNotice(message: string, max = 90): string {
   const first = message.split(/(?<=\.)\s/)[0] || message;
   return first.length > max ? `${first.slice(0, max - 1).trimEnd()}…` : first;
+}
+
+// Variable code syntax: preview the names, then set them
+async function handlePreviewCodeSyntax(data: CodeSyntaxOptions & { requestId?: number }): Promise<void> {
+  try {
+    const plan = await planCodeSyntax(data);
+    sendMessageToUI('code-syntax-preview', { ...plan, requestId: data.requestId });
+  } catch (error) {
+    sendMessageToUI('code-syntax-error', { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+async function handleApplyCodeSyntax(data: CodeSyntaxOptions): Promise<void> {
+  try {
+    const result = await applyCodeSyntax(data);
+    sendMessageToUI('code-syntax-applied', result);
+    figma.notify(`Set code syntax on ${result.updated} variable${result.updated === 1 ? '' : 's'}`, { timeout: 3000 });
+  } catch (error) {
+    sendMessageToUI('code-syntax-error', { error: error instanceof Error ? error.message : String(error) });
+  }
 }

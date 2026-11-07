@@ -2308,9 +2308,11 @@ async function runAIHandoffChecks(
         check: 'Variables mapped to code',
         status: unmapped.length === 0 ? 'pass' : 'warning',
         value: `${mapped.length} of ${found.length}`,
+        // Local variables can be fixed from the panel; library ones only in their library
+        ...(unmapped.some((v) => !v.remote) ? { action: 'set-code-syntax' as const } : {}),
         suggestion: unmapped.length === 0
           ? 'Every variable has code syntax, so AI tools get your real token names'
-          : `${unmapped.length} variable${unmapped.length === 1 ? ' has' : 's have'} no code syntax, so AI tools name ${unmapped.length === 1 ? 'it' : 'them'} from the Figma path, like \`var(--${unmapped[0].name.replace(/\s+/g, '-').replace(/\//g, '\\/')})\`, which won't match your code. To fix it, open the variable in the Variables panel, choose Edit variable, and under Code syntax add Web with the name your code uses, such as \`var(--${unmapped[0].name.replace(/\s+/g, '-').replace(/\//g, '-')})\`. For library variables, do this in the library file.`
+          : `${unmapped.length} variable${unmapped.length === 1 ? ' has' : 's have'} no code syntax, so AI tools name ${unmapped.length === 1 ? 'it' : 'them'} from the Figma path, like \`var(--${unmapped[0].name.replace(/\s+/g, '-').replace(/\//g, '\\/')})\`, which won't match your code.${unmapped.some((v) => v.remote) ? ' Variables from a library have to be set in the library file.' : ''}`
       });
     }
   }

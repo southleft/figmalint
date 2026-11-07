@@ -2514,16 +2514,16 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
   }
   async function loadOpenRouterCustomModel() {
     try {
-      const slug = await figma.clientStorage.getAsync(
+      const slug2 = await figma.clientStorage.getAsync(
         STORAGE_KEYS.OPENROUTER_CUSTOM_MODEL
       );
-      return (slug || "").trim();
+      return (slug2 || "").trim();
     } catch (e) {
       return "";
     }
   }
-  async function saveOpenRouterCustomModel(slug) {
-    const trimmed = (slug || "").trim();
+  async function saveOpenRouterCustomModel(slug2) {
+    const trimmed = (slug2 || "").trim();
     if (!trimmed) {
       await figma.clientStorage.deleteAsync(STORAGE_KEYS.OPENROUTER_CUSTOM_MODEL);
       return;
@@ -5614,12 +5614,13 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       const mapped = found.filter((v) => v.codeSyntax && Object.values(v.codeSyntax).some((s) => !!s));
       const unmapped = found.filter((v) => !mapped.includes(v)).sort((a, b) => b.name.split("/").length - a.name.split("/").length);
       if (found.length > 0) {
-        checks.push({
+        checks.push(__spreadProps(__spreadValues({
           check: "Variables mapped to code",
           status: unmapped.length === 0 ? "pass" : "warning",
-          value: `${mapped.length} of ${found.length}`,
-          suggestion: unmapped.length === 0 ? "Every variable has code syntax, so AI tools get your real token names" : `${unmapped.length} variable${unmapped.length === 1 ? " has" : "s have"} no code syntax, so AI tools name ${unmapped.length === 1 ? "it" : "them"} from the Figma path, like \`var(--${unmapped[0].name.replace(/\s+/g, "-").replace(/\//g, "\\/")})\`, which won't match your code. To fix it, open the variable in the Variables panel, choose Edit variable, and under Code syntax add Web with the name your code uses, such as \`var(--${unmapped[0].name.replace(/\s+/g, "-").replace(/\//g, "-")})\`. For library variables, do this in the library file.`
-        });
+          value: `${mapped.length} of ${found.length}`
+        }, unmapped.some((v) => !v.remote) ? { action: "set-code-syntax" } : {}), {
+          suggestion: unmapped.length === 0 ? "Every variable has code syntax, so AI tools get your real token names" : `${unmapped.length} variable${unmapped.length === 1 ? " has" : "s have"} no code syntax, so AI tools name ${unmapped.length === 1 ? "it" : "them"} from the Figma path, like \`var(--${unmapped[0].name.replace(/\s+/g, "-").replace(/\//g, "\\/")})\`, which won't match your code.${unmapped.some((v) => v.remote) ? " Variables from a library have to be set in the library file." : ""}`
+        }));
       }
     }
     if (containers > 0) {
@@ -6825,6 +6826,127 @@ ${scoringCriteria}
     mcpServerUrl: "https://design-systems-mcp.southleft-llc.workers.dev/mcp"
   });
 
+  // src/fixes/code-syntax-fixer.ts
+  var MAX_NODES = 4e3;
+  var hasCodeSyntax = (variable) => !!variable.codeSyntax && Object.values(variable.codeSyntax).some((value) => !!value);
+  function slug(text) {
+    return text.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  }
+  function webNameFor(path, prefix, dropTopGroup, collection = "") {
+    let parts = path.split("/").map((part) => part.trim()).filter(Boolean);
+    if (dropTopGroup && parts.length > 1) parts = parts.slice(1);
+    const segments = [slug(prefix), slug(collection), ...parts.map(slug)].filter(Boolean);
+    return `var(--${segments.join("-")})`;
+  }
+  async function componentVariables(nodeId) {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node || !("type" in node)) return [];
+    const ids = /* @__PURE__ */ new Set();
+    const collect = (value) => {
+      if (!value) return;
+      if (Array.isArray(value)) {
+        value.forEach(collect);
+      } else if (typeof value === "object") {
+        const alias = value;
+        if (alias.type === "VARIABLE_ALIAS" && typeof alias.id === "string") ids.add(alias.id);
+        else Object.values(value).forEach(collect);
+      }
+    };
+    let visited = 0;
+    const walk = (current) => {
+      if (visited++ > MAX_NODES) return;
+      if ("boundVariables" in current) collect(current.boundVariables);
+      if (current.type === "INSTANCE" || !("children" in current)) return;
+      current.children.forEach(walk);
+    };
+    walk(node);
+    const variables = await Promise.all(
+      [...ids].map((id) => figma.variables.getVariableByIdAsync(id).catch(() => null))
+    );
+    return variables.filter((variable) => !!variable);
+  }
+  async function planCodeSyntax(options) {
+    var _a;
+    const local = await figma.variables.getLocalVariablesAsync();
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    const collectionName = new Map(collections.map((c) => [c.id, c.name]));
+    const inComponent = await componentVariables(options.nodeId);
+    const fileTargets = local.filter((v) => !hasCodeSyntax(v));
+    const componentTargets = inComponent.filter((v) => !v.remote && !hasCodeSyntax(v));
+    const chosen = options.scope === "file" ? fileTargets : componentTargets;
+    const existing = local.filter((v) => v.codeSyntax && v.codeSyntax.WEB);
+    const taken = new Set(existing.map((v) => v.codeSyntax.WEB));
+    const collectionOf = (v) => collectionName.get(v.variableCollectionId) || "";
+    const levels = [
+      (v) => webNameFor(v.name, options.prefix, options.dropTopGroup),
+      (v) => webNameFor(v.name, options.prefix, false),
+      (v) => webNameFor(v.name, options.prefix, false, collectionOf(v))
+    ];
+    const clashes = (names2) => {
+      const counts = /* @__PURE__ */ new Map();
+      names2.forEach((name) => counts.set(name, (counts.get(name) || 0) + 1));
+      return new Set(names2.filter((name) => (counts.get(name) || 0) > 1 || taken.has(name)));
+    };
+    const first = chosen.map(levels[0]);
+    let names = first;
+    for (let level = 1; level < levels.length; level++) {
+      const clashing = clashes(names);
+      if (clashing.size === 0) break;
+      names = names.map((name, i) => clashing.has(name) ? levels[level](chosen[i]) : name);
+    }
+    const used = new Set(taken);
+    names = names.map((name) => {
+      let unique = name;
+      for (let n = 2; used.has(unique); n++) unique = name.replace(/\)$/, `-${n})`);
+      used.add(unique);
+      return unique;
+    });
+    const disambiguated = names.filter((name, i) => name !== first[i]).length;
+    const targets = chosen.map((v, i) => ({ id: v.id, name: v.name, web: names[i] }));
+    const topGroups = /* @__PURE__ */ new Map();
+    fileTargets.forEach((v) => {
+      const parts = v.name.split("/");
+      if (parts.length > 1) topGroups.set(parts[0].trim(), (topGroups.get(parts[0].trim()) || 0) + 1);
+    });
+    const topGroupExample = ((_a = [...topGroups.entries()].sort((a, b) => b[1] - a[1])[0]) == null ? void 0 : _a[0]) || "";
+    return {
+      scope: options.scope,
+      fileMissing: fileTargets.length,
+      componentMissing: componentTargets.length,
+      targets,
+      libraryMissing: inComponent.filter((v) => v.remote && !hasCodeSyntax(v)).length,
+      existingCount: existing.length,
+      existingExamples: existing.slice(0, 2).map((v) => ({ name: v.name, web: v.codeSyntax.WEB })),
+      disambiguated,
+      topGroupExample
+    };
+  }
+  async function applyCodeSyntax(options) {
+    const plan = await planCodeSyntax(options);
+    let updated = 0;
+    let failed = 0;
+    for (const target of plan.targets) {
+      try {
+        const variable = await figma.variables.getVariableByIdAsync(target.id);
+        if (!variable || hasCodeSyntax(variable)) continue;
+        variable.setVariableCodeSyntax("WEB", target.web);
+        updated++;
+      } catch (error) {
+        console.warn(`Could not set code syntax on ${target.name}:`, error);
+        failed++;
+      }
+    }
+    if (updated > 0) figma.commitUndo();
+    const after = await componentVariables(options.nodeId);
+    return {
+      updated,
+      failed,
+      libraryMissing: plan.libraryMissing,
+      componentTotal: after.length,
+      componentMapped: after.filter(hasCodeSyntax).length
+    };
+  }
+
   // src/ui/message-handler.ts
   var storedApiKey = null;
   var selectedModel = "claude-sonnet-5";
@@ -6920,6 +7042,12 @@ ${scoringCriteria}
           break;
         case "preview-batch-fix":
           await handlePreviewBatchFix(data);
+          break;
+        case "preview-code-syntax":
+          await handlePreviewCodeSyntax(data);
+          break;
+        case "apply-code-syntax":
+          await handleApplyCodeSyntax(data);
           break;
         case "generate-instance-sheet":
           await handleGenerateInstanceSheet(data);
@@ -8509,6 +8637,23 @@ Respond naturally and helpfully to the user's question.`;
   function shortNotice(message, max = 90) {
     const first = message.split(new RegExp("(?<=\\.)\\s"))[0] || message;
     return first.length > max ? `${first.slice(0, max - 1).trimEnd()}\u2026` : first;
+  }
+  async function handlePreviewCodeSyntax(data) {
+    try {
+      const plan = await planCodeSyntax(data);
+      sendMessageToUI("code-syntax-preview", __spreadProps(__spreadValues({}, plan), { requestId: data.requestId }));
+    } catch (error) {
+      sendMessageToUI("code-syntax-error", { error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  async function handleApplyCodeSyntax(data) {
+    try {
+      const result = await applyCodeSyntax(data);
+      sendMessageToUI("code-syntax-applied", result);
+      figma.notify(`Set code syntax on ${result.updated} variable${result.updated === 1 ? "" : "s"}`, { timeout: 3e3 });
+    } catch (error) {
+      sendMessageToUI("code-syntax-error", { error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   // src/code.ts
