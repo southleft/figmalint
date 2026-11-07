@@ -407,7 +407,7 @@
       border: 0;
       border-radius: var(--radius-sm);
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 104px 92px;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
       align-items: center;
       gap: 10px;
       padding: 6px calc(var(--gutter) - 6px);
@@ -416,15 +416,6 @@
     }
     .card-row:hover { background: var(--canvas); }
     .card-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .card-viz { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
-    .pip { width: 10px; height: 10px; border-radius: 2px; background: var(--line-strong); }
-    .pip.st-pass { background: var(--pass); }
-    .pip.st-warn { background: var(--warn); }
-    .pip.st-fail { background: var(--fail); }
-    .card-bar { display: block; width: 100%; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
-    .card-bar i { display: block; height: 100%; border-radius: 3px; background: var(--pass); transition: width var(--transition-slow); }
-    .card-bar i.st-warn { background: var(--warn); }
-    .card-bar i.st-fail { background: var(--fail); }
     .card-tally { text-align: right; font-size: var(--font-size-xs); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .st-pass.card-tally, .group-tally.st-pass { color: var(--pass); }
     .st-warn.card-tally, .group-tally.st-warn { color: var(--warn); }
@@ -3939,20 +3930,28 @@
         const status = hard > 0 ? 'warn' : 'pass';
         return {
           statuses: [status],
-          bar: total > 0 ? Math.round((bound / total) * 100) : 100,
-          tally: `${bound} of ${total} bound`,
+          tally: hard > 0 ? `${hard} hard-coded ${hard === 1 ? 'value' : 'values'}` : `All ${total} use variables`,
           status
         };
       }
       if (key === 'naming') {
         const left = Math.max(0, m.naming.count - m.fixed.naming);
         const status = left > 0 ? m.naming.severity : 'pass';
-        return { statuses: [status], tally: left > 0 ? `${left} generic` : 'All descriptive', status };
+        return { statuses: [status], tally: left > 0 ? `${left} generic ${left === 1 ? 'name' : 'names'}` : 'All descriptive', status };
       }
       const statuses = m.checks[key] || [];
-      const passing = statuses.filter(st => st === 'pass').length;
-      const status = statuses.includes('fail') ? 'fail' : statuses.includes('warn') ? 'warn' : 'pass';
-      return { statuses, tally: `${passing} of ${statuses.length} pass`, status };
+      const failing = statuses.filter(st => st === 'fail').length;
+      const warning = statuses.filter(st => st === 'warn').length;
+      const status = failing ? 'fail' : warning ? 'warn' : 'pass';
+      let tally;
+      if (key === 'states' && m.missingStates && m.missingStates.length > 0) {
+        tally = m.missingStates.length <= 2 ? `No ${m.missingStates.join(' or ')} state` : `${m.missingStates.length} states missing`;
+      } else if (failing + warning === 0) {
+        tally = statuses.length === 1 ? 'Passes' : statuses.length === 2 ? 'Both pass' : `All ${statuses.length} pass`;
+      } else {
+        tally = [failing ? `${failing} failing` : '', warning ? `${warning} ${warning === 1 ? 'warning' : 'warnings'}` : ''].filter(Boolean).join(', ');
+      }
+      return { statuses, tally, status };
     }
 
     function renderScorecard() {
@@ -3966,10 +3965,8 @@
 
       cardEl.innerHTML = rows.map(r => `
         <button class="card-row" onclick="jumpToGroup('${r.key}')" title="Go to ${CATEGORY_TITLES[r.key]}">
+          <span class="status-tile st-${r.status}" aria-hidden="true"></span>
           <span class="card-name">${CATEGORY_TITLES[r.key]}</span>
-          <span class="card-viz" aria-hidden="true">${r.bar !== undefined
-            ? `<span class="card-bar"><i class="st-${r.status}" style="width: ${r.bar}%;"></i></span>`
-            : r.statuses.map(st => `<i class="pip st-${st}"></i>`).join('')}</span>
           <span class="card-tally st-${r.status}">${r.tally}</span>
         </button>`).join('');
 
@@ -4162,6 +4159,7 @@
             if (!state.found) missing.push(name);
             return `<span class="state-chip st-${state.found ? 'pass' : 'fail'}">${escapeHtml(capitalize(name))}</span>`;
           });
+          auditModel.missingStates = missing;
           rows.states.push(`<div class="state-chips">${chips.join('')}</div>`);
           missing.forEach(name => rows.states.push(issueRow({
             severity: 'fail',

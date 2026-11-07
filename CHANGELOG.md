@@ -23,6 +23,8 @@
 - **Interactive states appear as pills** (✓ Hover, ✕ Focus). Property defaults are highlighted among the values instead of repeated in a column, each property shows its type, and suggested properties have their own sheet.
 - **AI-readiness lists are marked by meaning:** ✓ reads well, ? has to guess, + make it clearer.
 
+- **The scorecard says what's wrong in words.** Each category row has the same status tile as its section and a plain result, such as "No focus state", "2 hard-coded values", "1 generic name" or "Both pass". The per-check squares and the coverage bar are gone.
+
 ### Fixed
 - OpenAI errors no longer show up as "Network error … Failed to fetch". OpenAI leaves the CORS header off chat error responses, which hid the real cause in Figma. The plugin now asks OpenAI's models endpoint and reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available to the account.
 - **Long error messages ran off the screen.** The in-panel banner now wraps any text. The canvas toast shows only the first sentence, and OpenAI's masked copy of your key is left out of the message.
