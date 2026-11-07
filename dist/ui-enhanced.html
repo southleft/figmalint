@@ -386,50 +386,50 @@
     .empty-checks li { position: relative; padding-left: 16px; }
     .empty-checks li::before { content: ""; position: absolute; left: 2px; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); }
 
-    /* ---- Verdict: the answer, before the evidence ---- */
-    .verdict {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 4px 16px;
-      padding: 18px var(--gutter) 16px;
-    }
-    .verdict h2 { font-size: 19px; line-height: 1.2; font-weight: 700; letter-spacing: -0.015em; }
-    .verdict p { color: var(--ink-2); margin-top: 4px; }
-    .verdict p:empty { display: none; }
-    .verdict-jumps { grid-column: 1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-    .verdict-jumps:empty { display: none; }
-    .jump {
+    /* ---- Summary: score, headline, and a scorecard of every category ---- */
+    .summary { padding: 18px var(--gutter) 10px; }
+    .summary-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
+    .score { display: flex; flex-direction: column; align-items: center; min-width: 52px; line-height: 1; }
+    .score b { font-size: 30px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+    .score small { color: var(--ink-3); font-size: 10.5px; margin-top: 4px; }
+    .score.is-good b { color: var(--pass); }
+    .score.is-fair b { color: var(--warn); }
+    .score.is-poor b { color: var(--fail); }
+    .summary h2 { font-size: 17px; line-height: 1.25; font-weight: 700; letter-spacing: -0.012em; }
+    .summary p { color: var(--ink-2); margin-top: 3px; font-size: var(--font-size-xs); line-height: 1.45; }
+    .summary p:empty { display: none; }
+
+    .scorecard { margin: 14px calc(-1 * var(--gutter) + 6px) 0; display: grid; }
+    .card-row {
       font: inherit;
-      font-size: var(--font-size-xs);
       color: var(--ink);
-      background: var(--canvas);
+      background: none;
       border: 0;
-      border-radius: 999px;
-      padding: 4px 10px 4px 8px;
-      display: inline-flex;
+      border-radius: var(--radius-sm);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 104px 92px;
       align-items: center;
-      gap: 6px;
+      gap: 10px;
+      padding: 6px calc(var(--gutter) - 6px);
+      text-align: left;
       cursor: pointer;
     }
-    .jump:hover { background: var(--line); }
-    .jump b { font-weight: 700; font-variant-numeric: tabular-nums; }
-    .jump-mark { width: 7px; height: 7px; border-radius: 50%; }
-    .jump.sev-fail .jump-mark { background: var(--fail); }
-    .jump.sev-warn .jump-mark { background: var(--warn); }
-    .jump.sev-done { color: var(--ink-3); }
-    .jump.sev-done .jump-mark { background: var(--pass); }
-
-    .score { grid-column: 2; grid-row: 1 / span 2; text-align: right; line-height: 1.1; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-    .score b { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-    .score small { color: var(--ink-3); font-size: var(--font-size-xs); }
-    .meter { display: block; width: 56px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
-    .meter i { display: block; height: 4px; width: 0; border-radius: 2px; background: var(--ink-3); transition: width var(--transition-slow); }
-    .score.is-good b { color: var(--pass); }
-    .score.is-good .meter i { background: var(--pass); }
-    .score.is-fair b { color: var(--warn); }
-    .score.is-fair .meter i { background: var(--warn); }
-    .score.is-poor b { color: var(--fail); }
-    .score.is-poor .meter i { background: var(--fail); }
+    .card-row:hover { background: var(--canvas); }
+    .card-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-viz { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+    .pip { width: 10px; height: 10px; border-radius: 2px; background: var(--line-strong); }
+    .pip.st-pass { background: var(--pass); }
+    .pip.st-warn { background: var(--warn); }
+    .pip.st-fail { background: var(--fail); }
+    .card-bar { display: block; width: 100%; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+    .card-bar i { display: block; height: 100%; border-radius: 3px; background: var(--pass); transition: width var(--transition-slow); }
+    .card-bar i.st-warn { background: var(--warn); }
+    .card-bar i.st-fail { background: var(--fail); }
+    .card-tally { text-align: right; font-size: var(--font-size-xs); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .st-pass.card-tally, .group-tally.st-pass { color: var(--pass); }
+    .st-warn.card-tally, .group-tally.st-warn { color: var(--warn); }
+    .st-fail.card-tally, .group-tally.st-fail { color: var(--fail); }
+    .st-none.card-tally, .group-tally.st-none { color: var(--ink-3); font-weight: 500; }
 
     .results-meta {
       display: flex;
@@ -444,8 +444,31 @@
     .results-meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .results-meta-actions { display: inline-flex; flex-shrink: 0; }
 
-    /* ---- Issue groups: blocks separated by a band of canvas ---- */
+    /* All checks / Problems only */
+    .view-bar { display: flex; align-items: center; gap: 8px; padding: 10px var(--gutter); border-top: 8px solid var(--canvas); }
+    .view-bar-label { color: var(--ink-3); font-size: var(--font-size-xs); }
+    .segmented { display: inline-flex; background: var(--canvas); border-radius: var(--radius-sm); padding: 2px; }
+    .segmented button {
+      font: inherit;
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      color: var(--ink-2);
+      background: none;
+      border: 0;
+      border-radius: calc(var(--radius-sm) - 2px);
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .segmented button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+    #audit-content.only-problems .issue.pass,
+    #audit-content.only-problems .group.is-clean,
+    #audit-content.only-problems .bound-details { display: none; }
+    .no-problems { display: none; padding: 20px var(--gutter); color: var(--ink-2); }
+    #audit-content.only-problems.is-clean-all .no-problems { display: block; }
+
+    /* ---- Sections: one per category, always in the same order ---- */
     .group { border-top: 8px solid var(--canvas); }
+    .group:first-child { border-top-width: 1px; border-top-color: var(--line); }
     .group-head {
       position: sticky;
       top: 0;
@@ -454,7 +477,7 @@
       align-items: center;
       gap: 8px;
       min-height: 42px;
-      padding: 6px 8px 6px 8px;
+      padding: 6px 8px;
       background: var(--surface);
       border-bottom: 1px solid var(--line);
     }
@@ -464,7 +487,7 @@
       background: none;
       border: 0;
       display: inline-flex;
-      align-items: center;
+      align-items: baseline;
       gap: 8px;
       padding: 4px 6px;
       border-radius: var(--radius-sm);
@@ -473,6 +496,7 @@
     }
     .group-toggle:hover { background: var(--canvas); }
     .group-head h3 { font-size: var(--font-size-md); font-weight: 700; letter-spacing: -0.005em; }
+    .group-tally { font-size: var(--font-size-xs); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .chevron {
       width: 6px;
       height: 6px;
@@ -480,24 +504,13 @@
       border-bottom: 1.5px solid var(--ink-3);
       transform: rotate(45deg);
       margin: 0 2px 3px;
+      align-self: center;
       transition: transform var(--transition-fast);
     }
     .group.is-collapsed .chevron { transform: rotate(-45deg); margin-bottom: 0; }
     .group.is-collapsed .group-body { display: none; }
     .group.is-collapsed .group-head { border-bottom-color: transparent; }
     .group-body { padding: 4px 0 8px; }
-    .group-count {
-      font-size: var(--font-size-xs);
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      border-radius: 999px;
-      padding: 1px 7px;
-      background: var(--canvas);
-      color: var(--ink-2);
-    }
-    .group-count.sev-fail { background: var(--fail-tint); color: var(--fail); }
-    .group-count.sev-warn { background: var(--warn-tint); color: var(--warn); }
-    .group.is-done .group-count { background: var(--pass-tint); color: var(--pass); }
     .group-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
     .select-quiet {
       width: auto !important;
@@ -511,6 +524,7 @@
     }
     .select-quiet:hover { border-color: var(--line-strong) !important; }
 
+    /* ---- Check rows ---- */
     .issue {
       display: grid;
       grid-template-columns: 14px minmax(0, 1fr) auto;
@@ -520,13 +534,25 @@
     }
     .issue[onclick] { cursor: pointer; }
     .issue[onclick]:hover { background: var(--canvas); }
-    /* Severity by shape as well as color: circle fails, triangle warns, ring notes */
+    /* Result by shape as well as color: check passes, circle fails, triangle warns, ring notes */
     .issue .dot {
       position: relative;
       width: 14px;
       height: 14px;
       align-self: start;
       margin-top: 2px;
+    }
+    .issue.pass .dot { background: var(--pass-tint); border-radius: 50%; }
+    .issue.pass .dot::after {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 3.5px;
+      width: 6px;
+      height: 3.5px;
+      border-left: 1.75px solid var(--pass);
+      border-bottom: 1.75px solid var(--pass);
+      transform: rotate(-45deg);
     }
     .issue.fail .dot { background: var(--fail); border-radius: 50%; }
     .issue.warn .dot { background: var(--warn); clip-path: polygon(50% 4%, 100% 92%, 0 92%); }
@@ -546,7 +572,8 @@
     .issue.info .dot { width: 10px; height: 10px; margin: 4px 2px 0; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--line-strong); }
     .issue-title { color: var(--ink); font-weight: 500; line-height: 1.5; }
     .issue-title code { font-weight: 500; }
-    .issue-title .swatch {
+    .issue.pass .issue-title { font-weight: 450; }
+    .issue-title .swatch, .bound-list .swatch {
       display: inline-block;
       width: 13px;
       height: 13px;
@@ -576,14 +603,29 @@
     }
     .show-more:hover { text-decoration: underline; }
 
-    /* Passing checks fold into one quiet line under their group */
-    .passed {
-      padding: 6px var(--gutter) 4px 38px;
-      color: var(--pass);
+    /* Variables already bound, grouped by kind */
+    .bound-details summary {
+      list-style: none;
+      display: inline-block;
+      margin-top: 2px;
+      color: var(--accent);
+      font-weight: 600;
       font-size: var(--font-size-xs);
-      position: relative;
+      cursor: pointer;
     }
-    .passed span:not(.passed-mark) { color: var(--ink-3); }
+    .bound-details summary::-webkit-details-marker { display: none; }
+    .bound-details[open] summary { margin-bottom: 4px; }
+    .bound-kind { margin-top: 8px; }
+    .bound-kind-head { font-size: var(--font-size-xs); font-weight: 600; color: var(--ink-2); margin-bottom: 2px; }
+    .bound-kind-head span { color: var(--ink-3); font-weight: 500; margin-left: 4px; }
+    .bound-list { list-style: none; padding: 0; margin: 0; }
+    .bound-list li { display: flex; align-items: center; gap: 0; min-height: 22px; font-size: var(--font-size-xs); }
+    .bound-list code { background: none; padding: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .bound-prop { margin-left: auto; padding-left: 8px; color: var(--ink-3); white-space: nowrap; }
+    .ai-tokens { padding: 4px var(--gutter) 0 38px; font-size: var(--font-size-xs); color: var(--ink-2); }
+    .ai-tokens summary { cursor: pointer; }
+    .token-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
     .passed-mark {
       display: inline-block;
       width: 8px;
@@ -594,13 +636,6 @@
       margin-right: 7px;
       vertical-align: 2px;
     }
-    .group-body > .passed .passed-mark, .group-body > details.passed .passed-mark { position: absolute; left: calc(var(--gutter) + 3px); top: 11px; margin: 0; }
-    details.passed summary { list-style: none; color: var(--pass); }
-    details.passed summary::-webkit-details-marker { display: none; }
-    details.passed summary::after { content: " Show"; color: var(--accent); font-weight: 600; }
-    details.passed[open] summary::after { content: " Hide"; }
-    .token-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-    .group.is-passed .group-head h3 { color: var(--ink-2); }
 
     /* ---- Properties and Handoff panels ---- */
     .panel-section { padding: 14px var(--gutter) 16px; border-bottom: 1px solid var(--line); }
@@ -1452,15 +1487,17 @@
 
         <!-- Analysis Results -->
         <div id="analysis-results" class="hidden">
-          <div class="verdict" id="verdict">
-            <div class="verdict-text">
-              <h2 id="verdict-title">Analyzing…</h2>
-              <p id="verdict-detail"></p>
+          <div class="summary" id="verdict">
+            <div class="summary-top">
+              <div id="audit-score" class="score" title="Readiness score: how much of the component passes the audit, weighted by impact">
+                <b>--</b><small>readiness</small>
+              </div>
+              <div class="summary-text">
+                <h2 id="verdict-title">Analyzing…</h2>
+                <p id="verdict-detail"></p>
+              </div>
             </div>
-            <div class="verdict-jumps" id="verdict-jumps"></div>
-            <div id="audit-score" class="score" title="Readiness score: how much of the component passes the audit, weighted by impact">
-              <b>--</b><small>readiness</small>
-            </div>
+            <div class="scorecard" id="verdict-jumps"></div>
           </div>
 
           <div id="results-header" class="results-meta" style="display: none;">
@@ -1469,6 +1506,13 @@
             <span class="results-meta-actions">
               <button id="generate-instance-sheet" class="button button-quiet" title="Place a grid of every variant next to the component">Instance sheet</button>
               <button id="reanalyze-fresh" class="button button-quiet" title="Analyze again without using the cached result">Run fresh</button>
+            </span>
+          </div>
+
+          <div class="view-bar" role="group" aria-label="Which checks to show">
+            <span class="segmented">
+              <button type="button" id="view-all" aria-pressed="true" onclick="setAuditView('all')">All checks</button>
+              <button type="button" id="view-problems" aria-pressed="false" onclick="setAuditView('problems')">Problems only</button>
             </span>
           </div>
 
@@ -3129,7 +3173,7 @@
       statusContainer.classList.add('hidden');
 
       // Reset scores immediately to avoid showing stale data
-      auditScore.innerHTML = '<b>--</b><span class="meter" aria-hidden="true"><i></i></span><small>readiness</small>';
+      auditScore.innerHTML = '<b>--</b><small>readiness</small>';
       auditScore.className = 'score';
       document.getElementById('verdict-title').textContent = 'Analyzing…';
       document.getElementById('verdict-detail').textContent = '';
@@ -3600,7 +3644,7 @@
     };
 
     function issueRow({ severity, title, detail = '', action = '', attrs = '', extraClass = '' }) {
-      const label = { fail: 'Fails', warn: 'Warning', info: 'Note' }[severity] || '';
+      const label = { pass: 'Passes', fail: 'Fails', warn: 'Warning', info: 'Note' }[severity] || '';
       return `
         <div class="issue ${severity}${extraClass ? ' ' + extraClass : ''}" ${attrs}>
           <i class="dot" role="img" aria-label="${label}"></i>
@@ -3691,15 +3735,127 @@
       });
     }
 
-    // Group header: the title toggles the group; actions sit to the right.
-    // The count pill takes the color of the group's worst problem.
-    function groupHead({ title, count, severity, actions = '' }) {
+    // ---- Audit model: every check, in a fixed order, with its result ----
+    const CATEGORY_ORDER = ['accessibility', 'states', 'tokens', 'naming', 'readiness'];
+    const CATEGORY_TITLES = {
+      accessibility: 'Accessibility',
+      states: 'Interactive states',
+      tokens: 'Variables',
+      naming: 'Layer names',
+      readiness: 'Component setup',
+      detached: 'Detached copies on this page'
+    };
+    // checks: per-category list of 'pass' | 'warn' | 'fail' for the plain checks
+    // tokens / naming: counts that fixes in the panel draw down until re-analysis
+    let auditModel = null;
+
+    function newAuditModel() {
+      return {
+        checks: {},
+        tokens: { bound: 0, hardCoded: 0, fixable: 0, present: false },
+        naming: { count: 0, severity: 'warn' },
+        fixed: { tokens: 0, naming: 0 }
+      };
+    }
+
+    // What one category adds up to: its marks, its tally and its overall result
+    function categorySummary(key) {
+      const m = auditModel;
+      if (key === 'tokens') {
+        if (!m.tokens.present) return { statuses: [], tally: 'Nothing to check', status: 'none' };
+        const hard = Math.max(0, m.tokens.hardCoded - m.fixed.tokens);
+        const bound = m.tokens.bound + Math.min(m.fixed.tokens, m.tokens.hardCoded);
+        const total = bound + hard;
+        const status = hard > 0 ? 'warn' : 'pass';
+        return {
+          statuses: [status],
+          bar: total > 0 ? Math.round((bound / total) * 100) : 100,
+          tally: `${bound} of ${total} bound`,
+          status
+        };
+      }
+      if (key === 'naming') {
+        const left = Math.max(0, m.naming.count - m.fixed.naming);
+        const status = left > 0 ? m.naming.severity : 'pass';
+        return { statuses: [status], tally: left > 0 ? `${left} generic` : 'All descriptive', status };
+      }
+      const statuses = m.checks[key] || [];
+      const passing = statuses.filter(st => st === 'pass').length;
+      const status = statuses.includes('fail') ? 'fail' : statuses.includes('warn') ? 'warn' : 'pass';
+      return { statuses, tally: `${passing} of ${statuses.length} pass`, status };
+    }
+
+    function renderScorecard() {
+      if (!auditModel) return;
+      const titleEl = document.getElementById('verdict-title');
+      const detailEl = document.getElementById('verdict-detail');
+      const cardEl = document.getElementById('verdict-jumps');
+      const rows = CATEGORY_ORDER
+        .filter(key => document.getElementById(`group-${key}`))
+        .map(key => ({ key, ...categorySummary(key) }));
+
+      cardEl.innerHTML = rows.map(r => `
+        <button class="card-row" onclick="jumpToGroup('${r.key}')" title="Go to ${CATEGORY_TITLES[r.key]}">
+          <span class="card-name">${CATEGORY_TITLES[r.key]}</span>
+          <span class="card-viz" aria-hidden="true">${r.bar !== undefined
+            ? `<span class="card-bar"><i class="st-${r.status}" style="width: ${r.bar}%;"></i></span>`
+            : r.statuses.map(st => `<i class="pip st-${st}"></i>`).join('')}</span>
+          <span class="card-tally st-${r.status}">${r.tally}</span>
+        </button>`).join('');
+
+      // Section headers carry the same tally as their scorecard row
+      rows.forEach(r => {
+        const section = document.getElementById(`group-${r.key}`);
+        const tally = section.querySelector('.group-tally');
+        if (tally) {
+          tally.textContent = r.tally;
+          tally.className = `group-tally st-${r.status}`;
+        }
+        section.classList.toggle('is-clean', r.status === 'pass' || r.status === 'none');
+      });
+
+      const all = rows.flatMap(r => r.statuses);
+      const failing = all.filter(st => st === 'fail').length;
+      const warning = all.filter(st => st === 'warn').length;
+      const passing = all.length - failing - warning;
+      const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+      document.getElementById('audit-content').classList.toggle('is-clean-all', failing + warning === 0);
+
+      if (failing + warning === 0) {
+        titleEl.textContent = all.length > 0 ? `All ${all.length} checks pass` : 'Nothing to check';
+      } else {
+        titleEl.textContent = [
+          failing ? plural(failing, 'check fails', 'checks fail') : '',
+          warning ? plural(warning, 'warning', 'warnings') : ''
+        ].filter(Boolean).join(', ');
+      }
+
+      const fixed = auditModel.fixed.tokens + auditModel.fixed.naming;
+      const fixable = Math.max(0, auditModel.tokens.fixable - auditModel.fixed.tokens)
+        + Math.max(0, auditModel.naming.count - auditModel.fixed.naming);
+      const sentences = [];
+      if (failing + warning > 0) sentences.push(`${passing} of ${all.length} checks pass.`);
+      if (fixable > 0) sentences.push(`${plural(fixable, 'item', 'items')} can be fixed from this panel.`);
+      if (fixed > 0) sentences.push(`Fixed ${fixed} so far. Analyze again to update the score.`);
+      if (failing + warning === 0 && fixed === 0) sentences.push('Nothing to fix. Every result is listed below.');
+      detailEl.textContent = sentences.join(' ');
+    }
+
+    // A fix landed: count it against its category until the next analysis
+    function recordFixes(key, amount) {
+      if (!amount || !auditModel || !(key in auditModel.fixed)) return;
+      auditModel.fixed[key] += amount;
+      renderScorecard();
+    }
+
+    // Section header: the title toggles the section; actions sit to the right
+    function groupHead({ title, actions = '' }) {
       return `
         <div class="group-head">
           <button class="group-toggle" aria-expanded="true" onclick="toggleGroup(this)">
             <span class="chevron" aria-hidden="true"></span>
             <h3>${title}</h3>
-            ${count !== undefined ? `<span class="group-count sev-${severity}">${count}</span>` : ''}
+            <span class="group-tally"></span>
           </button>
           ${actions ? `<span class="group-actions">${actions}</span>` : ''}
         </div>`;
@@ -3714,64 +3870,20 @@
     function jumpToGroup(key) {
       const section = document.getElementById(`group-${key}`);
       if (!section) return;
+      if (section.classList.contains('is-clean')) setAuditView('all');
       section.classList.remove('is-collapsed');
       const toggle = section.querySelector('.group-toggle');
       if (toggle) toggle.setAttribute('aria-expanded', 'true');
       section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    // ---- Verdict: the one-line answer above the groups ----
-    let verdictState = null;
-
-    function renderVerdict() {
-      if (!verdictState) return;
-      const titleEl = document.getElementById('verdict-title');
-      const detailEl = document.getElementById('verdict-detail');
-      const jumpsEl = document.getElementById('verdict-jumps');
-      const total = verdictState.parts.reduce((sum, [n]) => sum + n, 0);
-
-      // One chip per group with problems; each jumps to its group
-      jumpsEl.innerHTML = verdictState.jumps.map(j => `
-        <button class="jump sev-${j.count > 0 ? j.severity : 'done'}" onclick="jumpToGroup('${j.key}')">
-          <span class="jump-mark" aria-hidden="true"></span>${j.title} <b>${j.count}</b>
-        </button>`).join('');
-      const remaining = Math.max(0, total - verdictState.fixed);
-      const fixable = Math.max(0, verdictState.fixable - verdictState.fixed);
-
-      if (total === 0) {
-        titleEl.textContent = 'No problems found';
-        detailEl.textContent = 'Every check passed. The readiness score reflects how much of the component uses variables and defines its states.';
-        return;
-      }
-      if (remaining === 0) {
-        titleEl.textContent = `Fixed all ${total}`;
-        detailEl.textContent = 'Analyze again to confirm and update the score.';
-        return;
-      }
-
-      const plural = n => n === 1 ? '' : 's';
-      titleEl.textContent = `${remaining} problem${plural(remaining)}` + (fixable > 0 ? `, ${fixable} fixable here` : '');
-      // The chips carry the breakdown; the sentence only reports progress
-      detailEl.textContent = verdictState.fixed > 0
-        ? `Fixed ${verdictState.fixed} so far. Analyze again to update the score.`
-        : '';
-    }
-
-    // A fix landed: drop it from its group's count and from the verdict
-    function recordFixes(groupKey, amount) {
-      if (!amount) return;
-      const countEl = document.querySelector(`#group-${groupKey} .group-count`);
-      if (countEl) {
-        const left = Math.max(0, (parseInt(countEl.textContent, 10) || 0) - amount);
-        countEl.textContent = left;
-        countEl.closest('.group').classList.toggle('is-done', left === 0);
-      }
-      if (verdictState) {
-        verdictState.fixed += amount;
-        const jump = verdictState.jumps.find(j => j.key === groupKey);
-        if (jump) jump.count = Math.max(0, jump.count - amount);
-        renderVerdict();
-      }
+    // All checks, or only the ones that need work. Remembered per viewer.
+    function setAuditView(view) {
+      const problemsOnly = view === 'problems';
+      document.getElementById('audit-content').classList.toggle('only-problems', problemsOnly);
+      document.getElementById('view-all').setAttribute('aria-pressed', String(!problemsOnly));
+      document.getElementById('view-problems').setAttribute('aria-pressed', String(problemsOnly));
+      try { localStorage.setItem('figmalint-audit-view', view); } catch (e) { /* storage unavailable */ }
     }
 
     // Update Audit View
@@ -3838,217 +3950,160 @@
         console.log(`[DEBUG][TOKEN SCORING] Skipped - no currentTokenSummary or totalTokens is 0`);
       }
 
-      // Each group lists its problems first; passing checks fold into one line.
-      const groups = {};
-      const group = (key, title) => (groups[key] = groups[key] || { key, title, problems: [], passed: [], info: false, head: '' });
+      // Every check gets a row, passes included, with the evidence behind it.
+      auditModel = newAuditModel();
+      const rows = { accessibility: [], states: [], naming: [], readiness: [] };
+      const capitalize = text => text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+      const statusOf = item => item.status === 'pass' ? 'pass' : item.status === 'warning' ? 'warn' : 'fail';
 
       // States
       if (audit.states && audit.states.length > 0) {
-        const states = group('states', 'Interactive states');
-        // Check if this is a non-interactive component (like badge) with only default state
+        auditModel.checks.states = [];
+        // A non-interactive component (like a badge) has only its default state
         const hasOnlyDefaultState = audit.states.length === 1 &&
           audit.states[0].name === 'default' &&
           audit.states[0].found === true;
 
         if (hasOnlyDefaultState) {
-          states.passed.push('none needed for this component');
           totalCount++;
           passCount++;
           // High weight for states (3x) - critical for MCP compatibility
           weightedTotalScore += 3;
           weightedPassScore += 3;
+          auditModel.checks.states.push('pass');
+          rows.states.push(issueRow({
+            severity: 'pass',
+            title: 'No interactive states needed',
+            detail: 'It has a single default state, like a badge or a label.'
+          }));
         } else {
           audit.states.forEach(state => {
             totalCount++;
             if (state.found) passCount++;
-
             // High weight for states (3x) - critical for MCP compatibility
             weightedTotalScore += 3;
             if (state.found) weightedPassScore += 3;
 
             const name = state.name.toLowerCase();
-            if (state.found) {
-              states.passed.push(name);
-            } else {
-              states.problems.push(issueRow({
-                severity: 'fail',
-                title: `No ${escapeHtml(name)} state`,
-                detail: STATE_HINTS[name] || 'Add a variant for this state.'
-              }));
-            }
+            const hint = STATE_HINTS[name] || '';
+            auditModel.checks.states.push(state.found ? 'pass' : 'fail');
+            rows.states.push(state.found
+              ? issueRow({ severity: 'pass', title: escapeHtml(capitalize(name)), detail: `Has a variant.${hint ? ' ' + hint : ''}` })
+              : issueRow({ severity: 'fail', title: `No ${escapeHtml(name)} state`, detail: hint || 'Add a variant for this state.' }));
           });
         }
       }
 
-      // Design token usage feeds the score; the values themselves render in the
-      // Hard-coded values group (updateTokenSuggestions).
+      // Design token usage feeds the score; the values render in the
+      // Variables section (updateTokenSuggestions).
       if (currentTokenSummary && currentTokenSummary.totalTokens > 0) {
         const tokenUsagePercentage = Math.round((currentTokenSummary.actualTokens / currentTokenSummary.totalTokens) * 100);
         totalCount += 2;
         if (tokenUsagePercentage >= 50) passCount += 1;
         if (currentTokenSummary.hardCodedValues === 0) passCount += 1;
       }
+      setTokenCounts(currentAnalysisData && currentAnalysisData.tokens);
 
-      // Component readiness (property config + description)
-      if (audit.componentReadiness && audit.componentReadiness.length > 0) {
-        const readiness = group('readiness', 'Component setup');
-        audit.componentReadiness.forEach(item => {
+      // Component setup (property config + description) and accessibility
+      [['readiness', audit.componentReadiness], ['accessibility', audit.accessibility]].forEach(([key, items]) => {
+        if (!items || items.length === 0) return;
+        auditModel.checks[key] = [];
+        items.forEach(item => {
           totalCount++;
           weightedTotalScore += 2;
           if (item.status === 'pass') {
             passCount++;
             weightedPassScore += 2;
-            readiness.passed.push(item.check.toLowerCase());
-          } else {
-            readiness.problems.push(issueRow({
-              severity: item.status === 'warning' ? 'warn' : 'fail',
-              title: escapeHtml(item.check),
-              detail: escapeHtml(item.suggestion || '')
-            }));
           }
+          const severity = statusOf(item);
+          auditModel.checks[key].push(severity);
+          rows[key].push(issueRow({ severity, title: escapeHtml(item.check), detail: escapeHtml(item.suggestion || '') }));
         });
-      }
-
-      // Accessibility (WCAG-informed checks)
-      if (audit.accessibility && audit.accessibility.length > 0) {
-        const a11y = group('accessibility', 'Accessibility');
-        audit.accessibility.forEach(item => {
-          totalCount++;
-          weightedTotalScore += 2;
-          if (item.status === 'pass') {
-            passCount++;
-            weightedPassScore += 2;
-            a11y.passed.push(item.check.toLowerCase());
-          } else {
-            a11y.problems.push(issueRow({
-              severity: item.status === 'warning' ? 'warn' : 'fail',
-              title: escapeHtml(item.check),
-              detail: escapeHtml(item.suggestion || '')
-            }));
-          }
-        });
-      }
+      });
 
       // Layer names — scored, fixable one at a time or all at once
-      if (currentNamingIssues && currentNamingIssues.length > 0) {
-        const naming = group('naming', 'Layer names');
-        currentNamingIssues.forEach(issue => {
+      let namingActions = '';
+      const namingIssues = currentNamingIssues || [];
+      auditModel.naming.count = namingIssues.length;
+      auditModel.naming.severity = namingIssues.some(i => i.severity === 'error') ? 'fail' : 'warn';
+      if (namingIssues.length > 0) {
+        namingIssues.forEach(issue => {
           totalCount++;
           weightedTotalScore += 1.5;
           if (issue.severity === 'info') weightedPassScore += 0.75;
         });
 
-        naming.head = `
+        namingActions = `
           <select id="naming-strategy-select" class="select-quiet" title="Naming convention for Rename all" onchange="handleNamingStrategyChange(this.value)">
             ${[['semantic', 'Semantic'], ['bem', 'BEM'], ['prefix-based', 'Prefix'], ['camelCase', 'camelCase'], ['kebab-case', 'kebab-case'], ['snake_case', 'snake_case']]
               .map(([value, label]) => `<option value="${value}"${selectedNamingStrategy === value ? ' selected' : ''}>${label}</option>`).join('')}
           </select>
           <button class="button button-quiet" id="rename-all-btn" onclick="handleRenameAll()">Rename all</button>`;
 
-        const shown = currentNamingIssues.slice(0, NAMING_INITIAL_LIMIT);
-        naming.problems.push(`<div id="naming-scroll-container">${shown.map(renderNamingItem).join('')}</div>`);
-        const remaining = currentNamingIssues.length - shown.length;
+        const shown = namingIssues.slice(0, NAMING_INITIAL_LIMIT);
+        rows.naming.push(`<div id="naming-scroll-container">${shown.map(renderNamingItem).join('')}</div>`);
+        const remaining = namingIssues.length - shown.length;
         if (remaining > 0) {
-          naming.problems.push(`<button class="show-more" id="naming-show-more-btn" onclick="showMoreNamingIssues()">Show ${Math.min(NAMING_PAGE_SIZE, remaining)} more of ${remaining}</button>`);
+          rows.naming.push(`<button class="show-more" id="naming-show-more-btn" onclick="showMoreNamingIssues()">Show ${Math.min(NAMING_PAGE_SIZE, remaining)} more of ${remaining}</button>`);
         }
+      } else {
+        rows.naming.push(issueRow({
+          severity: 'pass',
+          title: 'Every layer has a descriptive name',
+          detail: 'No default names like Frame 12 or Rectangle 4.'
+        }));
       }
+
+      // Sections in a fixed order, whatever the results, so they're easy to find.
+      // Variables is a slot that updateTokenSuggestions fills, so token refreshes
+      // after a fix don't re-render the whole audit.
+      const section = (key, body, actions = '', extraClass = '') => `
+        <section class="group${extraClass}" id="group-${key}">
+          ${groupHead({ title: CATEGORY_TITLES[key], actions })}
+          <div class="group-body">${body}</div>
+        </section>`;
+      CATEGORY_ORDER.forEach(key => {
+        if (key === 'tokens') {
+          html += '<div id="token-slot"></div>';
+        } else if (rows[key].length > 0) {
+          html += section(key, rows[key].join(''), key === 'naming' ? namingActions : '');
+        }
+      });
 
       // Detached copies — informational, not scored
       const detachedItems = audit.detachedInstances || [];
       if (detachedItems.length > 0) {
-        const detached = group('detached', 'Detached copies on this page');
-        detached.info = true;
-        detachedItems.forEach(item => {
-          detached.problems.push(issueRow({
-            severity: 'info',
-            title: `<code>${escapeHtml(item.name)}</code>`,
-            detail: `${escapeHtml(item.reason)}${item.parentPath ? ` In ${escapeHtml(item.parentPath)}.` : ''}`,
-            attrs: `onclick="selectFigmaNode(${jsAttr(item.nodeId)})" title="Select this copy in Figma"`
-          }));
-        });
+        html += section('detached', detachedItems.map(item => issueRow({
+          severity: 'info',
+          title: `<code>${escapeHtml(item.name)}</code>`,
+          detail: `${escapeHtml(item.reason)}${item.parentPath ? ` In ${escapeHtml(item.parentPath)}.` : ''}`,
+          attrs: `onclick="selectFigmaNode(${jsAttr(item.nodeId)})" title="Select this copy in Figma"`
+        })).join(''), '', ' is-info');
       }
-
-      // Problems first, in order of impact. The Hard-coded values group is a
-      // slot that updateTokenSuggestions fills, so token refreshes after a fix
-      // don't need to re-render the whole audit.
-      const hardCodedCount = collectHardCodedValues(currentAnalysisData && currentAnalysisData.tokens).length;
-      const order = ['accessibility', 'states', 'tokens', 'naming', 'readiness', 'detached'];
-      const passedGroups = [];
-      const jumps = [];
-      const worst = items => items.some(i => i.status === 'fail') ? 'fail' : 'warn';
-      const severities = {
-        accessibility: worst(audit.accessibility || []),
-        states: 'fail',
-        naming: (currentNamingIssues || []).some(i => i.severity === 'error') ? 'fail' : 'warn',
-        readiness: worst(audit.componentReadiness || []),
-        detached: 'info'
-      };
-      order.forEach(key => {
-        if (key === 'tokens') {
-          if (hardCodedCount > 0) {
-            html += '<div id="token-slot"></div>';
-            jumps.push({ key, title: 'Hard-coded values', count: hardCodedCount, severity: 'warn' });
-          }
-          return;
-        }
-        const g = groups[key];
-        if (!g) return;
-        if (g.problems.length === 0) {
-          passedGroups.push(g);
-          return;
-        }
-        const count = g.info ? detachedItems.length : (key === 'naming' ? currentNamingIssues.length : g.problems.length);
-        if (!g.info) jumps.push({ key, title: g.title, count, severity: severities[key] });
-        html += `
-          <section class="group${g.info ? ' is-info' : ''}" id="group-${key}">
-            ${groupHead({ title: g.title, count, severity: severities[key], actions: g.head })}
-            <div class="group-body">
-              ${g.problems.join('')}
-              ${g.passed.length ? `<div class="passed"><span class="passed-mark" aria-hidden="true"></span>${g.passed.length} passed: <span>${g.passed.map(escapeHtml).join(', ')}</span></div>` : ''}
-            </div>
-          </section>`;
-      });
-
-      if (passedGroups.length > 0 || hardCodedCount === 0) {
-        html += `<section class="group is-passed" id="group-passed">${groupHead({ title: 'Passed' })}<div class="group-body">`;
-        passedGroups.forEach(g => {
-          html += `<div class="passed"><span class="passed-mark" aria-hidden="true"></span>${g.title}: <span>${g.passed.map(escapeHtml).join(', ')}</span></div>`;
-        });
-        if (hardCodedCount === 0) html += '<div id="token-slot"></div>';
-        html += '</div></section>';
-      }
+      html += '<p class="no-problems">Nothing needs fixing. Switch to All checks to see every result.</p>';
 
       auditContent.innerHTML = html;
       const slot = document.getElementById('token-slot');
       if (slot) slot.replaceWith(tokenSuggestions);
+      if (currentAnalysisData && currentAnalysisData.tokens) updateTokenSuggestions(currentAnalysisData.tokens);
+      else tokenSuggestions.innerHTML = '';
+
+      let savedView = 'all';
+      try { savedView = localStorage.getItem('figmalint-audit-view') || 'all'; } catch (e) { /* storage unavailable */ }
+      setAuditView(savedView);
 
       // Update audit score using weighted scoring for MCP compatibility focus
       const rawPercentage = weightedTotalScore > 0 ? (weightedPassScore / weightedTotalScore) * 100 : 0;
       const score = weightedTotalScore > 0 ? Math.min(100, Math.round(rawPercentage)) : 0;
       console.log(`Audit scoring: ${weightedPassScore} weighted points out of ${weightedTotalScore} total = ${score}% (simple: ${passCount}/${totalCount})`);
 
-      auditScore.innerHTML = `<b>${score}</b><span class="meter" aria-hidden="true"><i style="width: ${score}%;"></i></span><small>readiness</small>`;
+      auditScore.innerHTML = `<b>${score}</b><small>readiness</small>`;
       auditScore.className = `score ${score >= 80 ? 'is-good' : score >= 60 ? 'is-fair' : 'is-poor'}`;
 
       // Store globally so AI Interpretation section can reference it
       currentAuditScore = score;
 
-      // The verdict counts what's listed above
-      const hardCoded = collectHardCodedValues(currentAnalysisData && currentAnalysisData.tokens);
-      const countProblems = key => (groups[key] && !groups[key].info) ? groups[key].problems.length : 0;
-      verdictState = {
-        parts: [
-          [countProblems('accessibility'), 'accessibility problem', 'accessibility problems'],
-          [countProblems('states'), 'missing state', 'missing states'],
-          [hardCoded.length, 'hard-coded value', 'hard-coded values'],
-          [currentNamingIssues ? currentNamingIssues.length : 0, 'generic layer name', 'generic layer names'],
-          [countProblems('readiness'), 'setup problem', 'setup problems']
-        ],
-        fixable: hardCoded.filter(isFixableHardCoded).length + (currentNamingIssues ? currentNamingIssues.length : 0),
-        fixed: 0,
-        jumps
-      };
-      renderVerdict();
+      renderScorecard();
     }
 
     // Update Property Cheat Sheet
@@ -4216,47 +4271,98 @@
       });
     };
 
-    // Enhanced Token Analysis Display
-    function updateTokenSuggestions(tokens) {
+    // Variables: what's bound, and each hard-coded value with its fix
+    const TOKEN_KINDS = [
+      ['colors', 'Color'],
+      ['spacing', 'Spacing and size'],
+      ['borders', 'Borders and radius'],
+      ['typography', 'Text'],
+      ['effects', 'Effects']
+    ];
+
+    function boundTokens(tokens) {
+      return TOKEN_KINDS.flatMap(([cat]) => (tokens && tokens[cat]) || []).filter(token => token.isActualToken);
+    }
+
+    function setTokenCounts(tokens) {
+      if (!auditModel) return;
       const items = collectHardCodedValues(tokens);
-      const all = ['colors', 'spacing', 'typography', 'effects', 'borders'].flatMap(cat => tokens[cat] || []);
-      const inUse = all.filter(token => token.isActualToken);
+      const bound = boundTokens(tokens).length;
+      auditModel.tokens = {
+        bound,
+        hardCoded: items.length,
+        fixable: items.filter(isFixableHardCoded).length,
+        present: bound + items.length > 0
+      };
+    }
+
+    function boundPropertyLabel(token) {
+      const base = String(token.type || '').replace(/-(variable|style)$/, '');
+      if (/-style$/.test(token.type || '')) return `${base} style`;
+      return PROPERTY_LABELS[base] || base.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+    }
+
+    function renderBoundList(tokens) {
+      return TOKEN_KINDS.map(([cat, label]) => {
+        const list = ((tokens && tokens[cat]) || []).filter(token => token.isActualToken);
+        if (list.length === 0) return '';
+        return `
+          <div class="bound-kind">
+            <div class="bound-kind-head">${label}<span>${list.length}</span></div>
+            <ul class="bound-list">${list.map(token => {
+              const isColor = /^#[0-9a-f]{3,8}$/i.test(String(token.value || ''));
+              return `<li>${isColor ? `<span class="swatch" style="background: ${escapeHtml(token.value)};" title="${escapeHtml(token.value)}"></span>` : ''}<code>${escapeHtml(token.name)}</code><span class="bound-prop">${escapeHtml(boundPropertyLabel(token))}</span></li>`;
+            }).join('')}</ul>
+          </div>`;
+      }).join('');
+    }
+
+    function updateTokenSuggestions(tokens) {
+      setTokenCounts(tokens);
+      if (auditModel) auditModel.fixed.tokens = 0; // fresh counts from Figma
+      const items = collectHardCodedValues(tokens);
+      const bound = boundTokens(tokens);
+      const total = bound.length + items.length;
       const aiSuggested = (tokens.colors || []).filter(token => token.source === 'ai-suggestion');
 
-      const inUseHtml = inUse.length === 0 ? '' : `
-        <details class="passed">
-          <summary><span class="passed-mark" aria-hidden="true"></span>${inUse.length} value${inUse.length === 1 ? '' : 's'} already use variables or styles</summary>
-          <div class="token-list">${inUse.map(token => `<code>${escapeHtml(token.name)}</code>`).join('')}</div>
-        </details>`;
-      const aiHtml = aiSuggested.length === 0 ? '' : `
-        <details class="passed">
-          <summary>${aiSuggested.length} AI-suggested token${aiSuggested.length === 1 ? '' : 's'}</summary>
-          <div class="token-list">${aiSuggested.map(token => `<code title="${escapeHtml(token.recommendation || token.suggestion || '')}">${escapeHtml(token.name)}</code>`).join('')}</div>
-        </details>`;
+      let body = items.map(renderHardCodedRow).join('');
+      const overflow = items.length - HARD_CODED_INITIAL_LIMIT;
+      if (overflow > 0) {
+        body += `<button class="show-more" onclick="this.closest('.group').classList.add('show-overflow');this.remove()">Show ${overflow} more</button>`;
+      }
 
-      if (items.length === 0) {
-        tokenSuggestions.innerHTML = inUse.length
-          ? `<div class="passed"><span class="passed-mark" aria-hidden="true"></span>Hard-coded values: <span>none, all ${inUse.length} use variables or styles</span></div>${aiHtml}`
-          : '<div class="passed">Hard-coded values: <span>nothing to check</span></div>';
-        return;
+      if (total === 0) {
+        body += issueRow({ severity: 'info', title: 'No colors, spacing or text to check' });
+      } else if (bound.length > 0) {
+        body += issueRow({
+          severity: 'pass',
+          title: items.length === 0
+            ? `All ${bound.length} values use variables or styles`
+            : `${bound.length} of ${total} values use variables or styles`,
+          detail: `<details class="bound-details"><summary>Show which</summary>${renderBoundList(tokens)}</details>`
+        });
+      }
+
+      if (aiSuggested.length > 0) {
+        body += `
+          <details class="ai-tokens">
+            <summary>${aiSuggested.length} AI-suggested token${aiSuggested.length === 1 ? '' : 's'}</summary>
+            <div class="token-list">${aiSuggested.map(token => `<code title="${escapeHtml(token.recommendation || token.suggestion || '')}">${escapeHtml(token.name)}</code>`).join('')}</div>
+          </details>`;
       }
 
       const fixable = items.filter(isFixableHardCoded).length;
-      const overflow = items.length - HARD_CODED_INITIAL_LIMIT;
       tokenSuggestions.innerHTML = `
         <section class="group" id="group-tokens">
           ${groupHead({
-            title: 'Hard-coded values',
-            count: items.length,
-            severity: 'warn',
+            title: CATEGORY_TITLES.tokens,
             actions: fixable > 1 ? `<button class="button button-quiet fix-all" onclick="batchFixAllTokens('section-hardcoded')">Fix all ${fixable}</button>` : ''
           })}
           <div class="group-body">
-            <div id="section-hardcoded">${items.map(renderHardCodedRow).join('')}</div>
-            ${overflow > 0 ? `<button class="show-more" onclick="this.closest('.group').classList.add('show-overflow');this.remove()">Show ${overflow} more</button>` : ''}
-            ${inUseHtml}${aiHtml}
+            <div id="section-hardcoded">${body}</div>
           </div>
         </section>`;
+      renderScorecard();
     }
 
     // Update Metadata Display

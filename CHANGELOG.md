@@ -13,6 +13,11 @@
 - **The plugin follows Figma's light or dark theme.**
 - **Visual refresh:** hairline dividers in place of boxed cards, sentence-case labels in place of capitals, monospace for layer and variable names, and a single violet accent for actions.
 
+- **Every check is listed, passes included.** Each one shows its evidence, such as the lowest contrast ratio, the touch target size or the smallest text. A perfect score now lists everything that passed instead of an empty panel.
+- **Scorecard under the score.** One row per category (accessibility, states, variables, layer names, setup), with a mark per check, a coverage bar for variables and an "N of M" tally. Click a row to jump to its section. Fixes made in the panel update it right away.
+- **Sections stay in the same order** whatever the result, and an **All checks / Problems only** switch narrows the list to what needs work. The choice is remembered.
+- **Variables shows coverage** ("18 of 20 values use variables or styles"), and the bound variables are grouped by kind with color swatches and the property each one sets.
+
 ### Fixed
 - OpenAI errors no longer show up as "Network error … Failed to fetch". OpenAI leaves the CORS header off chat error responses, which hid the real cause in Figma. The plugin now asks OpenAI's models endpoint and reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available to the account.
 - **Long error messages ran off the screen.** The in-panel banner now wraps any text. The canvas toast shows only the first sentence, and OpenAI's masked copy of your key is left out of the message.
