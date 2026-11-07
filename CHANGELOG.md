@@ -14,6 +14,7 @@
 - **Visual refresh:** hairline dividers in place of boxed cards, sentence-case labels in place of capitals, monospace for layer and variable names, and a single violet accent for actions.
 
 ### Fixed
+- OpenAI errors no longer show up as "Network error … Failed to fetch". OpenAI leaves the CORS header off chat error responses, which hid the real cause in Figma. The plugin now asks OpenAI's models endpoint and reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available to the account.
 - **Analyze was enabled with nothing selected** after the plugin loaded or the AI provider changed.
 - **The AI prompt export option disappeared** after the first analysis, because the export menu was rebuilt without it.
 - **A "Save your API key to continue" message appeared on launch**, although the audit doesn't need a key.

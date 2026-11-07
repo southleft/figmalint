@@ -2395,6 +2395,12 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         );
       }
       if (lower.includes("failed to fetch") || lower.includes("networkerror") || lower.includes("network request")) {
+        if (providerId === "openai" && !customOpenAIEndpoint) {
+          const diagnosis = await diagnoseOpenAIFailure(apiKey, config.model);
+          if (diagnosis) {
+            throw new LLMError(diagnosis.message, diagnosis.code);
+          }
+        }
         throw new LLMError(
           `Network error connecting to ${provider.name} at "${host}". Check your internet connection and that the endpoint URL is correct and reachable. (${rawMessage})`,
           "NETWORK_ERROR" /* NETWORK_ERROR */
@@ -2405,6 +2411,56 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
         "UNKNOWN_ERROR" /* UNKNOWN_ERROR */
       );
     }
+  }
+  async function diagnoseOpenAIFailure(apiKey, modelId) {
+    var _a;
+    let response;
+    try {
+      response = await fetch("https://api.openai.com/v1/models", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey.trim()}` }
+      });
+    } catch (e) {
+      return null;
+    }
+    let body = null;
+    try {
+      body = await response.json();
+    } catch (e) {
+    }
+    const detail = ((_a = body == null ? void 0 : body.error) == null ? void 0 : _a.message) || "";
+    if (response.status === 401) {
+      return {
+        message: "OpenAI rejected the API key. Check that it was copied in full, has not been revoked, and belongs to a project with API access." + (detail ? ` (${detail})` : ""),
+        code: "INVALID_API_KEY" /* INVALID_API_KEY */
+      };
+    }
+    if (response.status === 403) {
+      return {
+        message: "OpenAI refused this key. It may be restricted, or your organization may not allow API access from this region." + (detail ? ` (${detail})` : ""),
+        code: "INVALID_API_KEY" /* INVALID_API_KEY */
+      };
+    }
+    if (response.status === 429) {
+      return {
+        message: "OpenAI is rate-limiting this key or the account has no remaining credit. Check billing at platform.openai.com." + (detail ? ` (${detail})` : ""),
+        code: "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */
+      };
+    }
+    if (!response.ok) {
+      return null;
+    }
+    const ids = Array.isArray(body == null ? void 0 : body.data) ? body.data.map((m) => m.id) : [];
+    if (ids.length > 0 && !ids.includes(modelId)) {
+      return {
+        message: `Your OpenAI account doesn't have access to ${modelId}. Pick another model in AI settings. Newer models can require organization verification at platform.openai.com.`,
+        code: "MODEL_NOT_FOUND" /* MODEL_NOT_FOUND */
+      };
+    }
+    return {
+      message: `The API key works, but OpenAI rejected the request to ${modelId}. The usual cause is an account with no remaining credit or a usage limit reached. Check billing and limits at platform.openai.com.`,
+      code: "RATE_LIMIT_EXCEEDED" /* RATE_LIMIT_EXCEEDED */
+    };
   }
   var STORAGE_KEYS = {
     /** Selected provider ID */

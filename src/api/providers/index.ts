@@ -361,6 +361,16 @@ export async function callProvider(
       lower.includes('networkerror') ||
       lower.includes('network request')
     ) {
+      // api.openai.com leaves the CORS header off error responses from
+      // /chat/completions, so a rejected key, an exhausted quota or a model the
+      // account can't use all surface here as "Failed to fetch". /v1/models does
+      // send the header on errors, so ask it what's wrong.
+      if (providerId === 'openai' && !customOpenAIEndpoint) {
+        const diagnosis = await diagnoseOpenAIFailure(apiKey, config.model);
+        if (diagnosis) {
+          throw new LLMError(diagnosis.message, diagnosis.code);
+        }
+      }
       throw new LLMError(
         `Network error connecting to ${provider.name} at "${host}". ` +
           `Check your internet connection and that the endpoint URL is correct and reachable. (${rawMessage})`,
@@ -375,6 +385,80 @@ export async function callProvider(
       LLMErrorCode.UNKNOWN_ERROR
     );
   }
+}
+
+/**
+ * Work out why an OpenAI chat request failed when the browser hid the response.
+ * Returns null when the probe can't reach OpenAI either (a real network problem).
+ */
+async function diagnoseOpenAIFailure(
+  apiKey: string,
+  modelId: string
+): Promise<{ message: string; code: LLMErrorCode } | null> {
+  let response: Response;
+  try {
+    response = await fetch('https://api.openai.com/v1/models', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+    });
+  } catch {
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: any = null;
+  try {
+    body = await response.json();
+  } catch {
+    // no readable body
+  }
+  const detail: string = body?.error?.message || '';
+
+  if (response.status === 401) {
+    return {
+      message:
+        'OpenAI rejected the API key. Check that it was copied in full, has not been revoked, ' +
+        'and belongs to a project with API access.' + (detail ? ` (${detail})` : ''),
+      code: LLMErrorCode.INVALID_API_KEY,
+    };
+  }
+  if (response.status === 403) {
+    return {
+      message:
+        'OpenAI refused this key. It may be restricted, or your organization may not allow API access from this region.' +
+        (detail ? ` (${detail})` : ''),
+      code: LLMErrorCode.INVALID_API_KEY,
+    };
+  }
+  if (response.status === 429) {
+    return {
+      message:
+        'OpenAI is rate-limiting this key or the account has no remaining credit. Check billing at platform.openai.com.' +
+        (detail ? ` (${detail})` : ''),
+      code: LLMErrorCode.RATE_LIMIT_EXCEEDED,
+    };
+  }
+  if (!response.ok) {
+    return null;
+  }
+
+  const ids: string[] = Array.isArray(body?.data)
+    ? body.data.map((m: { id: string }) => m.id)
+    : [];
+  if (ids.length > 0 && !ids.includes(modelId)) {
+    return {
+      message:
+        `Your OpenAI account doesn't have access to ${modelId}. Pick another model in AI settings. ` +
+        'Newer models can require organization verification at platform.openai.com.',
+      code: LLMErrorCode.MODEL_NOT_FOUND,
+    };
+  }
+  return {
+    message:
+      `The API key works, but OpenAI rejected the request to ${modelId}. The usual cause is an account ` +
+      'with no remaining credit or a usage limit reached. Check billing and limits at platform.openai.com.',
+    code: LLMErrorCode.RATE_LIMIT_EXCEEDED,
+  };
 }
 
 // =============================================================================
