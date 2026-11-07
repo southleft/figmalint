@@ -775,6 +775,7 @@
     .issue { padding: 10px 14px; }
     .issue + .issue, .issue + #naming-scroll-container, #naming-scroll-container .issue + .issue { box-shadow: inset 0 1px 0 var(--line); }
     .issue-sub { color: var(--ink-3); font-size: 11px; line-height: 1.4; }
+    .issue-detail code.nowrap { white-space: nowrap; }
     .issue-value {
       align-self: start;
       font-size: 13px;
@@ -4200,7 +4201,8 @@
             title: escapeHtml(item.check),
             sub: escapeHtml(CHECK_TARGETS[item.check] || ''),
             value: escapeHtml(item.value || checkValue(item)),
-            detail: severity === 'pass' ? '' : escapeHtml(item.suggestion || ''),
+            // `backticks` in check text mark code: render it as code so it doesn't wrap mid-name
+            detail: severity === 'pass' ? '' : escapeHtml(item.suggestion || '').replace(/`([^`]+)`/g, '<code class="nowrap">$1</code>'),
             attrs: severity === 'pass' && item.suggestion ? `title="${escapeHtml(item.suggestion)}"` : ''
           }));
         });
