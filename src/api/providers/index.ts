@@ -412,13 +412,17 @@ async function diagnoseOpenAIFailure(
   } catch {
     // no readable body
   }
-  const detail: string = body?.error?.message || '';
+  // OpenAI echoes a masked copy of the key (sk-proj-****…) — drop it: it's
+  // noise, and one unbroken run of asterisks can't wrap in the UI.
+  const detail: string = String(body?.error?.message || '')
+    .replace(/\b(sk-[\w-]*\*+[\w-]*)/g, 'your key')
+    .trim();
 
   if (response.status === 401) {
     return {
       message:
         'OpenAI rejected the API key. Check that it was copied in full, has not been revoked, ' +
-        'and belongs to a project with API access.' + (detail ? ` (${detail})` : ''),
+        'and belongs to a project with API access.',
       code: LLMErrorCode.INVALID_API_KEY,
     };
   }

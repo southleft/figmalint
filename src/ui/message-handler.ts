@@ -583,7 +583,9 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     if (isStale()) return; // user already cancelled — don't surface the error
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    figma.notify(`Analysis failed: ${errorMessage}`, { error: true });
+    // The full explanation goes to the panel; the canvas toast only needs the
+    // headline, or a long provider message runs off the side of the screen.
+    figma.notify(`Analysis failed: ${shortNotice(errorMessage)}`, { error: true, timeout: 5000 });
 
     // Structured details let the UI offer targeted recovery (retry countdown
     // for rate limits, portal link for auth errors).
@@ -2399,4 +2401,10 @@ async function buildInstanceSheet(
     }
     throw error;
   }
+}
+
+/** First sentence of an error, capped so a canvas toast stays on screen. */
+function shortNotice(message: string, max = 90): string {
+  const first = message.split(/(?<=\.)\s/)[0] || message;
+  return first.length > max ? `${first.slice(0, max - 1).trimEnd()}…` : first;
 }

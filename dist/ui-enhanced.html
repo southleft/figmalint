@@ -283,7 +283,9 @@
       font-size: var(--font-size-xs);
       color: var(--ink-2);
       border-bottom: 1px solid var(--line);
+      overflow-wrap: anywhere;
     }
+    .status-banner > :not(.status-icon) { min-width: 0; }
     .status-icon { display: inline-flex; flex-shrink: 0; margin-top: 1px; }
     .status-icon svg { width: 14px; height: 14px; }
     .status-success { color: var(--pass); background: var(--pass-tint); }

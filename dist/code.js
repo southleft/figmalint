@@ -2428,10 +2428,10 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       body = await response.json();
     } catch (e) {
     }
-    const detail = ((_a = body == null ? void 0 : body.error) == null ? void 0 : _a.message) || "";
+    const detail = String(((_a = body == null ? void 0 : body.error) == null ? void 0 : _a.message) || "").replace(/\b(sk-[\w-]*\*+[\w-]*)/g, "your key").trim();
     if (response.status === 401) {
       return {
-        message: "OpenAI rejected the API key. Check that it was copied in full, has not been revoked, and belongs to a project with API access." + (detail ? ` (${detail})` : ""),
+        message: "OpenAI rejected the API key. Check that it was copied in full, has not been revoked, and belongs to a project with API access.",
         code: "INVALID_API_KEY" /* INVALID_API_KEY */
       };
     }
@@ -7075,7 +7075,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       console.error("Error during enhanced analysis:", error);
       if (isStale()) return;
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      figma.notify(`Analysis failed: ${errorMessage}`, { error: true });
+      figma.notify(`Analysis failed: ${shortNotice(errorMessage)}`, { error: true, timeout: 5e3 });
       const structured = error instanceof LLMError ? { code: error.code, statusCode: error.statusCode, retryAfterMs: error.retryAfter } : {};
       sendMessageToUI("analysis-error", __spreadValues({
         error: errorMessage,
@@ -8412,6 +8412,10 @@ Respond naturally and helpfully to the user's question.`;
       }
       throw error;
     }
+  }
+  function shortNotice(message, max = 90) {
+    const first = message.split(new RegExp("(?<=\\.)\\s"))[0] || message;
+    return first.length > max ? `${first.slice(0, max - 1).trimEnd()}\u2026` : first;
   }
 
   // src/code.ts
