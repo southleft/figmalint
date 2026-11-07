@@ -255,8 +255,11 @@ export interface EnhancedAnalysisOptions {
 
 export interface AuditCheck {
   check: string;
-  status: 'pass' | 'fail' | 'warning';
+  /** 'info' marks something reported but not checked or scored */
+  status: 'pass' | 'fail' | 'warning' | 'info';
   suggestion: string;
+  /** The measured result, shown beside the check (e.g. "7.2:1", "3 of 12") */
+  value?: string;
 }
 
 export interface DetachedInstanceInfo {
@@ -278,6 +281,8 @@ export interface DetailedAuditResults {
   accessibility: AuditCheck[];
   /** Detached instance detection — informational, not scored */
   detachedInstances?: DetachedInstanceInfo[];
+  /** What reaches AI coding tools through Figma's MCP server; not part of the score */
+  aiHandoff?: AuditCheck[];
 }
 
 export interface EnhancedAnalysisResult {

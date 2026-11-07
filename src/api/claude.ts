@@ -32,8 +32,15 @@ ${componentContext.existingDescription ? `"${componentContext.existingDescriptio
 
 - Nested Component Instances: ${extractInstanceNames(componentContext.hierarchy).join(', ') || 'None detected'}
 
-**IMPORTANT: Focus on what makes this component ready for CODE GENERATION via MCP.**
-Evaluate based on these criteria that actually matter for development:
+**IMPORTANT: Focus on what reaches AI coding tools through Figma's MCP server.**
+What the MCP server actually passes to a model, and so what matters:
+- Component property names and values become the generated component's props word for word
+- Bound variables become token references (named from each variable's code syntax, or from its Figma path when none is set); hard-coded values arrive as raw numbers
+- Auto layout becomes flexbox; frames without it become absolute positioning
+- The component description is passed as usage instructions
+- Layer names become data attributes and influence generated names
+- Code Connect (not visible to you here) is what makes tools reuse the real code component
+Evaluate based on these criteria:
 
 **Analysis Requirements:**
 
@@ -160,15 +167,15 @@ Evaluate based on these criteria that actually matter for development:
     "score": "0-100 readiness score for MCP server code generation",
     "strengths": [
       "REQUIRED: List 2-3 specific DESIGN strengths this component already has for code generation",
-      "FIGMA-ONLY Examples: 'Clear visual hierarchy in layers', 'Consistent spacing patterns', 'Well-organized component variants', 'Uses Figma variables for colors', 'Semantic layer naming', 'Defined visual states in Figma'"
+      "FIGMA-ONLY Examples: 'Property names like size and variant read as clean props', 'Colors and spacing are bound to variables', 'Auto layout throughout, so layout maps to flexbox', 'Description explains when to use it'"
     ],
     "gaps": [
       "REQUIRED: List 2-4 specific DESIGN gaps that limit MCP code generation effectiveness",
-      "FIGMA-ONLY Examples: 'Missing visual states in Figma designs', 'Hard-coded spacing values (not using Figma variables)', 'Unclear component variant organization', 'Inconsistent layer naming conventions', 'No component properties defined in Figma', 'Missing visual feedback states'"
+      "FIGMA-ONLY Examples: 'Hard-coded spacing values, not bound to variables', 'A true/false variant that should be a boolean property', 'Frames without auto layout, so layout becomes absolute positioning', 'Description says what it is but not when to use it', 'Variant values with symbols such as \"Hover & Active\" that become awkward code values'"
     ],
     "recommendations": [
       "REQUIRED: List 2-4 specific, actionable FIGMA DESIGN recommendations to improve MCP readiness",
-      "FIGMA-ONLY Examples: 'Add hover and focus state designs in Figma', 'Replace hard-coded spacing with Figma variables', 'Define component variant properties in Figma', 'Standardize layer naming convention', 'Create missing visual states in component variants', 'Organize color styles into semantic tokens'"
+      "FIGMA-ONLY Examples: 'Bind the remaining spacing to variables', 'Convert the Show icon variant to a boolean property', 'Apply auto layout to the content frame', 'Add when-to-use guidance to the description', 'Set code syntax on variables so token names match the codebase'"
     ],
     "implementationNotes": "Design handoff guidance for developers implementing this component"
   }

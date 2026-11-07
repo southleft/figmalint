@@ -786,6 +786,7 @@
     .issue-value.st-pass { color: var(--pass); }
     .issue-value.st-warn { color: var(--warn); }
     .issue-value.st-fail { color: var(--fail); }
+    .issue-value.st-info { color: var(--ink-3); font-weight: 500; font-size: 12px; }
     .issue.fail .issue-detail, .issue.warn .issue-detail { color: var(--ink-2); margin-top: 4px; }
 
     /* States: one pill per state */
@@ -827,6 +828,7 @@
 
     /* How AI tools read it: marker by meaning */
     .readiness-intro { color: var(--ink); background: var(--canvas); border-radius: 8px; padding: 10px 12px; }
+    .review-caption { margin: 14px 0 0; }
     .marked-list { list-style: none; margin: 0; padding: 0; }
     .marked-list li { position: relative; padding: 5px 0 5px 22px; color: var(--ink); }
     .marked-list li + li { box-shadow: inset 0 1px 0 var(--line); }
@@ -1623,8 +1625,8 @@
         <div id="analysis-results" class="hidden">
           <div class="summary" id="verdict">
             <div class="summary-top">
-              <div id="audit-score" class="score" title="Readiness score: how much of the component passes the audit, weighted by impact">
-                <b>--</b><small>readiness</small>
+              <div id="audit-score" class="score" title="Design system hygiene: how much of the component passes the audit, weighted by impact. AI handoff is listed separately and isn\u2019t part of this score.">
+                <b>--</b><small>hygiene</small>
               </div>
               <div class="summary-text">
                 <h2 id="verdict-title">Analyzing…</h2>
@@ -2538,7 +2540,7 @@
 
       // Score badge
       if (currentAuditScore > 0) {
-        content += `> **Design System Readiness: ${currentAuditScore}%**\n\n`;
+        content += `> **Design system hygiene: ${currentAuditScore}/100**\n\n`;
       }
 
       // Description
@@ -2736,28 +2738,40 @@
         content += `\n`;
       }
 
-      // --- AI Interpretation ---
+      // --- AI handoff ---
+      if (audit.aiHandoff && audit.aiHandoff.length > 0) {
+        content += `## AI Handoff\n\n`;
+        content += `What reaches AI coding tools through Figma's MCP server. Not part of the hygiene score.\n\n`;
+        content += `| Check | Status | Result | Details |\n`;
+        content += `|-------|--------|--------|---------|\n`;
+        audit.aiHandoff.forEach(check => {
+          const statusIcon = check.status === 'pass' ? '✅ Pass' : check.status === 'info' ? 'ℹ️ Not checked' : '⚠️ Warning';
+          content += `| ${check.check} | ${statusIcon} | ${check.value || '-'} | ${check.suggestion || '-'} |\n`;
+        });
+        content += `\n`;
+      }
+
+      // --- AI review (model opinion) ---
       if (metadata.mcpReadiness) {
-        content += `## AI Interpretation (Score: ${currentAuditScore}%)\n\n`;
+        content += `## AI Review\n\n`;
+        content += `_The AI model's read of this component: an opinion, not a measurement._\n\n`;
         if (metadata.mcpReadiness.strengths && metadata.mcpReadiness.strengths.length > 0) {
-          content += `**What AI Reads Well:**\n`;
+          content += `**What AI reads well:**\n`;
           metadata.mcpReadiness.strengths.forEach(s => { content += `- ${s}\n`; });
           content += `\n`;
         }
-        if (currentAuditScore < 100 && metadata.mcpReadiness.gaps && metadata.mcpReadiness.gaps.length > 0) {
-          content += `**Where AI Gets Confused:**\n`;
+        if (metadata.mcpReadiness.gaps && metadata.mcpReadiness.gaps.length > 0) {
+          content += `**Where AI has to guess:**\n`;
           metadata.mcpReadiness.gaps.forEach(g => { content += `- ${g}\n`; });
           content += `\n`;
         }
-        if (currentAuditScore < 100 && metadata.mcpReadiness.recommendations && metadata.mcpReadiness.recommendations.length > 0) {
-          content += `**How to Improve AI Understanding:**\n`;
+        if (metadata.mcpReadiness.recommendations && metadata.mcpReadiness.recommendations.length > 0) {
+          content += `**How to make it clearer:**\n`;
           metadata.mcpReadiness.recommendations.forEach(rec => { content += `- ${rec}\n`; });
           content += `\n`;
         }
-        if (currentAuditScore === 100) {
-          content += `**What AI Would Generate:**\nComponent is fully optimized for AI code generation. All design tokens, properties, states, and structure provide clear guidance for accurate implementation.\n\n`;
-        } else if (metadata.mcpReadiness.implementationNotes) {
-          content += `**What AI Would Generate:**\n${metadata.mcpReadiness.implementationNotes}\n\n`;
+        if (metadata.mcpReadiness.implementationNotes) {
+          content += `**Notes for implementation:**\n${metadata.mcpReadiness.implementationNotes}\n\n`;
         }
       }
 
@@ -2948,7 +2962,7 @@
       prompt += `- Use the design tokens listed above instead of hard-coded color, spacing, or typography values\n`;
       prompt += `- Ensure all interactive states have appropriate visual feedback and transitions\n`;
 
-      if (metadata.mcpReadiness && metadata.mcpReadiness.implementationNotes && currentAuditScore < 100) {
+      if (metadata.mcpReadiness && metadata.mcpReadiness.implementationNotes) {
         prompt += `- ${metadata.mcpReadiness.implementationNotes}\n`;
       }
 
@@ -3311,7 +3325,7 @@
       statusContainer.classList.add('hidden');
 
       // Reset scores immediately to avoid showing stale data
-      auditScore.innerHTML = '<b>--</b><small>readiness</small>';
+      auditScore.innerHTML = '<b>--</b><small>hygiene</small>';
       auditScore.className = 'score';
       document.getElementById('verdict-title').textContent = 'Analyzing…';
       document.getElementById('verdict-detail').textContent = '';
@@ -3733,12 +3747,8 @@
         tokenSuggestions.innerHTML = '<p style="color: var(--text-tertiary); text-align: center;">No design tokens detected</p>';
       }
 
-      // Update MCP Readiness
-      if (data.metadata && data.metadata.mcpReadiness) {
-        updateMCPReadiness(data.metadata.mcpReadiness);
-      } else {
-        mcpReadiness.innerHTML = '<p class="panel-empty">Not available for this component.</p>';
-      }
+      // How AI tools read it: measured handoff checks, then the model's review
+      updateMCPReadiness(data.metadata && data.metadata.mcpReadiness);
 
       // Update Developer Export Section
       updateDeveloperExport(data.metadata);
@@ -3788,7 +3798,14 @@
       'Minimum font size': '12px or larger',
       'Focus state': 'Visible focus for keyboard users',
       'Property configuration': 'Properties developers can set',
-      'Component description': 'Context for people and AI tools'
+      'Component description': 'Context for people and AI tools',
+      'Variables mapped to code': 'Code syntax set, so tokens match your code',
+      'Auto layout': 'Becomes flexbox instead of absolute positions',
+      'Property names': 'Properties become the generated props',
+      'Usage guidance': 'Passed to AI tools as instructions',
+      'Annotations': 'Behavior the visuals can\u2019t show',
+      'Detached copies': 'Copies stay linked to the component',
+      'Code Connect': 'Links the component to your code'
     };
 
     // The measured result of a check, pulled from its evidence
@@ -3899,13 +3916,14 @@
     }
 
     // ---- Audit model: every check, in a fixed order, with its result ----
-    const CATEGORY_ORDER = ['accessibility', 'states', 'tokens', 'naming', 'readiness'];
+    const CATEGORY_ORDER = ['accessibility', 'states', 'tokens', 'naming', 'readiness', 'handoff'];
     const CATEGORY_TITLES = {
       accessibility: 'Accessibility',
       states: 'Interactive states',
       tokens: 'Variables',
       naming: 'Layer names',
       readiness: 'Component setup',
+      handoff: 'AI handoff',
       detached: 'Detached copies on this page'
     };
     // checks: per-category list of 'pass' | 'warn' | 'fail' for the plain checks
@@ -4124,9 +4142,9 @@
 
       // Every check gets a row, passes included, with the evidence behind it.
       auditModel = newAuditModel();
-      const rows = { accessibility: [], states: [], naming: [], readiness: [] };
+      const rows = { accessibility: [], states: [], naming: [], readiness: [], handoff: [] };
       const capitalize = text => text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
-      const statusOf = item => item.status === 'pass' ? 'pass' : item.status === 'warning' ? 'warn' : 'fail';
+      const statusOf = item => ({ pass: 'pass', warning: 'warn', info: 'info' })[item.status] || 'fail';
 
       // States
       if (audit.states && audit.states.length > 0) {
@@ -4182,23 +4200,27 @@
       setTokenCounts(currentAnalysisData && currentAnalysisData.tokens);
 
       // Component setup (property config + description) and accessibility
-      [['readiness', audit.componentReadiness], ['accessibility', audit.accessibility]].forEach(([key, items]) => {
+      // AI handoff isn't part of the hygiene score: it reports what reaches
+      // AI coding tools, and its Code Connect row can't be checked at all.
+      [['readiness', audit.componentReadiness, true], ['accessibility', audit.accessibility, true], ['handoff', audit.aiHandoff, false]].forEach(([key, items, scored]) => {
         if (!items || items.length === 0) return;
         auditModel.checks[key] = [];
         items.forEach(item => {
-          totalCount++;
-          weightedTotalScore += 2;
-          if (item.status === 'pass') {
-            passCount++;
-            weightedPassScore += 2;
+          if (scored) {
+            totalCount++;
+            weightedTotalScore += 2;
+            if (item.status === 'pass') {
+              passCount++;
+              weightedPassScore += 2;
+            }
           }
           const severity = statusOf(item);
-          auditModel.checks[key].push(severity);
+          if (severity !== 'info') auditModel.checks[key].push(severity);
           rows[key].push(issueRow({
             severity,
             title: escapeHtml(item.check),
             sub: escapeHtml(CHECK_TARGETS[item.check] || ''),
-            value: escapeHtml(checkValue(item)),
+            value: escapeHtml(item.value || checkValue(item)),
             detail: severity === 'pass' ? '' : escapeHtml(item.suggestion || ''),
             attrs: severity === 'pass' && item.suggestion ? `title="${escapeHtml(item.suggestion)}"` : ''
           }));
@@ -4211,11 +4233,13 @@
       auditModel.naming.count = namingIssues.length;
       auditModel.naming.severity = namingIssues.some(i => i.severity === 'error') ? 'fail' : 'warn';
       if (namingIssues.length > 0) {
-        namingIssues.forEach(issue => {
-          totalCount++;
-          weightedTotalScore += 1.5;
-          if (issue.severity === 'info') weightedPassScore += 0.75;
-        });
+        // Names matter less to AI tools than variables or layout, so their
+        // combined weight is capped: 40 generic layers can't sink the score.
+        const namingWeight = Math.min(namingIssues.length * 1.5, 6);
+        const infoShare = namingIssues.filter(i => i.severity === 'info').length / namingIssues.length;
+        totalCount += namingIssues.length;
+        weightedTotalScore += namingWeight;
+        weightedPassScore += namingWeight * infoShare * 0.5;
 
         namingActions = `
           <select id="naming-strategy-select" class="select-quiet" title="Naming convention for Rename all" onchange="handleNamingStrategyChange(this.value)">
@@ -4281,7 +4305,7 @@
       const score = weightedTotalScore > 0 ? Math.min(100, Math.round(rawPercentage)) : 0;
       console.log(`Audit scoring: ${weightedPassScore} weighted points out of ${weightedTotalScore} total = ${score}% (simple: ${passCount}/${totalCount})`);
 
-      auditScore.innerHTML = `<b>${score}</b><small>readiness</small>`;
+      auditScore.innerHTML = `<b>${score}</b><small>hygiene</small>`;
       auditScore.className = `score ${score >= 80 ? 'is-good' : score >= 60 ? 'is-fair' : 'is-poor'}`;
 
       // Store globally so AI Interpretation section can reference it
@@ -4642,88 +4666,43 @@
     }
 
     // Update MCP Readiness Section — score-aware narrative
+    // How AI tools read it: the measured AI handoff checks first, then the
+    // model's own review, labelled as an opinion. No blanket "ready" claims.
     function updateMCPReadiness(mcpData) {
-      console.log('[DEBUG] AI interpretation data received:', mcpData);
+      const handoff = (currentAuditResults && currentAuditResults.aiHandoff) || [];
+      const measured = handoff.filter(c => c.status !== 'info');
+      const passing = measured.filter(c => c.status === 'pass');
+      const failing = measured.filter(c => c.status !== 'pass');
+      let html = '';
+
+      if (measured.length > 0) {
+        html += '<p class="readiness-intro">';
+        html += failing.length === 0
+          ? `All ${measured.length} AI handoff checks pass: variables, layout, property names and guidance reach AI tools cleanly.`
+          : `${passing.length} of ${measured.length} AI handoff checks pass. ${failing.map(c => escapeHtml(c.check)).join(', ')} ${failing.length === 1 ? 'needs' : 'need'} work; details are on the Audit tab.`;
+        html += ' Code Connect, which Figma ranks first, can\u2019t be checked from a plugin.</p>';
+      }
 
       if (!mcpData) {
-        mcpReadiness.innerHTML = '<p class="panel-empty">Not available for this component.</p>';
+        mcpReadiness.innerHTML = html || '<p class="panel-empty">Not available for this component.</p>';
         return;
       }
 
-      const score = currentAuditScore;
-      let html = '';
-
-      // Score-aware intro narrative
-      html += '<p class="readiness-intro">';
-      if (score === 100) {
-        html += 'This component is fully ready for AI code generation. All design properties, tokens, and structure are well-defined — an AI tool can confidently translate this design into production code.';
-      } else if (score >= 80) {
-        html += 'This component is well-structured for AI code generation with only minor gaps. An AI tool can interpret most of the design accurately. The items below close the remaining gaps.';
-      } else if (score >= 60) {
-        html += 'An AI tool can partially interpret this component, but several areas need attention for reliable code generation. Fixing the problems in the Audit tab improves this.';
-      } else {
-        html += 'This component has significant gaps that would cause an AI tool to make assumptions or generate incorrect code. Start with the problems in the Audit tab.';
-      }
-      html += '</p>';
-
-      // What AI reads well (Strengths) — always show
-      if (mcpData.strengths && mcpData.strengths.length > 0) {
-        html += '<div class="meta-block">';
-        html += '<h4 class="sub-title">What it reads well</h4>';
-        html += '<ul class="marked-list is-good">';
-        mcpData.strengths.forEach(strength => {
-          html += `<li>${escapeHtml(strength)}</li>`;
-        });
-        html += '</ul>';
-        html += '</div>';
+      const list = (heading, items, cls) => (items && items.length > 0)
+        ? `<div class="meta-block"><h4 class="sub-title">${heading}</h4><ul class="marked-list ${cls}">${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`
+        : '';
+      const review = list('What it reads well', mcpData.strengths, 'is-good')
+        + list('Where it has to guess', mcpData.gaps, 'is-gap')
+        + list('How to make it clearer', mcpData.recommendations, 'is-todo')
+        + (mcpData.implementationNotes
+          ? `<div class="meta-block"><h4 class="sub-title">Notes for implementation</h4><div class="readiness-note">${escapeHtml(mcpData.implementationNotes)}</div></div>`
+          : '');
+      if (review) {
+        html += `<p class="panel-caption review-caption">${currentAiEnabled ? 'The AI model\u2019s review of this component. It\u2019s an opinion, not a measurement.' : 'Rule-based notes from the component\u2019s structure.'}</p>`;
+        html += review;
       }
 
-      // Where AI gets confused (Gaps) — hide if score is 100
-      if (score < 100 && mcpData.gaps && mcpData.gaps.length > 0) {
-        html += '<div class="meta-block">';
-        html += '<h4 class="sub-title">Where it has to guess</h4>';
-        html += '<ul class="marked-list is-gap">';
-        mcpData.gaps.forEach(gap => {
-          html += `<li>${escapeHtml(gap)}</li>`;
-        });
-        html += '</ul>';
-        html += '</div>';
-      }
-
-      // How to improve AI understanding (Recommendations) — hide if score is 100
-      if (score < 100 && mcpData.recommendations && mcpData.recommendations.length > 0) {
-        html += '<div class="meta-block">';
-        html += '<h4 class="sub-title">How to make it clearer</h4>';
-        html += '<ul class="marked-list is-todo">';
-        mcpData.recommendations.forEach(rec => {
-          html += `<li>${escapeHtml(rec)}</li>`;
-        });
-        html += '</ul>';
-        html += '</div>';
-      }
-
-      // What AI Would Generate — score-aware summary
-      html += '<div class="meta-block">';
-      html += '<h4 class="sub-title">What it would generate</h4>';
-      html += '<div class="readiness-note">';
-      if (score === 100) {
-        html += 'Component is fully optimized for AI code generation. All design tokens, properties, states, and structure provide clear guidance for accurate implementation.';
-      } else if (score >= 80) {
-        html += mcpData.implementationNotes || 'Component is well-structured for code generation. A few minor refinements in the audit above would provide complete clarity for AI tools.';
-      } else if (mcpData.implementationNotes) {
-        html += mcpData.implementationNotes;
-      } else {
-        html += 'Address the gaps identified above to improve the quality of AI-generated code for this component.';
-      }
-      html += '</div>';
-      html += '</div>';
-
-      // Show fallback if no content
-      if (!html) {
-        html = '<p class="panel-empty">Not available for this component.</p>';
-      }
-
-      mcpReadiness.innerHTML = html;
+      mcpReadiness.innerHTML = html || '<p class="panel-empty">Not available for this component.</p>';
     }
 
     // Update Developer Export Section

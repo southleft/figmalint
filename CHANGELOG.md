@@ -25,7 +25,20 @@
 
 - **The scorecard says what's wrong in words.** Each category row has the same status tile as its section and a plain result, such as "No focus state", "2 hard-coded values", "1 generic name" or "Both pass". The per-check squares and the coverage bar are gone.
 
+- **New AI handoff checks**, grounded in what Figma's MCP server actually passes to AI coding tools (verified against `get_design_context` output):
+  - **Variables mapped to code:** bound variables without code syntax reach AI tools as CSS variables built from the Figma path, which don't exist in your code.
+  - **Auto layout:** containers without it become absolute positioning.
+  - **Property names:** properties become the generated props word for word, so true/false variants (which should be boolean properties) and values with symbols are flagged.
+  - **Usage guidance:** the description is passed as instructions, so it should say when and how to use the component, not just what it is. This replaces the presence-only description check.
+  - **Annotations** on interactive components, and **detached copies** of the component on the page.
+  - **Code Connect,** Figma's top recommendation, is listed as not checked, because plugins can't see it.
+- **The score is now "hygiene"** and covers only the design-system audit. AI handoff is reported separately and doesn't change the score.
+- **No more blanket "ready for AI" claims.** The Handoff tab and exports no longer say a component is "fully ready" or "fully optimized" for AI code generation at 100. The Handoff tab leads with the measured AI handoff results and labels the model's review as an opinion. Gaps and recommendations are no longer hidden at a score of 100.
+- **Layer names can't dominate the score.** Their combined weight is capped, so many generic names can't outweigh variables or accessibility.
+- **The AI review prompt** now tells the model what actually reaches AI tools (props, variables, auto layout, description), so its strengths and gaps focus on those.
+
 ### Fixed
+- **A "Status" property (success, warning…) was counted as interactive states.** Only State or Interaction properties count now.
 - **The Stop analysis label was nearly invisible in dark mode.** It picked up the dark text meant for the purple Analyze button.
 - OpenAI errors no longer show up as "Network error … Failed to fetch". OpenAI leaves the CORS header off chat error responses, which hid the real cause in Figma. The plugin now asks OpenAI's models endpoint and reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available to the account.
 - **Long error messages ran off the screen.** The in-panel banner now wraps any text. The canvas toast shows only the first sentence, and OpenAI's masked copy of your key is left out of the message.

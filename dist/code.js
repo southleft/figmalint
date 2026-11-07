@@ -806,8 +806,15 @@ ${componentContext.existingDescription ? `"${componentContext.existingDescriptio
 
 - Nested Component Instances: ${extractInstanceNames(componentContext.hierarchy).join(", ") || "None detected"}
 
-**IMPORTANT: Focus on what makes this component ready for CODE GENERATION via MCP.**
-Evaluate based on these criteria that actually matter for development:
+**IMPORTANT: Focus on what reaches AI coding tools through Figma's MCP server.**
+What the MCP server actually passes to a model, and so what matters:
+- Component property names and values become the generated component's props word for word
+- Bound variables become token references (named from each variable's code syntax, or from its Figma path when none is set); hard-coded values arrive as raw numbers
+- Auto layout becomes flexbox; frames without it become absolute positioning
+- The component description is passed as usage instructions
+- Layer names become data attributes and influence generated names
+- Code Connect (not visible to you here) is what makes tools reuse the real code component
+Evaluate based on these criteria:
 
 **Analysis Requirements:**
 
@@ -934,15 +941,15 @@ Evaluate based on these criteria that actually matter for development:
     "score": "0-100 readiness score for MCP server code generation",
     "strengths": [
       "REQUIRED: List 2-3 specific DESIGN strengths this component already has for code generation",
-      "FIGMA-ONLY Examples: 'Clear visual hierarchy in layers', 'Consistent spacing patterns', 'Well-organized component variants', 'Uses Figma variables for colors', 'Semantic layer naming', 'Defined visual states in Figma'"
+      "FIGMA-ONLY Examples: 'Property names like size and variant read as clean props', 'Colors and spacing are bound to variables', 'Auto layout throughout, so layout maps to flexbox', 'Description explains when to use it'"
     ],
     "gaps": [
       "REQUIRED: List 2-4 specific DESIGN gaps that limit MCP code generation effectiveness",
-      "FIGMA-ONLY Examples: 'Missing visual states in Figma designs', 'Hard-coded spacing values (not using Figma variables)', 'Unclear component variant organization', 'Inconsistent layer naming conventions', 'No component properties defined in Figma', 'Missing visual feedback states'"
+      "FIGMA-ONLY Examples: 'Hard-coded spacing values, not bound to variables', 'A true/false variant that should be a boolean property', 'Frames without auto layout, so layout becomes absolute positioning', 'Description says what it is but not when to use it', 'Variant values with symbols such as "Hover & Active" that become awkward code values'"
     ],
     "recommendations": [
       "REQUIRED: List 2-4 specific, actionable FIGMA DESIGN recommendations to improve MCP readiness",
-      "FIGMA-ONLY Examples: 'Add hover and focus state designs in Figma', 'Replace hard-coded spacing with Figma variables', 'Define component variant properties in Figma', 'Standardize layer naming convention', 'Create missing visual states in component variants', 'Organize color styles into semantic tokens'"
+      "FIGMA-ONLY Examples: 'Bind the remaining spacing to variables', 'Convert the Show icon variant to a boolean property', 'Apply auto layout to the content frame', 'Add when-to-use guidance to the description', 'Set code syntax on variables so token names match the codebase'"
     ],
     "implementationNotes": "Design handoff guidance for developers implementing this component"
   }
@@ -5497,7 +5504,7 @@ ${scoringCriteria}
       if (variantProps) {
         for (const propName in variantProps) {
           const lowerPropName = propName.toLowerCase();
-          if (lowerPropName === "state" || lowerPropName === "states" || lowerPropName === "status") {
+          if (lowerPropName === "state" || lowerPropName === "states" || lowerPropName === "interaction") {
             actualStates.push(...variantProps[propName].values);
           }
         }
@@ -6085,40 +6092,23 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
   }
   async function createAuditResults(_filteredData, _context, node, actualProperties, actualStates, _tokens, componentDescription) {
     var _a;
-    let parentHasDescription = false;
-    let parentDescription = "";
-    if (node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") {
-      const parentSet = node.parent;
-      parentDescription = parentSet.description || "";
-      parentHasDescription = parentDescription.trim().length > 0;
-    } else if (node.type === "COMPONENT_SET") {
-      parentHasDescription = !!(componentDescription && componentDescription.trim().length > 0);
-    }
-    const hasDescription = !!(componentDescription && componentDescription.trim().length > 0);
-    let descriptionStatus = hasDescription ? "pass" : "warning";
-    let descriptionSuggestion = "";
-    if (hasDescription) {
-      descriptionSuggestion = "Component has description for MCP/AI context";
-    } else if (parentHasDescription) {
-      descriptionStatus = "pass";
-      descriptionSuggestion = "Component set has a description. Consider adding a variant-specific description for richer context.";
-    } else {
-      descriptionSuggestion = "Add a component description to help MCP and AI understand the component purpose and usage";
-    }
+    const parentDescription = node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET" ? node.parent.description || "" : "";
     const componentReadiness = [
       {
         check: "Property configuration",
         status: actualProperties.length > 0 ? "pass" : "warning",
         suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
-      },
-      {
-        check: "Component description",
-        status: descriptionStatus,
-        suggestion: descriptionSuggestion
       }
     ];
     const accessibility = runAccessibilityChecks(node, actualStates);
     const detachedInstances = detectDetachedInstances(node);
+    const aiHandoff = await runAIHandoffChecks(
+      node,
+      actualProperties,
+      isInteractiveComponent(node, actualStates),
+      componentDescription && componentDescription.trim() ? componentDescription : parentDescription,
+      detachedInstances.length
+    );
     return {
       states: actualStates.map((state) => ({
         name: state,
@@ -6126,7 +6116,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       })),
       componentReadiness,
       accessibility,
-      detachedInstances
+      detachedInstances,
+      aiHandoff
     };
   }
   var INTERACTIVE_KEYWORDS = [
@@ -6153,6 +6144,149 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     "fab",
     "action"
   ];
+  var MAX_HANDOFF_NODES = 4e3;
+  var GRAPHIC_TYPES = /* @__PURE__ */ new Set(["VECTOR", "BOOLEAN_OPERATION", "ELLIPSE", "RECTANGLE", "LINE", "POLYGON", "STAR"]);
+  var USAGE_WORDS = /\b(use|used|using|when|avoid|don'?t|do not|instead|should|only|prefer|never|always)\b/i;
+  function collectAliasIds(value, out) {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach((v) => collectAliasIds(v, out));
+    } else if (typeof value === "object") {
+      const alias = value;
+      if (alias.type === "VARIABLE_ALIAS" && typeof alias.id === "string") {
+        out.add(alias.id);
+      } else {
+        Object.values(value).forEach((v) => collectAliasIds(v, out));
+      }
+    }
+  }
+  function propertyNameProblems(node) {
+    var _a;
+    const owner = node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET" ? node.parent : node;
+    if (owner.type !== "COMPONENT_SET" && owner.type !== "COMPONENT") return [];
+    let definitions;
+    try {
+      definitions = owner.componentPropertyDefinitions;
+    } catch (e) {
+      return [];
+    }
+    const problems = [];
+    for (const [rawName, def] of Object.entries(definitions)) {
+      const name = rawName.replace(/#[^#]*$/, "").replace(/^[^A-Za-z0-9]+/, "").trim();
+      if (!/^[A-Za-z][A-Za-z0-9 _-]*$/.test(name)) {
+        problems.push(`"${name}" has symbols that don't carry into a prop name`);
+      }
+      if (def.type === "VARIANT") {
+        const values = (def.variantOptions || []).map((v) => v.toLowerCase());
+        const booleanish = ["true", "false", "yes", "no", "on", "off"];
+        if (values.length === 2 && values.every((v) => booleanish.includes(v))) {
+          problems.push(`"${name}" is a ${def.variantOptions.join("/")} variant; a boolean property becomes a real boolean prop`);
+        }
+        const symbolValues = (def.variantOptions || []).filter((v) => /[^A-Za-z0-9 _.-]/.test(v));
+        if (symbolValues.length > 0) {
+          problems.push(`"${name}" values like "${symbolValues[0]}" become awkward code values`);
+        }
+      }
+    }
+    return problems;
+  }
+  async function runAIHandoffChecks(node, actualProperties, isInteractive, description, detachedCount) {
+    const checks = [];
+    const variableIds = /* @__PURE__ */ new Set();
+    const freeLayout = [];
+    let containers = 0;
+    let annotated = 0;
+    let visited = 0;
+    const walk = (current, isRoot) => {
+      if (visited++ > MAX_HANDOFF_NODES) return;
+      if ("boundVariables" in current) collectAliasIds(current.boundVariables, variableIds);
+      if ("annotations" in current && Array.isArray(current.annotations) && current.annotations.length > 0) annotated++;
+      if (current.type === "INSTANCE") return;
+      if (!("children" in current)) return;
+      const children = current.children;
+      const isLayoutContainer = !isRoot || current.type !== "COMPONENT_SET";
+      const onlyGraphics = children.length > 0 && children.every((c) => GRAPHIC_TYPES.has(c.type));
+      if (isLayoutContainer && children.length > 0 && !onlyGraphics && (current.type === "FRAME" || current.type === "COMPONENT" || current.type === "GROUP")) {
+        containers++;
+        const layoutMode = "layoutMode" in current ? current.layoutMode : "NONE";
+        if (current.type === "GROUP" || layoutMode === "NONE") freeLayout.push(current.name);
+      }
+      children.forEach((child) => walk(child, false));
+    };
+    walk(node, true);
+    if (variableIds.size > 0) {
+      const variables = await Promise.all(
+        [...variableIds].map((id) => figma.variables.getVariableByIdAsync(id).catch(() => null))
+      );
+      const found = variables.filter((v) => !!v);
+      const mapped = found.filter((v) => v.codeSyntax && Object.values(v.codeSyntax).some((s) => !!s));
+      const unmapped = found.filter((v) => !mapped.includes(v)).sort((a, b) => b.name.split("/").length - a.name.split("/").length);
+      if (found.length > 0) {
+        checks.push({
+          check: "Variables mapped to code",
+          status: unmapped.length === 0 ? "pass" : "warning",
+          value: `${mapped.length} of ${found.length}`,
+          suggestion: unmapped.length === 0 ? "Every variable has code syntax, so AI tools get your real token names" : `${unmapped.length} variable${unmapped.length === 1 ? " has" : "s have"} no code syntax, so AI tools get CSS variables built from the Figma path, like var(--${unmapped[0].name.replace(/\s+/g, "-").replace(/\//g, "\\/")}), that don't exist in your code. Set code syntax on the variables (for example var(--primary-foreground)).`
+        });
+      }
+    }
+    if (containers > 0) {
+      const examples = freeLayout.slice(0, 3).map((n) => `"${n}"`).join(", ");
+      checks.push({
+        check: "Auto layout",
+        status: freeLayout.length === 0 ? "pass" : "warning",
+        value: `${containers - freeLayout.length} of ${containers}`,
+        suggestion: freeLayout.length === 0 ? "Every container uses auto layout, which AI tools turn into flexbox" : `${freeLayout.length} container${freeLayout.length === 1 ? "" : "s"} without auto layout (${examples}${freeLayout.length > 3 ? ", \u2026" : ""}). AI tools position these absolutely, which breaks when content or width changes.`
+      });
+    }
+    if (actualProperties.length > 0) {
+      const problems = propertyNameProblems(node);
+      checks.push({
+        check: "Property names",
+        status: problems.length === 0 ? "pass" : "warning",
+        value: problems.length === 0 ? "Clean" : `${problems.length} to fix`,
+        suggestion: problems.length === 0 ? "Property and value names carry cleanly into the generated props" : `Properties become the generated props word for word. ${problems.slice(0, 3).join(". ")}${problems.length > 3 ? ". \u2026" : ""}.`
+      });
+    }
+    const text = description.trim();
+    const hasUsage = text.length >= 80 && USAGE_WORDS.test(text);
+    checks.push({
+      check: "Usage guidance",
+      status: hasUsage ? "pass" : "warning",
+      value: text ? `${text.length} chars` : "Missing",
+      suggestion: !text ? "No description. AI tools receive the description as instructions, so without one they get no guidance on when or how to use the component." : hasUsage ? "The description says when and how to use it, and AI tools receive it as instructions" : "The description says what it is but not when to use it, when not to, or what to avoid. AI tools receive it as instructions."
+    });
+    if (annotated > 0) {
+      checks.push({
+        check: "Annotations",
+        status: "pass",
+        value: `${annotated}`,
+        suggestion: `${annotated} layer${annotated === 1 ? " has" : "s have"} annotations explaining behavior the visuals can't show`
+      });
+    } else if (isInteractive) {
+      checks.push({
+        check: "Annotations",
+        status: "warning",
+        value: "None",
+        suggestion: "No annotations. Behavior like keyboard use, focus order or what happens on click isn't visible in the design, so AI tools have to guess it."
+      });
+    }
+    if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+      checks.push({
+        check: "Detached copies",
+        status: detachedCount === 0 ? "pass" : "warning",
+        value: detachedCount === 0 ? "None" : `${detachedCount}`,
+        suggestion: detachedCount === 0 ? "No detached copies on this page" : `${detachedCount} detached cop${detachedCount === 1 ? "y" : "ies"} on this page. AI tools see them as plain frames and write new markup instead of reusing this component.`
+      });
+    }
+    checks.push({
+      check: "Code Connect",
+      status: "info",
+      value: "Not checked",
+      suggestion: "Figma ranks linking components to your code first: it is what makes AI tools reuse your real component. Plugins can't see these links, so check it in Dev Mode."
+    });
+    return checks;
+  }
   function isInteractiveComponent(node, states) {
     const nameLower = node.name.toLowerCase();
     if (INTERACTIVE_KEYWORDS.some((kw) => nameLower.includes(kw))) return true;
@@ -6428,7 +6562,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       gaps.push("Well-structured component - consider minor enhancements for broader usage");
     }
     if (recommendations.length === 0) {
-      recommendations.push("Component is well-configured - ready for code generation");
+      recommendations.push("No structural gaps found. See the AI handoff checks for what reaches AI tools.");
     }
     let score = 0;
     const hasProperties = actualProperties.length > 0;
