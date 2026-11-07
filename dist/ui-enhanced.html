@@ -701,6 +701,147 @@
     .export-options { display: flex; gap: 8px; }
     .export-options select { flex: 1; }
 
+    /* ==== Report sheets: the report sits on canvas grey, one white sheet per section ==== */
+    :root { --ground: var(--canvas); }
+    html.figma-dark { --ground: #1E1E1E; }
+    #analysis-results { background: var(--ground); padding: 8px 8px 16px; min-height: 100%; }
+    #content-properties .content, #content-handoff .content { background: var(--ground); padding: 8px 8px 16px; min-height: 100%; }
+    #analysis-results .summary,
+    #analysis-results .group,
+    .panel-section {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      margin: 0 0 8px;
+    }
+    #analysis-results .group:first-child { border-top: 1px solid var(--line); }
+    .panel-section { padding: 14px 14px 16px; }
+    .panel-section > .panel-title { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+    .panel-section > .panel-caption { margin-bottom: 12px; }
+
+    /* Summary sheet */
+    #analysis-results .summary { padding: 14px 14px 0; }
+    .score { border-radius: 10px; padding: 9px 8px 7px; min-width: 64px; background: var(--canvas); }
+    .score.is-good { background: var(--pass-tint); }
+    .score.is-fair { background: var(--warn-tint); }
+    .score.is-poor { background: var(--fail-tint); }
+    .summary .scorecard { margin: 12px -8px 0; }
+    .summary .results-meta { margin: 6px -14px 0; padding: 4px 8px 4px 14px; border-top: 1px solid var(--line); }
+
+    /* All checks / Problems only, on the canvas between summary and sections */
+    #analysis-results .view-bar { border-top: 0; padding: 2px 0 8px; }
+    .segmented { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+    .segmented button[aria-pressed="true"] { background: var(--ink); color: var(--surface); box-shadow: none; }
+
+    /* Section header: status tile, title, tally */
+    #analysis-results .group-head { border-radius: 10px 10px 0 0; padding: 6px 6px 6px 8px; }
+    #analysis-results .group.is-collapsed .group-head { border-radius: 10px; }
+    .group-toggle { flex: 1; align-items: center; gap: 10px; }
+    .group-toggle .group-tally { margin-left: auto; }
+    .group-toggle .chevron { order: 9; margin-left: 2px; }
+    .status-tile {
+      position: relative;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      background: var(--canvas);
+    }
+    .status-tile::after {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .status-tile.st-pass { background: var(--pass-tint); }
+    .status-tile.st-pass::after {
+      content: "";
+      inset: auto;
+      left: 7px;
+      top: 6.5px;
+      width: 8px;
+      height: 4.5px;
+      border-left: 2px solid var(--pass);
+      border-bottom: 2px solid var(--pass);
+      transform: rotate(-45deg);
+    }
+    .status-tile.st-warn { background: var(--warn-tint); }
+    .status-tile.st-warn::after { content: "!"; color: var(--warn); }
+    .status-tile.st-fail { background: var(--fail); }
+    .status-tile.st-fail::after { content: "!"; color: var(--surface); }
+    .status-tile.st-info::after, .status-tile.st-none::after { content: "i"; color: var(--ink-3); font-family: Georgia, serif; font-style: italic; }
+    .group-tally { font-size: 12px; }
+    .group-head h3 { white-space: nowrap; }
+    .group-head:has(.group-actions) .group-toggle .chevron { display: none; }
+
+    /* Check rows: name and target on the left, the measured value on the right */
+    #analysis-results .group-body { padding: 0; }
+    .issue { padding: 10px 14px; }
+    .issue + .issue, .issue + #naming-scroll-container, #naming-scroll-container .issue + .issue { box-shadow: inset 0 1px 0 var(--line); }
+    .issue-sub { color: var(--ink-3); font-size: 11px; line-height: 1.4; }
+    .issue-value {
+      align-self: start;
+      font-size: 13px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      line-height: 1.5;
+    }
+    .issue-value.st-pass { color: var(--pass); }
+    .issue-value.st-warn { color: var(--warn); }
+    .issue-value.st-fail { color: var(--fail); }
+    .issue.fail .issue-detail, .issue.warn .issue-detail { color: var(--ink-2); margin-top: 4px; }
+
+    /* States: one pill per state */
+    .state-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px; }
+    .state-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--canvas);
+      color: var(--ink-2);
+    }
+    .state-chip::before { font-size: 11px; font-weight: 800; line-height: 1; }
+    .state-chip.st-pass { background: var(--pass-tint); color: var(--pass); }
+    .state-chip.st-pass::before { content: "✓"; }
+    .state-chip.st-fail { background: var(--fail-tint); color: var(--fail); }
+    .state-chip.st-fail::before { content: "✕"; }
+    .state-chips + .issue { box-shadow: inset 0 1px 0 var(--line); }
+
+    /* Properties */
+    .prop-list { margin: 0 -14px; }
+    .prop-row { padding: 10px 14px; }
+    .prop-row + .prop-row { box-shadow: inset 0 1px 0 var(--line); }
+    .prop-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+    .prop-name { font-weight: 650; font-size: 12.5px; }
+    .type-tag { font-size: 10.5px; font-weight: 600; color: var(--ink-3); background: var(--canvas); border-radius: 4px; padding: 1px 6px; }
+    .property-value.is-default { background: var(--accent-tint); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .rec-list { margin: 0 -14px; }
+    .recommendation-card { padding: 12px 14px; border-top: 0; }
+    .recommendation-card + .recommendation-card { box-shadow: inset 0 1px 0 var(--line); }
+    .rec-name { font-size: 12.5px; }
+    .rec-description { color: var(--ink-2); margin: 4px 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+    .rec-description.is-open { display: block; }
+    .description-quote { color: var(--ink); font-size: 12.5px; line-height: 1.55; border-left: 3px solid var(--line-strong); padding: 2px 0 2px 12px; max-height: 180px; overflow-y: auto; white-space: pre-wrap; }
+    .metadata-action-bar { background: var(--accent-tint); color: var(--ink); }
+
+    /* How AI tools read it: marker by meaning */
+    .readiness-intro { color: var(--ink); background: var(--canvas); border-radius: 8px; padding: 10px 12px; }
+    .marked-list { list-style: none; margin: 0; padding: 0; }
+    .marked-list li { position: relative; padding: 5px 0 5px 22px; color: var(--ink); }
+    .marked-list li + li { box-shadow: inset 0 1px 0 var(--line); }
+    .marked-list li::before { position: absolute; left: 0; top: 6px; width: 15px; height: 15px; border-radius: 4px; display: grid; place-items: center; font-size: 10px; font-weight: 800; line-height: 1; }
+    .marked-list.is-good li::before { content: "✓"; background: var(--pass-tint); color: var(--pass); }
+    .marked-list.is-gap li::before { content: "?"; background: var(--warn-tint); color: var(--warn); }
+    .marked-list.is-todo li::before { content: "+"; background: var(--accent-tint); color: var(--accent); }
+
     /* ---- Fix confirmation ---- */
     .modal-overlay {
       position: fixed;
@@ -1498,15 +1639,14 @@
               </div>
             </div>
             <div class="scorecard" id="verdict-jumps"></div>
-          </div>
-
-          <div id="results-header" class="results-meta" style="display: none;">
-            <span id="results-node-meta"></span>
-            <a href="#" id="results-node-name" hidden></a>
-            <span class="results-meta-actions">
-              <button id="generate-instance-sheet" class="button button-quiet" title="Place a grid of every variant next to the component">Instance sheet</button>
-              <button id="reanalyze-fresh" class="button button-quiet" title="Analyze again without using the cached result">Run fresh</button>
-            </span>
+            <div id="results-header" class="results-meta" style="display: none;">
+              <span id="results-node-meta"></span>
+              <a href="#" id="results-node-name" hidden></a>
+              <span class="results-meta-actions">
+                <button id="generate-instance-sheet" class="button button-quiet" title="Place a grid of every variant next to the component">Instance sheet</button>
+                <button id="reanalyze-fresh" class="button button-quiet" title="Analyze again without using the cached result">Run fresh</button>
+              </span>
+            </div>
           </div>
 
           <div class="view-bar" role="group" aria-label="Which checks to show">
@@ -1531,14 +1671,19 @@
       <div class="content">
         <section class="panel-section">
           <h3 class="panel-title">Properties</h3>
-          <p class="panel-caption">The variant and component properties this component exposes, with their values.</p>
+          <p class="panel-caption">What this component exposes. The highlighted value is the default.</p>
           <div id="property-cheatsheet">
             <div class="skeleton"></div>
             <div class="skeleton" style="width: 70%;"></div>
           </div>
         </section>
+        <section class="panel-section" id="suggestions-section" hidden>
+          <h3 class="panel-title">Suggested properties</h3>
+          <p class="panel-caption">Properties developers usually expect on this kind of component.</p>
+          <div id="property-suggestions"></div>
+        </section>
         <section class="panel-section">
-          <h3 class="panel-title">Description and structure</h3>
+          <h3 class="panel-title">Description</h3>
           <div id="metadata-content">
             <div class="skeleton"></div>
             <div class="skeleton" style="width: 85%;"></div>
@@ -3643,16 +3788,41 @@
       selected: 'Shows the current choice.'
     };
 
-    function issueRow({ severity, title, detail = '', action = '', attrs = '', extraClass = '' }) {
+    // What each check measures against, shown under its name
+    const CHECK_TARGETS = {
+      'Color contrast': 'WCAG AA needs 4.5:1 for text',
+      'Touch target size': '44×44 recommended, 24×24 minimum',
+      'Minimum font size': '12px or larger',
+      'Focus state': 'Visible focus for keyboard users',
+      'Property configuration': 'Properties developers can set',
+      'Component description': 'Context for people and AI tools'
+    };
+
+    // The measured result of a check, pulled from its evidence
+    function checkValue(item) {
+      const text = String(item.suggestion || '');
+      let m;
+      if ((m = text.match(/(\d+(?:\.\d+)?):1/))) return `${m[1]}:1`;
+      if ((m = text.match(/(\d+)×(\d+)px/))) return `${m[1]}×${m[2]}`;
+      if (/font/i.test(item.check) && (m = text.match(/(\d+(?:\.\d+)?)px/))) return `${m[1]}px`;
+      if (item.check === 'Property configuration') {
+        const n = currentAnalysisData && currentAnalysisData.properties ? currentAnalysisData.properties.length : 0;
+        if (item.status === 'pass' && n > 0) return `${n} ${n === 1 ? 'property' : 'properties'}`;
+      }
+      return { pass: 'Yes', warning: 'Missing', fail: 'Missing' }[item.status] || '';
+    }
+
+    function issueRow({ severity, title, detail = '', action = '', attrs = '', extraClass = '', sub = '', value = '' }) {
       const label = { pass: 'Passes', fail: 'Fails', warn: 'Warning', info: 'Note' }[severity] || '';
       return `
         <div class="issue ${severity}${extraClass ? ' ' + extraClass : ''}" ${attrs}>
           <i class="dot" role="img" aria-label="${label}"></i>
           <div class="issue-text">
             <div class="issue-title">${title}</div>
+            ${sub ? `<div class="issue-sub">${sub}</div>` : ''}
             ${detail ? `<div class="issue-detail">${detail}</div>` : ''}
           </div>
-          ${action}
+          ${value ? `<span class="issue-value st-${severity}">${value}</span>` : ''}${action}
         </div>`;
     }
 
@@ -3806,6 +3976,8 @@
       // Section headers carry the same tally as their scorecard row
       rows.forEach(r => {
         const section = document.getElementById(`group-${r.key}`);
+        const tile = section.querySelector('.status-tile');
+        if (tile) tile.className = `status-tile st-${r.status}`;
         const tally = section.querySelector('.group-tally');
         if (tally) {
           tally.textContent = r.tally;
@@ -3849,13 +4021,14 @@
     }
 
     // Section header: the title toggles the section; actions sit to the right
-    function groupHead({ title, actions = '' }) {
+    function groupHead({ title, actions = '', tile = 'none' }) {
       return `
         <div class="group-head">
           <button class="group-toggle" aria-expanded="true" onclick="toggleGroup(this)">
-            <span class="chevron" aria-hidden="true"></span>
+            <span class="status-tile st-${tile}" aria-hidden="true"></span>
             <h3>${title}</h3>
             <span class="group-tally"></span>
+            <span class="chevron" aria-hidden="true"></span>
           </button>
           ${actions ? `<span class="group-actions">${actions}</span>` : ''}
         </div>`;
@@ -3977,20 +4150,24 @@
             detail: 'It has a single default state, like a badge or a label.'
           }));
         } else {
-          audit.states.forEach(state => {
+          const missing = [];
+          const chips = audit.states.map(state => {
             totalCount++;
             if (state.found) passCount++;
             // High weight for states (3x) - critical for MCP compatibility
             weightedTotalScore += 3;
             if (state.found) weightedPassScore += 3;
-
-            const name = state.name.toLowerCase();
-            const hint = STATE_HINTS[name] || '';
             auditModel.checks.states.push(state.found ? 'pass' : 'fail');
-            rows.states.push(state.found
-              ? issueRow({ severity: 'pass', title: escapeHtml(capitalize(name)), detail: `Has a variant.${hint ? ' ' + hint : ''}` })
-              : issueRow({ severity: 'fail', title: `No ${escapeHtml(name)} state`, detail: hint || 'Add a variant for this state.' }));
+            const name = state.name.toLowerCase();
+            if (!state.found) missing.push(name);
+            return `<span class="state-chip st-${state.found ? 'pass' : 'fail'}">${escapeHtml(capitalize(name))}</span>`;
           });
+          rows.states.push(`<div class="state-chips">${chips.join('')}</div>`);
+          missing.forEach(name => rows.states.push(issueRow({
+            severity: 'fail',
+            title: `No ${escapeHtml(name)} state`,
+            detail: STATE_HINTS[name] || 'Add a variant for this state.'
+          })));
         }
       }
 
@@ -4017,7 +4194,14 @@
           }
           const severity = statusOf(item);
           auditModel.checks[key].push(severity);
-          rows[key].push(issueRow({ severity, title: escapeHtml(item.check), detail: escapeHtml(item.suggestion || '') }));
+          rows[key].push(issueRow({
+            severity,
+            title: escapeHtml(item.check),
+            sub: escapeHtml(CHECK_TARGETS[item.check] || ''),
+            value: escapeHtml(checkValue(item)),
+            detail: severity === 'pass' ? '' : escapeHtml(item.suggestion || ''),
+            attrs: severity === 'pass' && item.suggestion ? `title="${escapeHtml(item.suggestion)}"` : ''
+          }));
         });
       });
 
@@ -4110,31 +4294,25 @@
     function updatePropertyCheatSheet(properties, recommendations) {
       let html = '';
 
+      const isHash = value => /^[a-f0-9]{20,}$/i.test(String(value));
+      const typeOf = values => values.length > 0 && values.every(v => ['true', 'false'].includes(String(v).toLowerCase()))
+        ? 'Boolean' : values.some(isHash) ? 'Instance' : values.length === 1 ? 'Text' : 'Variant';
       if (properties && properties.length > 0) {
-        html += '<table class="property-table">';
-        html += '<thead><tr><th>Name</th><th>Values</th><th>Default</th></tr></thead>';
-        html += '<tbody>';
-
+        html += '<div class="prop-list">';
         properties.forEach(prop => {
-          html += '<tr>';
-          html += `<td>${escapeHtml(toTitleCase(prop.name))}</td>`;
-          html += '<td><div class="property-values-cell">';
-          prop.values.forEach(value => {
-            // Detect hash/ID values (hex strings > 20 chars) and display as "Instance ref"
-            const isHash = /^[a-f0-9]{20,}$/i.test(value);
-            const displayValue = isHash ? 'Instance ref' : value;
-            html += `<span class="property-value" ${isHash ? `title="${escapeHtml(value)}"` : ''}>${escapeHtml(displayValue)}</span>`;
-          });
-          html += '</div></td>';
-          // Apply hash detection to default column too
-          const defaultVal = prop.default || '-';
-          const isDefaultHash = /^[a-f0-9]{20,}$/i.test(defaultVal);
-          const displayDefault = isDefaultHash ? 'Instance ref' : defaultVal;
-          html += `<td><span class="property-default-value" ${isDefaultHash ? `title="${escapeHtml(defaultVal)}"` : ''}>${escapeHtml(displayDefault)}</span></td>`;
-          html += '</tr>';
+          const values = prop.values || [];
+          const chips = values.map(value => {
+            const shown = isHash(value) ? 'Instance ref' : value;
+            const isDefault = String(value) === String(prop.default);
+            return `<span class="property-value${isDefault ? ' is-default' : ''}"${isDefault ? ' title="Default"' : ''}>${escapeHtml(shown)}</span>`;
+          }).join('');
+          html += `
+            <div class="prop-row">
+              <div class="prop-head"><span class="prop-name">${escapeHtml(toTitleCase(prop.name))}</span><span class="type-tag">${typeOf(values)}</span></div>
+              <div class="chip-row">${chips}</div>
+            </div>`;
         });
-
-        html += '</tbody></table>';
+        html += '</div>';
       }
 
       // Use only property recommendations (no slots), filtered against existing properties
@@ -4202,10 +4380,9 @@
       console.log('[CONFIG] Property recommendations after filtering:', allRecommendations.length);
 
       // Add recommendations section if available
+      let recHtml = '';
       if (allRecommendations && allRecommendations.length > 0) {
-        html += '<div class="recommendations-section">';
-        html += '<h4 class="sub-title">Suggested properties</h4>';
-        html += '<p class="panel-caption">Properties developers usually expect on this kind of component.</p>';
+        recHtml += '<div class="rec-list">';
 
         allRecommendations.forEach((rec, index) => {
           // Variant/state recommendations are guidance only: their values
@@ -4218,14 +4395,14 @@
             ? `<button class="fix" data-add-property="${escapeHtml(rec.name)}" onclick="handleAddRecommendedProperty(${index})" title="Add this property to the component and bind it to a matching layer">Add</button>`
             : `<span class="rec-manual" title="Each value needs a designed variant in the component set, so add these in Figma">Add in Figma</span>`;
 
-          html += `
+          recHtml += `
             <div class="recommendation-card" id="rec-card-${index}">
               <div class="rec-head">
                 <span class="rec-name">${escapeHtml(rec.name)}</span>
-                <span class="rec-type">${escapeHtml(String(rec.type || '').toLowerCase())}</span>
+                <span class="type-tag">${escapeHtml(({ instanceswap: 'Instance', boolean: 'Boolean', text: 'Text', variant: 'Variant', slot: 'Slot' })[String(rec.type || '').toLowerCase().replace(/[^a-z]/g, '')] || String(rec.type || ''))}</span>
                 ${actionHtml}
               </div>
-              <p class="rec-description">${escapeHtml(rec.description)}</p>
+              <p class="rec-description" onclick="this.classList.toggle('is-open')" title="Click to read it all">${escapeHtml(rec.description)}</p>
               <div class="chip-row">
                 ${rec.examples.map(example => `<span class="property-value">${escapeHtml(example)}</span>`).join('')}
               </div>
@@ -4233,8 +4410,10 @@
           `;
         });
 
-        html += '</div>';
+        recHtml += '</div>';
       }
+      document.getElementById('property-suggestions').innerHTML = recHtml;
+      document.getElementById('suggestions-section').hidden = !recHtml;
 
       // Show fallback content when no properties and no recommendations
       if (!html) {
@@ -4421,13 +4600,12 @@
 
       // Component Info
       html += `<div class="meta-block">`;
-      html += `<h4 class="sub-title">${escapeHtml(metadata.component)}</h4>`;
       // metadata.description is AI-authored when a key is configured; without
       // one it's a generated placeholder, so show what Figma actually holds.
       const shownDescription = currentAiEnabled
         ? escapeHtml(metadata.description)
         : (currentExistingDescription ? escapeHtml(currentExistingDescription) : '<span class="muted">No description</span>');
-      html += `<div class="description-scroll-area">${shownDescription}</div>`;
+      html += `<div class="description-quote">${shownDescription}</div>`;
       html += `</div>`;
 
       // States (deduplicated and cleaned)
@@ -4439,7 +4617,7 @@
 
         if (uniqueStates.length > 0) {
           html += '<div class="meta-block">';
-          html += '<h4 class="sub-title">States</h4>';
+          html += '<h4 class="sub-title">States in the variants</h4>';
           html += '<div class="chip-row">';
           uniqueStates.forEach(state => {
             html += `<span class="property-value">${escapeHtml(state)}</span>`;
@@ -4492,7 +4670,7 @@
       if (mcpData.strengths && mcpData.strengths.length > 0) {
         html += '<div class="meta-block">';
         html += '<h4 class="sub-title">What it reads well</h4>';
-        html += '<ul class="plain-list">';
+        html += '<ul class="marked-list is-good">';
         mcpData.strengths.forEach(strength => {
           html += `<li>${escapeHtml(strength)}</li>`;
         });
@@ -4504,7 +4682,7 @@
       if (score < 100 && mcpData.gaps && mcpData.gaps.length > 0) {
         html += '<div class="meta-block">';
         html += '<h4 class="sub-title">Where it has to guess</h4>';
-        html += '<ul class="plain-list">';
+        html += '<ul class="marked-list is-gap">';
         mcpData.gaps.forEach(gap => {
           html += `<li>${escapeHtml(gap)}</li>`;
         });
@@ -4516,7 +4694,7 @@
       if (score < 100 && mcpData.recommendations && mcpData.recommendations.length > 0) {
         html += '<div class="meta-block">';
         html += '<h4 class="sub-title">How to make it clearer</h4>';
-        html += '<ul class="plain-list">';
+        html += '<ul class="marked-list is-todo">';
         mcpData.recommendations.forEach(rec => {
           html += `<li>${escapeHtml(rec)}</li>`;
         });

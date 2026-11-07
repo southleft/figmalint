@@ -18,6 +18,11 @@
 - **Sections stay in the same order** whatever the result, and an **All checks / Problems only** switch narrows the list to what needs work. The choice is remembered.
 - **Variables shows coverage** ("18 of 20 values use variables or styles"), and the bound variables are grouped by kind with color swatches and the property each one sets.
 
+- **Sections are separate sheets.** The report sits on a canvas-grey ground, with each section on its own sheet whose header has a pass, warning or fail tile and a tally. This applies to the Audit, Properties and Handoff tabs.
+- **Results lead with the measured value.** Each check shows its figure on the right (7.2:1, 32×32, 12px) and its target underneath. The explanation appears only when the check needs work.
+- **Interactive states appear as pills** (✓ Hover, ✕ Focus). Property defaults are highlighted among the values instead of repeated in a column, each property shows its type, and suggested properties have their own sheet.
+- **AI-readiness lists are marked by meaning:** ✓ reads well, ? has to guess, + make it clearer.
+
 ### Fixed
 - OpenAI errors no longer show up as "Network error … Failed to fetch". OpenAI leaves the CORS header off chat error responses, which hid the real cause in Figma. The plugin now asks OpenAI's models endpoint and reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available to the account.
 - **Long error messages ran off the screen.** The in-panel banner now wraps any text. The canvas toast shows only the first sentence, and OpenAI's masked copy of your key is left out of the message.
