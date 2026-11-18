@@ -2283,6 +2283,23 @@ async function buildInstanceSheet(
       sheet.appendChild(section);
     }
 
+    // Every other variant property (size, state, …) gets its own row of
+    // values, with the rest held at their defaults, so no value is missing.
+    const extraAxes = variantEntries.slice(2);
+    if (extraAxes.length > 0) {
+      const section = makeAutoFrame('VERTICAL', 16);
+      section.appendChild(makeText('Other variants', 13, true, 0.25));
+      for (const [axisName, def] of extraAxes) {
+        const row = makeAutoFrame('HORIZONTAL', 24);
+        row.appendChild(makeRowLabel(axisName));
+        for (const value of (def.variantOptions || []).map((v) => String(v)).slice(0, 12)) {
+          row.appendChild(makeInstanceCell({ [axisName]: value }, value));
+        }
+        section.appendChild(row);
+      }
+      sheet.appendChild(section);
+    }
+
     // Boolean toggles — property keys carry their #id suffix; setProperties
     // needs the full key, the label only the base name.
     if (boolEntries.length > 0) {
@@ -2293,6 +2310,26 @@ async function buildInstanceSheet(
         row.appendChild(makeRowLabel(key.split('#')[0]));
         row.appendChild(makeInstanceCell({ [key]: true }, 'true'));
         row.appendChild(makeInstanceCell({ [key]: false }, 'false'));
+        section.appendChild(row);
+      }
+      sheet.appendChild(section);
+    }
+
+    // Text and instance swap properties can't be laid out as a grid of values,
+    // so list them with their defaults so the sheet accounts for every property.
+    const otherEntries = Object.entries(defs).filter(([, d]) => d.type === 'TEXT' || d.type === 'INSTANCE_SWAP');
+    if (otherEntries.length > 0) {
+      const section = makeAutoFrame('VERTICAL', 10);
+      section.appendChild(makeText('Text and swap properties', 13, true, 0.25));
+      for (const [key, def] of otherEntries.slice(0, 12)) {
+        let value = String(def.defaultValue);
+        if (def.type === 'INSTANCE_SWAP') {
+          const swap = await figma.getNodeByIdAsync(value).catch(() => null);
+          value = swap ? swap.name : 'instance';
+        }
+        const row = makeAutoFrame('HORIZONTAL', 24);
+        row.appendChild(makeRowLabel(key.split('#')[0]));
+        row.appendChild(makeText(`${def.type === 'TEXT' ? 'Text' : 'Instance swap'}, default "${value}"`, 11, false, 0.35));
         section.appendChild(row);
       }
       sheet.appendChild(section);
