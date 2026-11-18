@@ -5717,6 +5717,20 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     }
     return null;
   }
+  function hasHitAreaAnnotation(node) {
+    const pattern = /hit (area|target|region)|touch (target|area)|tap target|target size|tappable/i;
+    let visited = 0;
+    const walk = (current) => {
+      if (visited++ > 2e3) return false;
+      const annotations = "annotations" in current ? current.annotations : null;
+      if (Array.isArray(annotations) && annotations.some((a) => pattern.test(`${a.label || ""} ${a.labelMarkdown || ""}`))) {
+        return true;
+      }
+      if (current.type === "INSTANCE" || !("children" in current)) return false;
+      return current.children.some((child) => walk(child));
+    };
+    return walk(node);
+  }
   function runAccessibilityChecks(node, states) {
     const checks = [];
     const interactive = isInteractiveComponent(node, states);
@@ -5733,23 +5747,25 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       const height = "height" in target ? target.height : 0;
       const minDim = Math.min(width, height);
       const where = target !== node ? ` (smallest variant: "${target.name}")` : "";
+      const size = `${Math.round(width)}\xD7${Math.round(height)}px`;
       if (minDim >= 44) {
         checks.push({
           check: "Touch target size",
           status: "pass",
-          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets recommended 44px minimum${where}`
+          suggestion: `${size} meets the 44\xD744 touch size as well as the WCAG minimum${where}`
         });
       } else if (minDim >= 24) {
+        const documented = hasHitAreaAnnotation(node);
         checks.push({
           check: "Touch target size",
-          status: "warning",
-          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px${where}`
+          status: "pass",
+          suggestion: `${size} meets WCAG 2.2 AA (24\xD724)${where}. It's under 44\xD744, the size for touch screens: ${documented ? "an annotation covers the hit area" : "give it a larger hit area in code on touch screens, and note that in an annotation"}.`
         });
       } else {
         checks.push({
           check: "Touch target size",
           status: "fail",
-          suggestion: `Target size ${Math.round(width)}\xD7${Math.round(height)}px is below WCAG 2.5.8 minimum of 24\xD724px${where}`
+          suggestion: `${size} is below the WCAG 2.5.8 minimum of 24\xD724px${where}`
         });
       }
     }
