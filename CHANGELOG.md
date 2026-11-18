@@ -3,6 +3,7 @@
 ## 2.12.0
 
 ### Changed
+- **Compact sizes that meet WCAG no longer warn.** A touch target from 24 to 44px passes, because WCAG 2.2 AA asks for 24×24 and 44×44 is the AAA and touch-screen size. The result notes the touch size and suggests a larger hit area in code. If an annotation already covers the hit area, it says so. Below 24px still fails.
 - **The panel is organized around the selected component and its problems.** The top bar names what Analyze will run on and holds the one action (Analyze, or Stop analysis during a run). Results open with a one-line verdict, for example "13 problems, 8 fixable here", with the readiness score beside it as a secondary number. Problems are grouped (Accessibility, Interactive states, Hard-coded values, Layer names, Component setup), and passing checks fold into one line under their group instead of a row each.
 - **AI settings no longer fill the first screen.** Without a key, a single row says AI features are off and the audit runs without them, with an Add API key button that opens the form. With a key, the row names the model in use.
 - **Results are split into tabs.** Audit holds the problems and fixes, Properties holds the property table, description and states, and Handoff holds export and the AI-readability notes. Properties and Handoff unlock after an analysis.
