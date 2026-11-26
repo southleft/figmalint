@@ -583,7 +583,8 @@
       } else if (hasRadiusVariables) {
         debugLog(`\u{1F50D} [VARIABLES] ${currentNode.name} has radius variables - skipping hard-coded detection`);
       }
-      if (!skipHardCoded && !hasRadiusVariables && "topLeftRadius" in currentNode) {
+      const uniformRadius = "cornerRadius" in currentNode && typeof currentNode.cornerRadius === "number";
+      if (!skipHardCoded && !hasRadiusVariables && !uniformRadius && "topLeftRadius" in currentNode) {
         debugLog(`\u{1F50D} [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
         if (isDefaultVariantFrame) {
           debugLog(`   \u{1F6AB} Skipping default variant frame individual corner radii`);
@@ -945,11 +946,11 @@ Evaluate based on these criteria:
     ],
     "gaps": [
       "REQUIRED: List 2-4 specific DESIGN gaps that limit MCP code generation effectiveness",
-      "FIGMA-ONLY Examples: 'Hard-coded spacing values, not bound to variables', 'A true/false variant that should be a boolean property', 'Frames without auto layout, so layout becomes absolute positioning', 'Description says what it is but not when to use it', 'Variant values with symbols such as "Hover & Active" that become awkward code values'"
+      "FIGMA-ONLY Examples: 'Hard-coded spacing values, not bound to variables', 'A true/false variant that only shows or hides a layer, which a boolean property does directly', 'Frames without auto layout, so layout becomes absolute positioning', 'Description says what it is but not when to use it', 'Variant values with symbols such as "Hover & Active" that become awkward code values'"
     ],
     "recommendations": [
       "REQUIRED: List 2-4 specific, actionable FIGMA DESIGN recommendations to improve MCP readiness",
-      "FIGMA-ONLY Examples: 'Bind the remaining spacing to variables', 'Convert the Show icon variant to a boolean property', 'Apply auto layout to the content frame', 'Add when-to-use guidance to the description', 'Set code syntax on variables so token names match the codebase'"
+      "FIGMA-ONLY Examples: 'Bind the remaining spacing to variables', 'Replace the Show icon variant, which only hides the icon, with a boolean property', 'Apply auto layout to the content frame', 'Add when-to-use guidance to the description', 'Set code syntax on variables so token names match the codebase'"
     ],
     "implementationNotes": "Design handoff guidance for developers implementing this component"
   }
@@ -3284,7 +3285,8 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
     stroke: ["STROKE_COLOR"]
   };
   function isScopeCompatible(scopes, relevant) {
-    if (!scopes || scopes.length === 0) return true;
+    if (!scopes) return true;
+    if (scopes.length === 0) return false;
     if (scopes.includes("ALL_SCOPES")) return true;
     return scopes.some((scope) => relevant.includes(scope));
   }
@@ -3431,18 +3433,24 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       for (const libCollection of libraryCollections) {
         try {
           const libraryVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCollection.key);
-          for (const libVar of libraryVars) {
-            try {
-              const imported = await figma.variables.importVariableByKeyAsync(libVar.key);
-              allImported.push(imported);
-              if (!collectionNames.has(imported.variableCollectionId)) {
+          const BATCH = 40;
+          for (let i = 0; i < libraryVars.length; i += BATCH) {
+            const batch = libraryVars.slice(i, i + BATCH);
+            const imported = await Promise.all(batch.map(
+              (libVar) => figma.variables.importVariableByKeyAsync(libVar.key).catch((importErr) => {
+                console.warn(`Failed to import library variable ${libVar.name}:`, importErr);
+                return null;
+              })
+            ));
+            for (const variable of imported) {
+              if (!variable) continue;
+              allImported.push(variable);
+              if (!collectionNames.has(variable.variableCollectionId)) {
                 collectionNames.set(
-                  imported.variableCollectionId,
+                  variable.variableCollectionId,
                   `${libCollection.libraryName} / ${libCollection.name}`
                 );
               }
-            } catch (importErr) {
-              console.warn(`Failed to import library variable ${libVar.name}:`, importErr);
             }
           }
         } catch (collErr) {
@@ -3682,8 +3690,15 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       return [];
     }
   }
-  async function findBestMatchingVariable(pixelValue, propertyPath, tolerance = 2) {
+  async function findBestMatchingVariable(pixelValue, propertyPath, tolerance = 2, pillThreshold) {
+    const isRadius = /radius$/i.test(propertyPath);
+    const isPill = isRadius && pillThreshold !== void 0 && pillThreshold > 0 && pixelValue >= pillThreshold;
     let suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
+    if (isPill) {
+      const pills = await findPillRadiusVariables(pillThreshold);
+      const seen = new Set(suggestions.map((s) => s.variableId));
+      suggestions = [...pills.filter((s) => !seen.has(s.variableId)), ...suggestions];
+    }
     if (suggestions.length === 0) return suggestions;
     const relevantScopes = PROPERTY_FLOAT_SCOPES[propertyPath];
     if (relevantScopes) {
@@ -3705,15 +3720,45 @@ Focus on creating a comprehensive DESIGN analysis that helps designers build sca
       counterAxisSpacing: ["gap", "spacing", "space"]
     };
     const keywords = affinityMap[propertyPath] || [];
-    if (keywords.length === 0) return suggestions;
-    const boosted = suggestions.map((s) => {
+    const rank = (s) => {
+      const value = parseFloat(s.value);
+      const rendersSame = isPill ? value >= pillThreshold ? 1 : 0 : s.matchScore === 1 ? 1 : 0;
+      const scoped = relevantScopes && s.scopes && s.scopes.some((scope) => relevantScopes.includes(scope)) ? 1 : 0;
       const nameLower = s.variableName.toLowerCase();
-      const hasAffinity = keywords.some((kw) => nameLower.includes(kw));
-      return __spreadProps(__spreadValues({}, s), {
-        matchScore: hasAffinity ? Math.min(s.matchScore + 0.3, 1) : s.matchScore
-      });
-    });
-    return boosted.sort((a, b) => b.matchScore - a.matchScore);
+      const affinity = keywords.some((kw) => nameLower.includes(kw)) ? 1 : 0;
+      const pillName = isPill ? /pill|full/.test(nameLower) ? 2 : /round|circle/.test(nameLower) ? 1 : 0 : 0;
+      return [rendersSame, scoped, pillName, affinity, s.matchScore];
+    };
+    return suggestions.map((s) => ({ s, key: rank(s) })).sort((a, b) => {
+      for (let i = 0; i < a.key.length; i++) {
+        if (a.key[i] !== b.key[i]) return b.key[i] - a.key[i];
+      }
+      return 0;
+    }).map(({ s }) => s);
+  }
+  async function pillThresholdFor(nodeId, propertyPath) {
+    if (!nodeId || !propertyPath || !/radius$/i.test(propertyPath)) return void 0;
+    try {
+      const node = await figma.getNodeByIdAsync(nodeId);
+      if (node && "width" in node && "height" in node) {
+        return Math.min(node.width, node.height) / 2;
+      }
+    } catch (e) {
+    }
+    return void 0;
+  }
+  async function findPillRadiusVariables(threshold) {
+    const cache = await getResolvedVariableCache();
+    return cache.floatEntries.filter((entry) => entry.value >= threshold && /radius|round|pill|full|circle/i.test(entry.variableName)).map((entry) => ({
+      variableId: entry.variableId,
+      variableName: entry.variableName,
+      collectionName: entry.collectionName,
+      value: `${entry.value}px`,
+      matchScore: 1,
+      type: "number",
+      aliasDepth: entry.aliasDepth,
+      scopes: entry.scopes
+    }));
   }
   async function applyColorFix(node, propertyPath, tokenId) {
     const match = propertyPath.match(/^(fills|strokes)\[(\d+)\]$/);
@@ -5345,7 +5390,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
           } else {
             const pixelValue = parseFloat(token.value || "0");
             if (!isNaN(pixelValue)) {
-              const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
+              const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2, await pillThresholdFor(token.context.nodeId, token.context.property));
               token.context.hasMatchingToken = matches.length > 0;
               token.context.matchingTokenName = (_d = matches[0]) == null ? void 0 : _d.variableName;
             } else {
@@ -5492,7 +5537,10 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         suggestion: actualProperties.length > 0 ? "Component has configurable properties" : "Consider adding properties for component customization"
       }
     ];
-    const accessibility = runAccessibilityChecks(node, actualStates);
+    const ownsInteraction = actualStates.some((s) => /hover|press|active/i.test(s));
+    const hasOwnFocus = actualStates.some((s) => /focus/i.test(s));
+    const focusSource = !hasOwnFocus && !ownsInteraction ? await findNestedFocusSource(node) : null;
+    const accessibility = runAccessibilityChecks(node, actualStates, focusSource);
     const detachedInstances = detectDetachedInstances(node);
     const aiHandoff = await runAIHandoffChecks(
       node,
@@ -5569,11 +5617,6 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         problems.push(`"${name}" has symbols that don't carry into a prop name`);
       }
       if (def.type === "VARIANT") {
-        const values = (def.variantOptions || []).map((v) => v.toLowerCase());
-        const booleanish = ["true", "false", "yes", "no", "on", "off"];
-        if (values.length === 2 && values.every((v) => booleanish.includes(v))) {
-          problems.push(`"${name}" is a ${def.variantOptions.join("/")} variant; a boolean property becomes a real boolean prop`);
-        }
         const symbolValues = (def.variantOptions || []).filter((v) => /[^A-Za-z0-9 _.-]/.test(v));
         if (symbolValues.length > 0) {
           problems.push(`"${name}" values like "${symbolValues[0]}" become awkward code values`);
@@ -5683,9 +5726,18 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
   function isInteractiveComponent(node, states) {
     const nameLower = node.name.toLowerCase();
     if (INTERACTIVE_KEYWORDS.some((kw) => nameLower.includes(kw))) return true;
+    if (/\b(note|helper|hint|caption|legend)\b|error text|help text/i.test(node.name)) return false;
     const interactiveStates = ["hover", "pressed", "focus", "focused", "active", "disabled"];
     if (states.some((s) => interactiveStates.includes(s.toLowerCase()))) return true;
     return false;
+  }
+  function findVariantName(node) {
+    let current = node.parent;
+    while (current && current.type !== "PAGE") {
+      if (current.type === "COMPONENT") return current.name;
+      current = current.parent;
+    }
+    return null;
   }
   function getLuminance(r, g, b) {
     const [rs, gs, bs] = [r, g, b].map((c) => {
@@ -5699,20 +5751,20 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     return (lighter + 0.05) / (darker + 0.05);
   }
   function findBackgroundColor(node) {
+    var _a;
     let current = node.parent;
     while (current && "type" in current && current.type !== "COMPONENT_SET") {
       const sceneNode = current;
       if ("fills" in sceneNode) {
         const fills = sceneNode.fills;
         if (Array.isArray(fills)) {
-          for (const fill of fills) {
-            if (fill.type === "SOLID" && fill.visible !== false && fill.color) {
-              if (fill.boundVariables && fill.boundVariables.color) continue;
-              return fill.color;
-            }
+          const fill = fills.find((f) => f.type === "SOLID" && f.visible !== false && f.color);
+          if (fill) {
+            return ((_a = fill.opacity) != null ? _a : 1) < 1 ? null : fill.color;
           }
         }
       }
+      if (current.type === "COMPONENT") break;
       current = current.parent;
     }
     return null;
@@ -5731,14 +5783,43 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     };
     return walk(node);
   }
-  function runAccessibilityChecks(node, states) {
+  async function findNestedFocusSource(node) {
+    var _a;
+    if (!("findAll" in node)) return null;
+    const instances = node.findAll((n) => n.type === "INSTANCE");
+    const seen = /* @__PURE__ */ new Set();
+    for (const instance of instances.slice(0, 200)) {
+      let main = null;
+      try {
+        main = await instance.getMainComponentAsync();
+      } catch (e) {
+        continue;
+      }
+      if (!main) continue;
+      const owner = ((_a = main.parent) == null ? void 0 : _a.type) === "COMPONENT_SET" ? main.parent : main;
+      if (seen.has(owner.id)) continue;
+      seen.add(owner.id);
+      if (owner.type !== "COMPONENT_SET") continue;
+      try {
+        const hasFocus = Object.values(owner.componentPropertyDefinitions).some(
+          (def) => def.type === "VARIANT" && (def.variantOptions || []).some((v) => /focus/i.test(v))
+        );
+        if (hasFocus) return owner.name;
+      } catch (e) {
+      }
+    }
+    return null;
+  }
+  function runAccessibilityChecks(node, states, focusSource = null) {
+    var _a, _b;
     const checks = [];
     const interactive = isInteractiveComponent(node, states);
     if (interactive) {
       let target = node;
       if (node.type === "COMPONENT_SET") {
-        for (const variant of node.children) {
-          if (Math.min(variant.width, variant.height) < Math.min(target.width, target.height)) {
+        const candidates = node.children.filter((v) => !/divider|separator|spacer/i.test(v.name));
+        for (const variant of candidates.length > 0 ? candidates : node.children) {
+          if (target === node || Math.min(variant.width, variant.height) < Math.min(target.width, target.height)) {
             target = variant;
           }
         }
@@ -5764,8 +5845,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       } else {
         checks.push({
           check: "Touch target size",
-          status: "fail",
-          suggestion: `${size} is below the WCAG 2.5.8 minimum of 24\xD724px${where}`
+          status: "warning",
+          suggestion: `${size} is under the WCAG 2.5.8 minimum of 24\xD724${where}. It still passes if it's spaced so nothing else clickable is within 24px, or if the clickable area in code (such as the whole label row) is at least 24px tall.`
         });
       }
     }
@@ -5776,8 +5857,8 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       });
       checks.push({
         check: "Focus state",
-        status: hasFocus ? "pass" : "warning",
-        suggestion: hasFocus ? "Component has a focus state for keyboard navigation" : "Add a visible focus state to support keyboard navigation (WCAG 2.4.7)"
+        status: hasFocus || focusSource ? "pass" : "warning",
+        suggestion: hasFocus ? "Component has a focus state for keyboard navigation" : focusSource ? `Focus comes from the nested "${focusSource}" component, which has a focus state` : "Add a visible focus state to support keyboard navigation (WCAG 2.4.7)"
       });
     }
     if ("findAll" in node) {
@@ -5811,46 +5892,75 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       const textNodes = containerNode.findAll((n) => n.type === "TEXT");
       let worstRatio = Infinity;
       let checkedCount = 0;
+      let unknownBackground = 0;
       let worstTextName = "";
+      const isDisabledVariant = (text) => {
+        let current = text.parent;
+        while (current && current.type !== "PAGE") {
+          if (current.type === "COMPONENT") return /disabled|inactive/i.test(current.name);
+          current = current.parent;
+        }
+        return false;
+      };
       for (const text of textNodes) {
+        if (!text.visible || isDisabledVariant(text)) continue;
         const fills = text.fills;
         if (!Array.isArray(fills) || fills.length === 0) continue;
-        const textFill = fills.find(
-          (f) => f.type === "SOLID" && f.visible !== false && f.color && !(f.boundVariables && f.boundVariables.color)
-        );
+        const textFill = fills.find((f) => f.type === "SOLID" && f.visible !== false && f.color);
         if (!textFill) continue;
         const bgColor = findBackgroundColor(text);
-        if (!bgColor) continue;
-        const textLum = getLuminance(textFill.color.r, textFill.color.g, textFill.color.b);
-        const bgLum = getLuminance(bgColor.r, bgColor.g, bgColor.b);
-        const ratio = getContrastRatio(textLum, bgLum);
+        if (!bgColor) {
+          unknownBackground++;
+          continue;
+        }
+        const alpha = ((_a = textFill.opacity) != null ? _a : 1) * ((_b = text.opacity) != null ? _b : 1);
+        const mix = (c, b) => c * alpha + b * (1 - alpha);
+        const color = {
+          r: mix(textFill.color.r, bgColor.r),
+          g: mix(textFill.color.g, bgColor.g),
+          b: mix(textFill.color.b, bgColor.b)
+        };
+        const ratio = getContrastRatio(
+          getLuminance(color.r, color.g, color.b),
+          getLuminance(bgColor.r, bgColor.g, bgColor.b)
+        );
         checkedCount++;
         if (ratio < worstRatio) {
           worstRatio = ratio;
-          worstTextName = text.name || "text";
+          const variant = findVariantName(text);
+          worstTextName = variant ? `${text.name || "text"}" in "${variant}` : text.name || "text";
         }
       }
+      const unknownNote = unknownBackground > 0 ? ` ${unknownBackground} text layer${unknownBackground === 1 ? " sits" : "s sit"} on a transparent background, so ${unknownBackground === 1 ? "it depends" : "they depend"} on where the component is placed and ${unknownBackground === 1 ? "wasn't" : "weren't"} measured.` : "";
       if (checkedCount > 0 && worstRatio !== Infinity) {
         const ratioStr = worstRatio.toFixed(1);
+        const counted = `${checkedCount} text layer${checkedCount === 1 ? "" : "s"} measured, disabled variants excluded.`;
         if (worstRatio >= 4.5) {
           checks.push({
             check: "Color contrast",
             status: "pass",
-            suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1)`
+            suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1). ${counted}${unknownNote}`
           });
         } else if (worstRatio >= 3) {
           checks.push({
             check: "Color contrast",
             status: "warning",
-            suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1)`
+            suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1). ${counted}${unknownNote}`
           });
         } else {
           checks.push({
             check: "Color contrast",
             status: "fail",
-            suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1`
+            suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1. ${counted}${unknownNote}`
           });
         }
+      } else if (unknownBackground > 0) {
+        checks.push({
+          check: "Color contrast",
+          status: "info",
+          value: "Not measured",
+          suggestion: `Every text layer sits on a transparent background, so contrast depends on where the component is placed. Check it in context.`
+        });
       }
     }
     if (checks.length === 0) {
@@ -5964,15 +6074,6 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
         recommendations.push("Consider adding layout variant properties (orientation, density)");
       }
     }
-    if (strengths.length === 0) {
-      strengths.push("Component follows basic Figma structure patterns");
-    }
-    if (gaps.length === 0) {
-      gaps.push("Well-structured component - consider minor enhancements for broader usage");
-    }
-    if (recommendations.length === 0) {
-      recommendations.push("No structural gaps found. See the AI handoff checks for what reaches AI tools.");
-    }
     let score = 0;
     const hasProperties = actualProperties.length > 0;
     const hasTokens = totalTokens > 0;
@@ -6011,7 +6112,7 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
       implementationNotes: generateImplementationNotes(family, strengths, gaps, actualProperties, actualStates, tokenCounts)
     };
   }
-  function generateImplementationNotes(family, strengths, gaps, properties, states, tokenCounts) {
+  function generateImplementationNotes(family, _strengths, gaps, properties, states, tokenCounts) {
     const notes = [];
     if (family === "button") {
       if (states.length < 3) {
@@ -6049,14 +6150,10 @@ Focus ONLY on what's actually in the Figma component for existing data. Recommen
     }
     if (notes.length === 0) {
       if (gaps.length > 3) {
-        notes.push("Focus on addressing the high-priority gaps identified above");
-      } else if (strengths.length > gaps.length) {
-        notes.push("Component is well-structured for code generation with minor improvements needed");
-      } else {
-        notes.push("Balance quick wins with systematic improvements for optimal results");
+        notes.push("Start with the gaps listed above");
       }
     }
-    return notes.join(". ") + ".";
+    return notes.length > 0 ? notes.join(". ") + "." : "";
   }
   function deduplicateRecommendations(items) {
     if (items.length <= 1) return items;
@@ -6566,14 +6663,7 @@ ${scoringCriteria}
      * Apply consistency corrections to analysis result
      */
     applyConsistencyCorrections(result, context) {
-      var _a;
       const corrected = __spreadValues({}, result);
-      if ((_a = context.additionalContext) == null ? void 0 : _a.componentFamily) {
-        corrected.metadata = this.applyComponentFamilyCorrections(
-          corrected.metadata,
-          context.additionalContext.componentFamily
-        );
-      }
       corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
       corrected.metadata.mcpReadiness = this.ensureConsistentScoring(
         corrected.metadata.mcpReadiness || {},
@@ -6804,23 +6894,6 @@ ${scoringCriteria}
         (token) => token.name.includes("semantic-") || token.name.includes("primary") || token.name.includes("secondary")
       );
       return hasSemanticColors !== false;
-    }
-    applyComponentFamilyCorrections(metadata, family) {
-      var _a, _b, _c;
-      const corrected = __spreadValues({}, metadata);
-      switch (family) {
-        case "button":
-          if (!((_a = corrected.states) == null ? void 0 : _a.includes("hover"))) {
-            corrected.states = [...corrected.states || [], "hover", "focus", "active", "disabled"];
-          }
-          break;
-        case "avatar":
-          if (!((_b = corrected.variants) == null ? void 0 : _b.size) && !((_c = corrected.props) == null ? void 0 : _c.some((p) => p.name.includes("size")))) {
-            corrected.variants = __spreadProps(__spreadValues({}, corrected.variants), { size: ["small", "medium", "large"] });
-          }
-          break;
-      }
-      return corrected;
     }
     applyTokenConsistencyCorrections(tokens) {
       if (!tokens) return tokens;
@@ -7405,7 +7478,8 @@ ${scoringCriteria}
     try {
       for (const fix of (data == null ? void 0 : data.fixes) || []) {
         if (!fix.propertyPath || !fix.newValue) continue;
-        const key = `${fix.newValue}|${fix.propertyPath}`;
+        const pill = await pillThresholdFor(fix.nodeId, fix.propertyPath);
+        const key = `${fix.newValue}|${fix.propertyPath}${pill !== void 0 && parseFloat(fix.newValue) >= pill ? "|pill" : ""}`;
         if (key in resolutions) continue;
         try {
           const isColorProperty = /^(fills|strokes)(\[\d+\])?$/.test(fix.propertyPath);
@@ -7414,7 +7488,7 @@ ${scoringCriteria}
             matches = await findMatchingColorVariable(fix.newValue, 0.1, colorFieldFromPropertyPath(fix.propertyPath));
           } else {
             const pixelValue = parseFloat(fix.newValue);
-            matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2);
+            matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2, pill);
           }
           resolutions[key] = matches.length > 0 ? {
             tokenId: matches[0].variableId,
@@ -7900,7 +7974,7 @@ Respond naturally and helpfully to the user's question.`;
           }
         } else {
           const pixelValue = parseFloat(data.suggestedValue || "0");
-          const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || "", 2);
+          const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || "", 2, await pillThresholdFor(data.nodeId, data.propertyPath));
           if (spacingMatches.length > 0) {
             preview = await previewFix(sceneNode, data.propertyPath, spacingMatches[0].variableId);
           }
@@ -8092,7 +8166,7 @@ Respond naturally and helpfully to the user's question.`;
                 } else {
                   const pixelValue = parseFloat(fix.newValue);
                   if (!isNaN(pixelValue)) {
-                    const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || "", 2);
+                    const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || "", 2, await pillThresholdFor(fix.nodeId, fix.propertyPath));
                     if (spacingMatches.length > 0) {
                       tokenId = spacingMatches[0].variableId;
                     }

@@ -29,6 +29,7 @@ import {
   applySpacingFix,
   findMatchingColorVariable,
   findBestMatchingVariable,
+  pillThresholdFor,
   colorFieldFromPropertyPath,
   FixPreview,
   FixResult,
@@ -684,7 +685,9 @@ async function handlePreviewBatchFix(data: { fixes?: Array<{ nodeId: string; pro
   try {
     for (const fix of data?.fixes || []) {
       if (!fix.propertyPath || !fix.newValue) continue;
-      const key = `${fix.newValue}|${fix.propertyPath}`;
+      // A radius can be a pill on one layer and not another, so it resolves per layer
+      const pill = await pillThresholdFor(fix.nodeId, fix.propertyPath);
+      const key = `${fix.newValue}|${fix.propertyPath}${pill !== undefined && parseFloat(fix.newValue) >= pill ? '|pill' : ''}`;
       if (key in resolutions) continue;
 
       try {
@@ -694,7 +697,7 @@ async function handlePreviewBatchFix(data: { fixes?: Array<{ nodeId: string; pro
           matches = await findMatchingColorVariable(fix.newValue, 0.1, colorFieldFromPropertyPath(fix.propertyPath));
         } else {
           const pixelValue = parseFloat(fix.newValue);
-          matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2);
+          matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2, pill);
         }
         resolutions[key] = matches.length > 0
           ? {
@@ -1388,7 +1391,7 @@ async function handlePreviewFix(data: FixPreviewRequest): Promise<void> {
       } else {
         // Spacing property - find matching variable with property-aware ranking
         const pixelValue = parseFloat(data.suggestedValue || '0');
-        const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || '', 2);
+        const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || '', 2, await pillThresholdFor(data.nodeId, data.propertyPath));
         if (spacingMatches.length > 0) {
           preview = await previewTokenFix(sceneNode, data.propertyPath, spacingMatches[0].variableId);
         }
@@ -1641,7 +1644,7 @@ async function handleApplyBatchFix(data: BatchFixRequest): Promise<void> {
               } else {
                 const pixelValue = parseFloat(fix.newValue);
                 if (!isNaN(pixelValue)) {
-                  const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || '', 2);
+                  const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || '', 2, await pillThresholdFor(fix.nodeId, fix.propertyPath));
                   if (spacingMatches.length > 0) {
                     tokenId = spacingMatches[0].variableId;
                   }

@@ -612,7 +612,10 @@ export async function extractDesignTokensFromNode(node: SceneNode): Promise<Toke
     }
 
     // Also check for individual corner radius properties if they exist
-    if (!skipHardCoded && !hasRadiusVariables && 'topLeftRadius' in currentNode) {
+    // Individual corners only matter when they differ (cornerRadius is mixed);
+    // a uniform radius was already counted once above.
+    const uniformRadius = 'cornerRadius' in currentNode && typeof (currentNode as any).cornerRadius === 'number';
+    if (!skipHardCoded && !hasRadiusVariables && !uniformRadius && 'topLeftRadius' in currentNode) {
       debugLog(`🔍 [HARD-CODED] Checking individual corner radius for ${currentNode.name} (no variables)`);
       
       // Skip if this node has default variant frame styles

@@ -7,7 +7,7 @@ import { extractDesignTokensFromNode } from './token-analyzer';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
-import { findMatchingColorVariable, findBestMatchingVariable, colorFieldFromPropertyPath } from '../fixes/token-fixer';
+import { findMatchingColorVariable, findBestMatchingVariable, colorFieldFromPropertyPath, pillThresholdFor } from '../fixes/token-fixer';
 
 /**
  * Extract comprehensive component context for analysis
@@ -1925,7 +1925,7 @@ export async function enrichTokensWithMatches(tokens: TokenAnalysis): Promise<vo
         } else {
           const pixelValue = parseFloat(token.value || '0');
           if (!isNaN(pixelValue)) {
-            const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
+            const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2, await pillThresholdFor(token.context.nodeId, token.context.property));
             token.context.hasMatchingToken = matches.length > 0;
             token.context.matchingTokenName = matches[0]?.variableName;
           } else {
@@ -2153,7 +2153,13 @@ async function createAuditResults(
   ];
 
   // Real accessibility checks
-  const accessibility = runAccessibilityChecks(node, actualStates);
+  // A component with its own pointer states (hover, pressed) owns its focus
+  // state too. A composite whose states are only default/error/disabled (a
+  // radio group, tabs, a select wrapping an input) takes focus from its items.
+  const ownsInteraction = actualStates.some((s) => /hover|press|active/i.test(s));
+  const hasOwnFocus = actualStates.some((s) => /focus/i.test(s));
+  const focusSource = !hasOwnFocus && !ownsInteraction ? await findNestedFocusSource(node) : null;
+  const accessibility = runAccessibilityChecks(node, actualStates, focusSource);
 
   // Detached instance detection
   const detachedInstances = detectDetachedInstances(node);
@@ -2242,11 +2248,9 @@ function propertyNameProblems(node: SceneNode): string[] {
       problems.push(`"${name}" has symbols that don't carry into a prop name`);
     }
     if (def.type === 'VARIANT') {
-      const values = (def.variantOptions || []).map((v) => v.toLowerCase());
-      const booleanish = ['true', 'false', 'yes', 'no', 'on', 'off'];
-      if (values.length === 2 && values.every((v) => booleanish.includes(v))) {
-        problems.push(`"${name}" is a ${def.variantOptions!.join('/')} variant; a boolean property becomes a real boolean prop`);
-      }
+      // A true/false variant is not flagged: Figma's boolean properties can
+      // only show or hide layers, so a toggle that changes styling (a rounded
+      // corner, a color) has to be a variant.
       const symbolValues = (def.variantOptions || []).filter((v) => /[^A-Za-z0-9 _.-]/.test(v));
       if (symbolValues.length > 0) {
         problems.push(`"${name}" values like "${symbolValues[0]}" become awkward code values`);
@@ -2404,10 +2408,23 @@ function isInteractiveComponent(node: SceneNode, states: string[]): boolean {
   const nameLower = node.name.toLowerCase();
   // Check name keywords
   if (INTERACTIVE_KEYWORDS.some(kw => nameLower.includes(kw))) return true;
+  // Supporting text (a field note, helper or error text) often mirrors its
+  // field's disabled and error states without being focusable itself
+  if (/\b(note|helper|hint|caption|legend)\b|error text|help text/i.test(node.name)) return false;
   // Check if it has interactive states (hover, pressed, focus, active, disabled)
   const interactiveStates = ['hover', 'pressed', 'focus', 'focused', 'active', 'disabled'];
   if (states.some(s => interactiveStates.includes(s.toLowerCase()))) return true;
   return false;
+}
+
+/** Name of the variant (component) a layer belongs to, if any */
+function findVariantName(node: SceneNode): string | null {
+  let current: BaseNode | null = node.parent;
+  while (current && current.type !== 'PAGE') {
+    if (current.type === 'COMPONENT') return current.name;
+    current = current.parent;
+  }
+  return null;
 }
 
 /**
@@ -2430,7 +2447,10 @@ function getContrastRatio(l1: number, l2: number): number {
 }
 
 /**
- * Find the nearest background color by walking up the parent chain
+ * Find the nearest background color by walking up the parent chain.
+ * A variable-bound fill still carries its resolved color in `fill.color`, so
+ * those count too. A translucent fill means the real background depends on
+ * what's behind the component, so the result is unknown (null).
  */
 function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number } | null {
   let current: BaseNode | null = node.parent;
@@ -2441,15 +2461,13 @@ function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number
     if ('fills' in sceneNode) {
       const fills = (sceneNode as any).fills;
       if (Array.isArray(fills)) {
-        for (const fill of fills) {
-          if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
-            // Skip if bound to a variable — we can't resolve the actual value reliably
-            if (fill.boundVariables && fill.boundVariables.color) continue;
-            return fill.color;
-          }
+        const fill = fills.find((f: any) => f.type === 'SOLID' && f.visible !== false && f.color);
+        if (fill) {
+          return (fill.opacity ?? 1) < 1 ? null : fill.color;
         }
       }
     }
+    if (current.type === 'COMPONENT') break; // nothing above a variant is part of it
     current = current.parent;
   }
   return null;
@@ -2472,9 +2490,42 @@ function hasHitAreaAnnotation(node: SceneNode): boolean {
 }
 
 /**
+ * A composite (tabs, pagination, a menu) is often built from item components
+ * that carry the focus state themselves. Returns the name of the first nested
+ * component whose variants include a focus state.
+ */
+async function findNestedFocusSource(node: SceneNode): Promise<string | null> {
+  if (!('findAll' in node)) return null;
+  const instances = (node as FrameNode).findAll((n) => n.type === 'INSTANCE') as InstanceNode[];
+  const seen = new Set<string>();
+  for (const instance of instances.slice(0, 200)) {
+    let main: ComponentNode | null = null;
+    try {
+      main = await instance.getMainComponentAsync();
+    } catch {
+      continue;
+    }
+    if (!main) continue;
+    const owner = main.parent?.type === 'COMPONENT_SET' ? (main.parent as ComponentSetNode) : main;
+    if (seen.has(owner.id)) continue;
+    seen.add(owner.id);
+    if (owner.type !== 'COMPONENT_SET') continue;
+    try {
+      const hasFocus = Object.values(owner.componentPropertyDefinitions).some(
+        (def) => def.type === 'VARIANT' && (def.variantOptions || []).some((v) => /focus/i.test(v))
+      );
+      if (hasFocus) return owner.name;
+    } catch {
+      // Remote or broken sets can't be read; skip them
+    }
+  }
+  return null;
+}
+
+/**
  * Run real accessibility checks on a component node
  */
-function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[] {
+function runAccessibilityChecks(node: SceneNode, states: string[], focusSource: string | null = null): AuditCheck[] {
   const checks: AuditCheck[] = [];
   const interactive = isInteractiveComponent(node, states);
 
@@ -2484,8 +2535,10 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
     // always clears 44px. Measure the smallest variant instead.
     let target: SceneNode = node;
     if (node.type === 'COMPONENT_SET') {
-      for (const variant of node.children) {
-        if (Math.min(variant.width, variant.height) < Math.min(target.width, target.height)) {
+      // Dividers, separators and spacers in a set aren't click targets
+      const candidates = node.children.filter((v) => !/divider|separator|spacer/i.test(v.name));
+      for (const variant of candidates.length > 0 ? candidates : node.children) {
+        if (target === node || Math.min(variant.width, variant.height) < Math.min(target.width, target.height)) {
           target = variant;
         }
       }
@@ -2515,10 +2568,13 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
         suggestion: `${size} meets WCAG 2.2 AA (24×24)${where}. It's under 44×44, the size for touch screens: ${documented ? 'an annotation covers the hit area' : 'give it a larger hit area in code on touch screens, and note that in an annotation'}.`
       });
     } else {
+      // WCAG 2.5.8 also accepts a smaller target when nothing else clickable
+      // sits within a 24px circle around it. Spacing isn't visible in the
+      // component itself, so this is a warning rather than a failure.
       checks.push({
         check: 'Touch target size',
-        status: 'fail',
-        suggestion: `${size} is below the WCAG 2.5.8 minimum of 24×24px${where}`
+        status: 'warning',
+        suggestion: `${size} is under the WCAG 2.5.8 minimum of 24×24${where}. It still passes if it's spaced so nothing else clickable is within 24px, or if the clickable area in code (such as the whole label row) is at least 24px tall.`
       });
     }
   }
@@ -2531,10 +2587,12 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
     });
     checks.push({
       check: 'Focus state',
-      status: hasFocus ? 'pass' : 'warning',
+      status: hasFocus || focusSource ? 'pass' : 'warning',
       suggestion: hasFocus
         ? 'Component has a focus state for keyboard navigation'
-        : 'Add a visible focus state to support keyboard navigation (WCAG 2.4.7)'
+        : focusSource
+          ? `Focus comes from the nested "${focusSource}" component, which has a focus state`
+          : 'Add a visible focus state to support keyboard navigation (WCAG 2.4.7)'
     });
   }
 
@@ -2573,55 +2631,89 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
     const textNodes = containerNode.findAll(n => n.type === 'TEXT') as TextNode[];
     let worstRatio = Infinity;
     let checkedCount = 0;
+    let unknownBackground = 0;
     let worstTextName = '';
 
+    // WCAG 1.4.3 exempts inactive (disabled) controls from contrast
+    const isDisabledVariant = (text: SceneNode): boolean => {
+      let current: BaseNode | null = text.parent;
+      while (current && current.type !== 'PAGE') {
+        if (current.type === 'COMPONENT') return /disabled|inactive/i.test(current.name);
+        current = current.parent;
+      }
+      return false;
+    };
+
     for (const text of textNodes) {
-      // Get text fill color (skip variable-bound fills)
+      if (!text.visible || isDisabledVariant(text)) continue;
+      // Variable-bound fills carry their resolved color, so they're measured too
       const fills = (text as any).fills;
       if (!Array.isArray(fills) || fills.length === 0) continue;
-      const textFill = fills.find((f: any) =>
-        f.type === 'SOLID' && f.visible !== false && f.color &&
-        !(f.boundVariables && f.boundVariables.color)
-      );
+      const textFill = fills.find((f: any) => f.type === 'SOLID' && f.visible !== false && f.color);
       if (!textFill) continue;
 
-      // Find background color
       const bgColor = findBackgroundColor(text);
-      if (!bgColor) continue;
+      if (!bgColor) {
+        unknownBackground++;
+        continue;
+      }
 
-      const textLum = getLuminance(textFill.color.r, textFill.color.g, textFill.color.b);
-      const bgLum = getLuminance(bgColor.r, bgColor.g, bgColor.b);
-      const ratio = getContrastRatio(textLum, bgLum);
+      // Blend translucent text over its background
+      const alpha = (textFill.opacity ?? 1) * (text.opacity ?? 1);
+      const mix = (c: number, b: number) => c * alpha + b * (1 - alpha);
+      const color = {
+        r: mix(textFill.color.r, bgColor.r),
+        g: mix(textFill.color.g, bgColor.g),
+        b: mix(textFill.color.b, bgColor.b),
+      };
+
+      const ratio = getContrastRatio(
+        getLuminance(color.r, color.g, color.b),
+        getLuminance(bgColor.r, bgColor.g, bgColor.b)
+      );
       checkedCount++;
 
       if (ratio < worstRatio) {
         worstRatio = ratio;
-        worstTextName = text.name || 'text';
+        const variant = findVariantName(text);
+        worstTextName = variant ? `${text.name || 'text'}" in "${variant}` : (text.name || 'text');
       }
     }
 
+    const unknownNote = unknownBackground > 0
+      ? ` ${unknownBackground} text layer${unknownBackground === 1 ? ' sits' : 's sit'} on a transparent background, so ${unknownBackground === 1 ? 'it depends' : 'they depend'} on where the component is placed and ${unknownBackground === 1 ? "wasn't" : "weren't"} measured.`
+      : '';
+
     if (checkedCount > 0 && worstRatio !== Infinity) {
       const ratioStr = worstRatio.toFixed(1);
+      const counted = `${checkedCount} text layer${checkedCount === 1 ? '' : 's'} measured, disabled variants excluded.`;
       // WCAG AA: 4.5:1 for normal text, 3:1 for large text
       if (worstRatio >= 4.5) {
         checks.push({
           check: 'Color contrast',
           status: 'pass',
-          suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1)`
+          suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1). ${counted}${unknownNote}`
         });
       } else if (worstRatio >= 3) {
         checks.push({
           check: 'Color contrast',
           status: 'warning',
-          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1)`
+          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1). ${counted}${unknownNote}`
         });
       } else {
         checks.push({
           check: 'Color contrast',
           status: 'fail',
-          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1`
+          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1. ${counted}${unknownNote}`
         });
       }
+    } else if (unknownBackground > 0) {
+      checks.push({
+        check: 'Color contrast',
+        status: 'info',
+        value: 'Not measured',
+        suggestion: `Every text layer sits on a transparent background, so contrast depends on where the component is placed. Check it in context.`
+      });
     }
   }
 
@@ -2780,16 +2872,7 @@ function generateFallbackMCPReadiness(data: {
     }
   }
 
-  // Ensure we have minimum content (but make it more specific)
-  if (strengths.length === 0) {
-    strengths.push('Component follows basic Figma structure patterns');
-  }
-  if (gaps.length === 0) {
-    gaps.push('Well-structured component - consider minor enhancements for broader usage');
-  }
-  if (recommendations.length === 0) {
-    recommendations.push('No structural gaps found. See the AI handoff checks for what reaches AI tools.');
-  }
+  // No gaps means no gaps: empty lists are hidden rather than padded with filler.
 
   // Calculate score based on actual code generation readiness
   let score = 0;
@@ -2857,7 +2940,7 @@ function generateFallbackMCPReadiness(data: {
  */
 function generateImplementationNotes(
   family: string,
-  strengths: string[],
+  _strengths: string[],
   gaps: string[],
   properties: any[],
   states: string[],
@@ -2909,15 +2992,11 @@ function generateImplementationNotes(
   // If we have no specific notes, provide general guidance
   if (notes.length === 0) {
     if (gaps.length > 3) {
-      notes.push('Focus on addressing the high-priority gaps identified above');
-    } else if (strengths.length > gaps.length) {
-      notes.push('Component is well-structured for code generation with minor improvements needed');
-    } else {
-      notes.push('Balance quick wins with systematic improvements for optimal results');
+      notes.push('Start with the gaps listed above');
     }
   }
-  
-  return notes.join('. ') + '.';
+
+  return notes.length > 0 ? notes.join('. ') + '.' : '';
 }
 
 /**

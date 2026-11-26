@@ -171,11 +171,11 @@ Evaluate based on these criteria:
     ],
     "gaps": [
       "REQUIRED: List 2-4 specific DESIGN gaps that limit MCP code generation effectiveness",
-      "FIGMA-ONLY Examples: 'Hard-coded spacing values, not bound to variables', 'A true/false variant that should be a boolean property', 'Frames without auto layout, so layout becomes absolute positioning', 'Description says what it is but not when to use it', 'Variant values with symbols such as \"Hover & Active\" that become awkward code values'"
+      "FIGMA-ONLY Examples: 'Hard-coded spacing values, not bound to variables', 'A true/false variant that only shows or hides a layer, which a boolean property does directly', 'Frames without auto layout, so layout becomes absolute positioning', 'Description says what it is but not when to use it', 'Variant values with symbols such as \"Hover & Active\" that become awkward code values'"
     ],
     "recommendations": [
       "REQUIRED: List 2-4 specific, actionable FIGMA DESIGN recommendations to improve MCP readiness",
-      "FIGMA-ONLY Examples: 'Bind the remaining spacing to variables', 'Convert the Show icon variant to a boolean property', 'Apply auto layout to the content frame', 'Add when-to-use guidance to the description', 'Set code syntax on variables so token names match the codebase'"
+      "FIGMA-ONLY Examples: 'Bind the remaining spacing to variables', 'Replace the Show icon variant, which only hides the icon, with a boolean property', 'Apply auto layout to the content frame', 'Add when-to-use guidance to the description', 'Set code syntax on variables so token names match the codebase'"
     ],
     "implementationNotes": "Design handoff guidance for developers implementing this component"
   }
