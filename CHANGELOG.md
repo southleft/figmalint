@@ -1,69 +1,49 @@
 # Changelog
 
-## 2.12.0
+## 3.0.0
 
-### Changed
-- **The instance sheet shows every property.** It used only the first two variant properties, so a Button with tone, emphasis, size and state left out size and state. Each further variant property now gets its own row of values, and text and instance swap properties are listed with their defaults.
-- **Compact sizes that meet WCAG no longer warn.** A touch target from 24 to 44px passes, because WCAG 2.2 AA asks for 24×24 and 44×44 is the AAA and touch-screen size. The result notes the touch size and suggests a larger hit area in code. If an annotation already covers the hit area, it says so. Below 24px still fails.
-- **The panel is organized around the selected component and its problems.** The top bar names what Analyze will run on and holds the one action (Analyze, or Stop analysis during a run). Results open with a one-line verdict, for example "13 problems, 8 fixable here", with the readiness score beside it as a secondary number. Problems are grouped (Accessibility, Interactive states, Hard-coded values, Layer names, Component setup), and passing checks fold into one line under their group instead of a row each.
-- **AI settings no longer fill the first screen.** Without a key, a single row says AI features are off and the audit runs without them, with an Add API key button that opens the form. With a key, the row names the model in use.
-- **Results are split into tabs.** Audit holds the problems and fixes, Properties holds the property table, description and states, and Handoff holds export and the AI-readability notes. Properties and Handoff unlock after an analysis.
-- **The verdict links to each group.** Chips under the headline give each group's count and jump to it, and the score has a meter.
-- **Groups are distinct, collapsible blocks.** Headers stay pinned while a long group scrolls, and counts take the color of the group's worst problem. Failures show a red circle, warnings an amber triangle and notes a grey ring, so severity reads by shape as well as color.
-- **Hard-coded values show the variable a Fix will apply** ("4px top padding on `control`, matches `spacing/050`"), or say that no variable has the value. One Fix all button covers every fixable value, and long lists show the first 12 with a Show more link.
-- **Fixes update the verdict and group counts in place.** Fixed rows stay in the list, dimmed, so it doesn't jump under the pointer.
+A new interface, and an audit that only claims what it can measure. FigmaLint now checks what Figma's MCP server actually passes to AI coding tools, can set variable code syntax for you, and was tested against two full design systems (74 component sets) to remove false positives.
+
+### New
+- **A redesigned panel.** The top bar names what Analyze will run on and holds the one action (Analyze, or Stop analysis during a run). Results are split into Audit, Properties and Handoff tabs, and AI settings collapse to one row. Without a key, it says AI features are off and the audit runs without them.
+- **Every check is listed, passes included.** A scorecard under the score has one row per category with a status tile and a plain result ("No focus state", "2 hard-coded values", "All 62 use variables"), and each row links to its section. Each check shows its measured value (6.0:1, 70×36, 12px) and its target. An All checks / Problems only switch narrows the list, and the choice is remembered.
+- **Sections are separate sheets** with a pass, warning or fail tile, and severity reads by shape as well as color. Interactive states appear as pills, properties show their type with the default highlighted, and bound variables are grouped by kind with color swatches.
 - **The plugin follows Figma's light or dark theme.**
-- **Visual refresh:** hairline dividers in place of boxed cards, sentence-case labels in place of capitals, monospace for layer and variable names, and a single violet accent for actions.
-
-- **Every check is listed, passes included.** Each one shows its evidence, such as the lowest contrast ratio, the touch target size or the smallest text. A perfect score now lists everything that passed instead of an empty panel.
-- **Scorecard under the score.** One row per category (accessibility, states, variables, layer names, setup), with a mark per check, a coverage bar for variables and an "N of M" tally. Click a row to jump to its section. Fixes made in the panel update it right away.
-- **Sections stay in the same order** whatever the result, and an **All checks / Problems only** switch narrows the list to what needs work. The choice is remembered.
-- **Variables shows coverage** ("18 of 20 values use variables or styles"), and the bound variables are grouped by kind with color swatches and the property each one sets.
-
-- **Sections are separate sheets.** The report sits on a canvas-grey ground, with each section on its own sheet whose header has a pass, warning or fail tile and a tally. This applies to the Audit, Properties and Handoff tabs.
-- **Results lead with the measured value.** Each check shows its figure on the right (7.2:1, 32×32, 12px) and its target underneath. The explanation appears only when the check needs work.
-- **Interactive states appear as pills** (✓ Hover, ✕ Focus). Property defaults are highlighted among the values instead of repeated in a column, each property shows its type, and suggested properties have their own sheet.
-- **AI-readiness lists are marked by meaning:** ✓ reads well, ? has to guess, + make it clearer.
-
-- **The scorecard says what's wrong in words.** Each category row has the same status tile as its section and a plain result, such as "No focus state", "2 hard-coded values", "1 generic name" or "Both pass". The per-check squares and the coverage bar are gone.
-
-- **New AI handoff checks**, grounded in what Figma's MCP server actually passes to AI coding tools (verified against `get_design_context` output):
-  - **Variables mapped to code:** bound variables without code syntax reach AI tools as CSS variables built from the Figma path, which don't exist in your code.
+- **AI handoff checks**, based on what Figma's MCP server passes to AI coding tools (checked against `get_design_context` output):
+  - **Variables mapped to code:** variables without code syntax reach AI tools as CSS variables built from the Figma path, which don't exist in your code.
   - **Auto layout:** containers without it become absolute positioning.
-  - **Property names:** properties become the generated props word for word, so true/false variants (which should be boolean properties) and values with symbols are flagged.
-  - **Usage guidance:** the description is passed as instructions, so it should say when and how to use the component, not just what it is. This replaces the presence-only description check.
+  - **Property names:** properties become the generated props word for word, so names and values with symbols (such as "Hover & Active") are flagged.
+  - **Usage guidance:** the description is passed as instructions, so it should say when and how to use the component, not just what it is.
   - **Annotations** on interactive components, and **detached copies** of the component on the page.
   - **Code Connect,** Figma's top recommendation, is listed as not checked, because plugins can't see it.
-- **The score is now "hygiene"** and covers only the design-system audit. AI handoff is reported separately and doesn't change the score.
-- **No more blanket "ready for AI" claims.** The Handoff tab and exports no longer say a component is "fully ready" or "fully optimized" for AI code generation at 100. The Handoff tab leads with the measured AI handoff results and labels the model's review as an opinion. Gaps and recommendations are no longer hidden at a score of 100.
-- **Layer names can't dominate the score.** Their combined weight is capped, so many generic names can't outweigh variables or accessibility.
-- **The AI review prompt** now tells the model what actually reaches AI tools (props, variables, auto layout, description), so its strengths and gaps focus on those.
+- **Set code syntax from the panel.** The "Variables mapped to code" check has a Set code syntax button. It fills in each variable's Web code syntax from its path (`bg/neutral/weak` becomes `var(--bg-neutral-weak)`), with an optional prefix and the option to leave out the top-level group, and shows the names before writing.
+  - It covers every variable in the file without code syntax by default, since variables are shared across components. This component's variables only is the narrower option.
+  - Existing code syntax is never changed, names never collide, and library variables are left for their library file. One undo reverts it.
+  - Path-based names are right only when your code's variables are generated from these Figma variables (Tokens Studio, Style Dictionary or a Figma export). The dialog says so, and the button stays disabled until you confirm the preview names match your code.
+- **The instance sheet shows every property.** Variant properties past the first two get their own row of values, and text and instance swap properties are listed with their defaults.
 
-- **Set code syntax from the panel.** The "Variables mapped to code" check has a "Set code syntax" button. It fills in each variable's Web code syntax from its path (`bg/neutral/weak` becomes `var(--bg-neutral-weak)`), with an optional prefix and the option to leave out the top-level group. The preview shows the resulting names first.
-  - **Whole file by default.** Code syntax belongs to the variable, and variables are shared across components, so the default covers every variable in the file without code syntax. Only this component's variables is the narrower option.
-  - **Existing code syntax is never changed.** Examples of it appear in the preview so you can match your convention.
-  - **Names never collide.** A name that would repeat keeps its full path, then its collection name, then a number.
-  - **Library variables are counted and left alone,** with a note to set them in the library file.
-  - The row updates in place. One undo reverts the change.
-  - **Only when the names will match.** Path-based names are correct only when your code's variables are generated from these Figma variables, as with Tokens Studio, Style Dictionary or a Figma export. The dialog says so, and the button stays disabled until you confirm the preview names match your code.
+### Changed
+- **The score is now "hygiene"** and covers only the design-system audit. AI handoff is reported separately and doesn't change it. Layer names have a capped weight, so many generic names can't outweigh variables or accessibility.
+- **No blanket "ready for AI" claims.** The Handoff tab and exports no longer call a component "fully ready" or "fully optimized" for AI code generation. The Handoff tab leads with the measured AI handoff results, labels the model's review as an opinion, and leaves out empty sections instead of filling them.
+- **Analyze always runs fresh.** The component cache could return a stale result after an edit it didn't detect. Batch analysis runs fresh too. Restoring your last analysis when you reopen the plugin still works.
+- **Touch targets follow WCAG 2.2.** 24×24 (AA) passes, with a note about the 44×44 touch size and a larger hit area in code. FigmaLint says so when an annotation already covers the hit area. Under 24px is a warning that explains the spacing exception, because a component can't show its spacing. The check measures the smallest variant, skipping dividers and separators.
+- **Fixes show the variable they'll apply** ("4px top padding on `control`, matches `spacing/050`"), update the verdict in place, and Fix all covers every fixable value.
+- **The AI review prompt** tells the model what actually reaches AI tools, so its notes focus on those.
 
 ### Fixed
-- **Color contrast is checked on tokenized components.** The check skipped every color bound to a variable, so on a fully tokenized component it never ran. It now uses the color each variable resolves to, leaves out disabled variants (WCAG exempts them), blends translucent text, and says how many text layers sit on a transparent background and weren't measured.
-- **Fixes suggest the right variable.** Variables with no scopes are hidden from every picker in Figma, but FigmaLint treated them as usable anywhere, so padding was matched to `font-size/16`. Exact matches now rank by scope and name, so 16px padding gets the spacing variable, and a pill-shaped radius gets the pill variable instead of the nearest number.
-- **True/false variants are no longer flagged.** Figma's boolean properties can only show or hide layers, so a toggle that changes styling has to be a variant.
-- **Focus state counts nested items.** Tabs, radio groups and selects built from items that have a focus state now pass, naming the item. Components with their own hover or pressed states still need their own focus state.
-- **Touch targets under 24px are a warning, not a failure.** WCAG 2.5.8 accepts smaller targets with enough spacing, which a component can't show. Divider and separator variants are no longer measured, and helper and note text isn't treated as interactive.
-- **Corner radius is counted once.** A uniform radius was also counted as four separate corners, so one unbound radius showed up as five hard-coded values.
-- **Batch results only list real states.** A cleanup step added hover, focus, active and disabled to anything button-like, and sizes to avatars, whether or not they existed.
-- **No filler in the rule-based handoff notes.** When nothing is missing, the gaps and notes sections are left out instead of saying "minor improvements needed".
+- **Color contrast is checked on tokenized components.** The check skipped colors bound to variables, so on a fully tokenized component it never ran. It now uses each variable's resolved color, leaves out disabled variants (WCAG exempts them), blends translucent text, and says how many text layers sit on a transparent background and weren't measured.
+- **Fixes suggest the right variable.** Variables with no scopes are hidden from every picker in Figma, but FigmaLint treated them as usable anywhere, so padding was matched to `font-size/16`. Matches now rank by scope and name, so 16px padding gets the spacing variable, and a pill-shaped radius gets the pill variable instead of the nearest number.
+- **True/false variants aren't flagged.** Figma's boolean properties can only show or hide layers, so a toggle that changes styling has to be a variant.
+- **Focus state counts nested items.** Tabs, radio groups and selects built from items with a focus state pass and name the item. Components with their own hover or pressed states still need their own. Helper and note text isn't treated as interactive.
+- **Only State or Interaction properties count as states.** A "Status" property (success, warning…) was counted.
+- **Corner radius is counted once.** A uniform radius was also counted as four corners, so one unbound radius showed as five hard-coded values.
+- **Batch results only list real states.** A cleanup step added hover, focus, active and disabled to anything button-like, and sizes to avatars.
 - **Library variables load in parallel.** In files with large shared libraries, the first fix suggestion imported every library variable one at a time.
-- **Analyze could return a stale result after you edited the component.** Results were cached under a fingerprint of a summary of the component. Edits the summary didn't capture, such as fixing one of several layers with the same hard-coded color, or changing auto layout, code syntax or annotations, produced the same fingerprint, so the old result came back as "Loaded cached analysis (component unchanged)". Analyze, including batch analysis, now always runs fresh. The Run fresh button is gone because every run is fresh. Restoring the last analysis when you reopen the plugin still works.
-- **A "Status" property (success, warning…) was counted as interactive states.** Only State or Interaction properties count now.
-- **The Stop analysis label was nearly invisible in dark mode.** It picked up the dark text meant for the purple Analyze button.
-- OpenAI errors no longer show up as "Network error … Failed to fetch". OpenAI leaves the CORS header off chat error responses, which hid the real cause in Figma. The plugin now asks OpenAI's models endpoint and reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available to the account.
-- **Long error messages ran off the screen.** The in-panel banner now wraps any text. The canvas toast shows only the first sentence, and OpenAI's masked copy of your key is left out of the message.
-- **Analyze was enabled with nothing selected** after the plugin loaded or the AI provider changed.
-- **The AI prompt export option disappeared** after the first analysis, because the export menu was rebuilt without it.
+- **OpenAI errors no longer show up as "Network error … Failed to fetch".** OpenAI leaves the CORS header off error responses, which hid the cause. The plugin now reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available.
+- **Long error messages ran off the screen.** The banner wraps, the canvas toast shows only the first sentence, and OpenAI's masked copy of your key is left out.
+- **The Stop analysis label was nearly invisible in dark mode.**
+- **Analyze was enabled with nothing selected** after the plugin loaded or the provider changed.
+- **The AI prompt export option disappeared** after the first analysis.
 - **A "Save your API key to continue" message appeared on launch**, although the audit doesn't need a key.
 
 ## 2.11.4
