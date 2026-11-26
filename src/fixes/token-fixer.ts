@@ -101,12 +101,16 @@ const PROPERTY_COLOR_SCOPES: Record<'fill' | 'stroke', VariableScope[]> = {
 
 /**
  * True when a variable may be offered for a field with the given relevant
- * scopes. A variable with no scope restriction (empty or `ALL_SCOPES`) is always
- * compatible; otherwise its scopes must intersect the field's relevant scopes.
+ * scopes. `ALL_SCOPES` is always compatible, an empty list (hidden from all
+ * pickers) never is; otherwise its scopes must intersect the field's scopes.
  * Mirrors Figma's own variable-picker behavior.
  */
 function isScopeCompatible(scopes: VariableScope[] | undefined, relevant: VariableScope[]): boolean {
-  if (!scopes || scopes.length === 0) return true;
+  // Unknown scopes (older data) stay permissive. An empty list is different:
+  // in Figma it means the variable is hidden from every picker, which design
+  // systems use for primitives that should only be reached through aliases.
+  if (!scopes) return true;
+  if (scopes.length === 0) return false;
   if (scopes.includes('ALL_SCOPES')) return true;
   return scopes.some(scope => relevant.includes(scope));
 }
@@ -587,20 +591,27 @@ async function getLibraryVariables(
       try {
         const libraryVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCollection.key);
 
-        for (const libVar of libraryVars) {
-          try {
-            const imported = await figma.variables.importVariableByKeyAsync(libVar.key);
-            allImported.push(imported);
+        // Each import is a round trip, so a library with thousands of
+        // variables took minutes one at a time. Import in parallel batches.
+        const BATCH = 40;
+        for (let i = 0; i < libraryVars.length; i += BATCH) {
+          const batch = libraryVars.slice(i, i + BATCH);
+          const imported = await Promise.all(batch.map((libVar) =>
+            figma.variables.importVariableByKeyAsync(libVar.key).catch((importErr) => {
+              console.warn(`Failed to import library variable ${libVar.name}:`, importErr);
+              return null;
+            })
+          ));
+          for (const variable of imported) {
+            if (!variable) continue;
+            allImported.push(variable);
             // Store collection name with library prefix for clarity
-            if (!collectionNames.has(imported.variableCollectionId)) {
+            if (!collectionNames.has(variable.variableCollectionId)) {
               collectionNames.set(
-                imported.variableCollectionId,
+                variable.variableCollectionId,
                 `${libCollection.libraryName} / ${libCollection.name}`
               );
             }
-          } catch (importErr) {
-            // Skip individual variables that fail to import
-            console.warn(`Failed to import library variable ${libVar.name}:`, importErr);
           }
         }
       } catch (collErr) {
@@ -1003,9 +1014,20 @@ export async function findMatchingSpacingVariable(
 export async function findBestMatchingVariable(
   pixelValue: number,
   propertyPath: string,
-  tolerance: number = 2
+  tolerance: number = 2,
+  /** For corner radius: half the layer's shorter side. A radius at or above it
+   * renders as a pill, so any pill/round variable is the right match. */
+  pillThreshold?: number
 ): Promise<TokenSuggestion[]> {
+  const isRadius = /radius$/i.test(propertyPath);
+  const isPill = isRadius && pillThreshold !== undefined && pillThreshold > 0 && pixelValue >= pillThreshold;
+
   let suggestions = await findMatchingSpacingVariable(pixelValue, tolerance);
+  if (isPill) {
+    const pills = await findPillRadiusVariables(pillThreshold as number);
+    const seen = new Set(suggestions.map((s) => s.variableId));
+    suggestions = [...pills.filter((s) => !seen.has(s.variableId)), ...suggestions];
+  }
   if (suggestions.length === 0) return suggestions;
 
   // Scope filter FIRST: drop value-matched variables whose Figma scopes exclude
@@ -1033,21 +1055,62 @@ export async function findBestMatchingVariable(
     itemSpacing: ['gap', 'spacing', 'space'],
     counterAxisSpacing: ['gap', 'spacing', 'space'],
   };
-
   const keywords = affinityMap[propertyPath] || [];
-  if (keywords.length === 0) return suggestions;
 
-  // Boost scores for variables whose names match affinity keywords
-  const boosted = suggestions.map(s => {
+  // Rank by, in order: rendering the same (a pill stays a pill), being scoped
+  // to this exact kind of field (not just ALL_SCOPES), a pill name for a pill,
+  // a name that fits the field, then closeness of value. Exact matches all score 1, so the earlier
+  // keys decide between them, e.g. `space/md` over `font-size/16` for padding.
+  const rank = (s: TokenSuggestion) => {
+    const value = parseFloat(s.value);
+    const rendersSame = isPill ? (value >= (pillThreshold as number) ? 1 : 0) : (s.matchScore === 1 ? 1 : 0);
+    const scoped = relevantScopes && s.scopes && s.scopes.some((scope) => relevantScopes.includes(scope)) ? 1 : 0;
     const nameLower = s.variableName.toLowerCase();
-    const hasAffinity = keywords.some(kw => nameLower.includes(kw));
-    return {
-      ...s,
-      matchScore: hasAffinity ? Math.min(s.matchScore + 0.3, 1) : s.matchScore,
-    };
-  });
+    const affinity = keywords.some(kw => nameLower.includes(kw)) ? 1 : 0;
+    // For a pill, the variable named for it beats one that just happens to be large enough
+    const pillName = isPill ? (/pill|full/.test(nameLower) ? 2 : /round|circle/.test(nameLower) ? 1 : 0) : 0;
+    return [rendersSame, scoped, pillName, affinity, s.matchScore];
+  };
+  return suggestions
+    .map((s) => ({ s, key: rank(s) }))
+    .sort((a, b) => {
+      for (let i = 0; i < a.key.length; i++) {
+        if (a.key[i] !== b.key[i]) return b.key[i] - a.key[i];
+      }
+      return 0;
+    })
+    .map(({ s }) => s);
+}
 
-  return boosted.sort((a, b) => b.matchScore - a.matchScore);
+/** Half the shorter side of a layer, for corner radius matching (see findBestMatchingVariable) */
+export async function pillThresholdFor(nodeId: string | undefined, propertyPath: string | undefined): Promise<number | undefined> {
+  if (!nodeId || !propertyPath || !/radius$/i.test(propertyPath)) return undefined;
+  try {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (node && 'width' in node && 'height' in node) {
+      return Math.min((node as SceneNode).width, (node as SceneNode).height) / 2;
+    }
+  } catch {
+    // Missing node: fall back to value matching
+  }
+  return undefined;
+}
+
+/** Radius variables large enough to render as a pill at this size */
+async function findPillRadiusVariables(threshold: number): Promise<TokenSuggestion[]> {
+  const cache = await getResolvedVariableCache();
+  return cache.floatEntries
+    .filter((entry) => entry.value >= threshold && /radius|round|pill|full|circle/i.test(entry.variableName))
+    .map((entry) => ({
+      variableId: entry.variableId,
+      variableName: entry.variableName,
+      collectionName: entry.collectionName,
+      value: `${entry.value}px`,
+      matchScore: 1,
+      type: 'number' as const,
+      aliasDepth: entry.aliasDepth,
+      scopes: entry.scopes
+    }));
 }
 
 /**

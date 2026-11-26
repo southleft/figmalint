@@ -6,9 +6,8 @@ import { debugLog } from '../utils/debug';
 import { extractDesignTokensFromNode } from './token-analyzer';
 import { extractJSONFromResponse, createEnhancedMetadataPrompt, filterDevelopmentRecommendations } from '../api/claude';
 import { callProvider, ProviderId } from '../api/providers';
-import { consistencyEngine } from './consistency-engine';
 import { analyzeNamingIssues } from '../fixes/naming-fixer';
-import { findMatchingColorVariable, findBestMatchingVariable, colorFieldFromPropertyPath } from '../fixes/token-fixer';
+import { findMatchingColorVariable, findBestMatchingVariable, colorFieldFromPropertyPath, pillThresholdFor } from '../fixes/token-fixer';
 
 /**
  * Extract comprehensive component context for analysis
@@ -1285,7 +1284,8 @@ async function extractActualComponentStates(node: SceneNode): Promise<string[]> 
     if (variantProps) {
       for (const propName in variantProps) {
         const lowerPropName = propName.toLowerCase();
-        if (lowerPropName === 'state' || lowerPropName === 'states' || lowerPropName === 'status') {
+        // 'Status' (success, warning…) is a variant of meaning, not an interaction state
+        if (lowerPropName === 'state' || lowerPropName === 'states' || lowerPropName === 'interaction') {
           actualStates.push(...variantProps[propName].values);
         }
       }
@@ -1393,29 +1393,8 @@ export async function processEnhancedAnalysis(
   debugLog(`  Tokens: ${Object.keys(tokens).length} categories`);
   debugLog(`  Description: ${componentDescription ? 'Present' : 'Missing'}`);
 
-  // Serve structurally identical components from the analysis cache — this
-  // skips the entire LLM round trip (and its cost) when re-analyzing an
-  // unchanged component. `bypassCache` forces a fresh analysis.
-  const allTokensForHash = [
-    ...tokens.colors,
-    ...tokens.spacing,
-    ...tokens.typography,
-    ...tokens.effects,
-    ...tokens.borders,
-  ];
-  // Local-only and AI-assisted runs produce different results for the same
-  // component, so they must not share a cache slot — otherwise adding an API
-  // key and re-analyzing would silently return the earlier keyless result.
-  const componentHash =
-    consistencyEngine.generateComponentHash(context, allTokensForHash) +
-    (aiEnabled ? '' : ':local');
-  if (!options.bypassCache) {
-    const cached = consistencyEngine.getCachedAnalysis(componentHash);
-    if (cached) {
-      console.log('✅ Returning cached analysis (component unchanged)');
-      return { ...cached.result, fromCache: true };
-    }
-  }
+  // Every Analyze is a fresh analysis. A cache keyed on a summary of the
+  // component served stale results after edits the summary didn't capture.
 
   // Check if MCP server is available. Default to the hosted design-systems MCP
   // server — it is the only MCP endpoint in manifest.json's networkAccess
@@ -1523,8 +1502,6 @@ export async function processEnhancedAnalysis(
   });
 
   result.aiEnabled = aiEnabled;
-
-  consistencyEngine.cacheAnalysis(componentHash, result);
   return result;
 }
 
@@ -1944,11 +1921,13 @@ export async function enrichTokensWithMatches(tokens: TokenAnalysis): Promise<vo
         if (isColorProperty) {
           const matches = await findMatchingColorVariable(token.value || '', 0.1, colorFieldFromPropertyPath(token.context.property));
           token.context.hasMatchingToken = matches.length > 0;
+          token.context.matchingTokenName = matches[0]?.variableName;
         } else {
           const pixelValue = parseFloat(token.value || '0');
           if (!isNaN(pixelValue)) {
-            const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2);
+            const matches = await findBestMatchingVariable(pixelValue, token.context.property, 2, await pillThresholdFor(token.context.nodeId, token.context.property));
             token.context.hasMatchingToken = matches.length > 0;
+            token.context.matchingTokenName = matches[0]?.variableName;
           } else {
             token.context.hasMatchingToken = false;
           }
@@ -2157,32 +2136,12 @@ async function createAuditResults(
   _tokens: TokenAnalysis,
   componentDescription?: string
 ): Promise<DetailedAuditResults> {
-  // Check parent component set description for context-aware description check
-  let parentHasDescription = false;
-  let parentDescription = '';
-  if (node.type === 'COMPONENT' && node.parent?.type === 'COMPONENT_SET') {
-    const parentSet = node.parent as ComponentSetNode;
-    parentDescription = parentSet.description || '';
-    parentHasDescription = parentDescription.trim().length > 0;
-  } else if (node.type === 'COMPONENT_SET') {
-    parentHasDescription = !!(componentDescription && componentDescription.trim().length > 0);
-  }
+  // A variant inherits its set's description
+  const parentDescription = node.type === 'COMPONENT' && node.parent?.type === 'COMPONENT_SET'
+    ? (node.parent as ComponentSetNode).description || ''
+    : '';
 
-  const hasDescription = !!(componentDescription && componentDescription.trim().length > 0);
-
-  // Build description check with component set awareness
-  let descriptionStatus: 'pass' | 'warning' = hasDescription ? 'pass' : 'warning';
-  let descriptionSuggestion = '';
-  if (hasDescription) {
-    descriptionSuggestion = 'Component has description for MCP/AI context';
-  } else if (parentHasDescription) {
-    descriptionStatus = 'pass';
-    descriptionSuggestion = 'Component set has a description. Consider adding a variant-specific description for richer context.';
-  } else {
-    descriptionSuggestion = 'Add a component description to help MCP and AI understand the component purpose and usage';
-  }
-
-  // Component Readiness checks (property config + description)
+  // Component setup (description quality is an AI handoff check)
   const componentReadiness: AuditCheck[] = [
     {
       check: 'Property configuration',
@@ -2190,19 +2149,29 @@ async function createAuditResults(
       suggestion: actualProperties.length > 0
         ? 'Component has configurable properties'
         : 'Consider adding properties for component customization'
-    },
-    {
-      check: 'Component description',
-      status: descriptionStatus,
-      suggestion: descriptionSuggestion
     }
   ];
 
   // Real accessibility checks
-  const accessibility = runAccessibilityChecks(node, actualStates);
+  // A component with its own pointer states (hover, pressed) owns its focus
+  // state too. A composite whose states are only default/error/disabled (a
+  // radio group, tabs, a select wrapping an input) takes focus from its items.
+  const ownsInteraction = actualStates.some((s) => /hover|press|active/i.test(s));
+  const hasOwnFocus = actualStates.some((s) => /focus/i.test(s));
+  const focusSource = !hasOwnFocus && !ownsInteraction ? await findNestedFocusSource(node) : null;
+  const accessibility = runAccessibilityChecks(node, actualStates, focusSource);
 
   // Detached instance detection
   const detachedInstances = detectDetachedInstances(node);
+
+  // What reaches AI coding tools, checked against the MCP output
+  const aiHandoff = await runAIHandoffChecks(
+    node,
+    actualProperties,
+    isInteractiveComponent(node, actualStates),
+    componentDescription && componentDescription.trim() ? componentDescription : parentDescription,
+    detachedInstances.length
+  );
 
   return {
     states: actualStates.map(state => ({
@@ -2211,7 +2180,8 @@ async function createAuditResults(
     })),
     componentReadiness,
     accessibility,
-    detachedInstances
+    detachedInstances,
+    aiHandoff
   };
 }
 
@@ -2226,6 +2196,211 @@ const INTERACTIVE_KEYWORDS = [
   'slider', 'stepper', 'icon-button', 'fab', 'action'
 ];
 
+// =============================================================================
+// AI handoff checks
+// =============================================================================
+// Each check maps to something that reaches an AI coding tool through Figma's
+// MCP server (verified against get_design_context output):
+//   - bound variables become CSS custom properties, named from the variable's
+//     code syntax when set, otherwise from its Figma name
+//   - auto layout becomes flexbox; anything else becomes absolute positioning
+//   - component properties become the generated component's props, verbatim
+//   - the component description is passed as usage instructions
+// Code Connect, Figma's top recommendation, isn't visible to plugins, so it's
+// reported as not checked rather than assumed.
+
+const MAX_HANDOFF_NODES = 4000;
+const GRAPHIC_TYPES = new Set(['VECTOR', 'BOOLEAN_OPERATION', 'ELLIPSE', 'RECTANGLE', 'LINE', 'POLYGON', 'STAR']);
+const USAGE_WORDS = /\b(use|used|using|when|avoid|don'?t|do not|instead|should|only|prefer|never|always)\b/i;
+
+function collectAliasIds(value: unknown, out: Set<string>): void {
+  if (!value) return;
+  if (Array.isArray(value)) {
+    value.forEach((v) => collectAliasIds(v, out));
+  } else if (typeof value === 'object') {
+    const alias = value as { type?: string; id?: string };
+    if (alias.type === 'VARIABLE_ALIAS' && typeof alias.id === 'string') {
+      out.add(alias.id);
+    } else {
+      Object.values(value as Record<string, unknown>).forEach((v) => collectAliasIds(v, out));
+    }
+  }
+}
+
+/** Property and value names the way code generators will read them */
+function propertyNameProblems(node: SceneNode): string[] {
+  const owner = node.type === 'COMPONENT' && node.parent?.type === 'COMPONENT_SET'
+    ? (node.parent as ComponentSetNode)
+    : node;
+  if (owner.type !== 'COMPONENT_SET' && owner.type !== 'COMPONENT') return [];
+  let definitions: ComponentPropertyDefinitions;
+  try {
+    definitions = (owner as ComponentSetNode | ComponentNode).componentPropertyDefinitions;
+  } catch {
+    return [];
+  }
+
+  const problems: string[] = [];
+  for (const [rawName, def] of Object.entries(definitions)) {
+    // Strip Figma's "#123:4" suffix and leading markers like "⮑ " used for nested swaps
+    const name = rawName.replace(/#[^#]*$/, '').replace(/^[^A-Za-z0-9]+/, '').trim();
+    if (!/^[A-Za-z][A-Za-z0-9 _-]*$/.test(name)) {
+      problems.push(`"${name}" has symbols that don't carry into a prop name`);
+    }
+    if (def.type === 'VARIANT') {
+      // A true/false variant is not flagged: Figma's boolean properties can
+      // only show or hide layers, so a toggle that changes styling (a rounded
+      // corner, a color) has to be a variant.
+      const symbolValues = (def.variantOptions || []).filter((v) => /[^A-Za-z0-9 _.-]/.test(v));
+      if (symbolValues.length > 0) {
+        problems.push(`"${name}" values like "${symbolValues[0]}" become awkward code values`);
+      }
+    }
+  }
+  return problems;
+}
+
+async function runAIHandoffChecks(
+  node: SceneNode,
+  actualProperties: Array<{ name: string; values: string[]; default: string }>,
+  isInteractive: boolean,
+  description: string,
+  detachedCount: number
+): Promise<AuditCheck[]> {
+  const checks: AuditCheck[] = [];
+
+  // One walk: bound variables, layout containers, annotations.
+  // Instance internals belong to other components, so stop at instances.
+  const variableIds = new Set<string>();
+  const freeLayout: string[] = [];
+  let containers = 0;
+  let annotated = 0;
+  let visited = 0;
+  const walk = (current: SceneNode, isRoot: boolean) => {
+    if (visited++ > MAX_HANDOFF_NODES) return;
+    if ('boundVariables' in current) collectAliasIds(current.boundVariables, variableIds);
+    if ('annotations' in current && Array.isArray(current.annotations) && current.annotations.length > 0) annotated++;
+    if (current.type === 'INSTANCE') return;
+    if (!('children' in current)) return;
+    const children = current.children as readonly SceneNode[];
+    const isLayoutContainer =
+      !isRoot || current.type !== 'COMPONENT_SET'; // the set's own canvas wrapper isn't layout
+    const onlyGraphics = children.length > 0 && children.every((c) => GRAPHIC_TYPES.has(c.type));
+    if (isLayoutContainer && children.length > 0 && !onlyGraphics &&
+        (current.type === 'FRAME' || current.type === 'COMPONENT' || current.type === 'GROUP')) {
+      containers++;
+      const layoutMode = 'layoutMode' in current ? current.layoutMode : 'NONE';
+      if (current.type === 'GROUP' || layoutMode === 'NONE') freeLayout.push(current.name);
+    }
+    children.forEach((child) => walk(child, false));
+  };
+  walk(node, true);
+
+  // 1. Variables mapped to code
+  if (variableIds.size > 0) {
+    const variables = await Promise.all(
+      [...variableIds].map((id) => figma.variables.getVariableByIdAsync(id).catch(() => null))
+    );
+    const found = variables.filter((v): v is Variable => !!v);
+    const mapped = found.filter((v) => v.codeSyntax && Object.values(v.codeSyntax).some((s) => !!s));
+    // Prefer a deep path for the example; it shows the problem most clearly
+    const unmapped = found
+      .filter((v) => !mapped.includes(v))
+      .sort((a, b) => b.name.split('/').length - a.name.split('/').length);
+    if (found.length > 0) {
+      checks.push({
+        check: 'Variables mapped to code',
+        status: unmapped.length === 0 ? 'pass' : 'warning',
+        value: `${mapped.length} of ${found.length}`,
+        // Local variables can be fixed from the panel; library ones only in their library
+        ...(unmapped.some((v) => !v.remote) ? { action: 'set-code-syntax' as const } : {}),
+        suggestion: unmapped.length === 0
+          ? 'Every variable has code syntax, so AI tools get your real token names'
+          : `${unmapped.length} variable${unmapped.length === 1 ? ' has' : 's have'} no code syntax, so AI tools name ${unmapped.length === 1 ? 'it' : 'them'} from the Figma path, like \`var(--${unmapped[0].name.replace(/\s+/g, '-').replace(/\//g, '\\/')})\`, which won't match your code. Set code syntax to the names your code uses.${unmapped.some((v) => v.remote) ? ' Variables from a library have to be set in the library file.' : ''}`
+      });
+    }
+  }
+
+  // 2. Auto layout
+  if (containers > 0) {
+    const examples = freeLayout.slice(0, 3).map((n) => `"${n}"`).join(', ');
+    checks.push({
+      check: 'Auto layout',
+      status: freeLayout.length === 0 ? 'pass' : 'warning',
+      value: `${containers - freeLayout.length} of ${containers}`,
+      suggestion: freeLayout.length === 0
+        ? 'Every container uses auto layout, which AI tools turn into flexbox'
+        : `${freeLayout.length} container${freeLayout.length === 1 ? '' : 's'} without auto layout (${examples}${freeLayout.length > 3 ? ', …' : ''}). AI tools position these absolutely, which breaks when content or width changes.`
+    });
+  }
+
+  // 3. Property names
+  if (actualProperties.length > 0) {
+    const problems = propertyNameProblems(node);
+    checks.push({
+      check: 'Property names',
+      status: problems.length === 0 ? 'pass' : 'warning',
+      value: problems.length === 0 ? 'Clean' : `${problems.length} to fix`,
+      suggestion: problems.length === 0
+        ? 'Property and value names carry cleanly into the generated props'
+        : `Properties become the generated props word for word. ${problems.slice(0, 3).join('. ')}${problems.length > 3 ? '. …' : ''}.`
+    });
+  }
+
+  // 4. Usage guidance in the description
+  const text = description.trim();
+  const hasUsage = text.length >= 80 && USAGE_WORDS.test(text);
+  checks.push({
+    check: 'Usage guidance',
+    status: hasUsage ? 'pass' : 'warning',
+    value: text ? `${text.length} chars` : 'Missing',
+    suggestion: !text
+      ? 'No description. AI tools receive the description as instructions, so without one they get no guidance on when or how to use the component.'
+      : hasUsage
+        ? 'The description says when and how to use it, and AI tools receive it as instructions'
+        : 'The description says what it is but not when to use it, when not to, or what to avoid. AI tools receive it as instructions.'
+  });
+
+  // 5. Annotations, where behavior can't be seen
+  if (annotated > 0) {
+    checks.push({
+      check: 'Annotations',
+      status: 'pass',
+      value: `${annotated}`,
+      suggestion: `${annotated} layer${annotated === 1 ? ' has' : 's have'} annotations explaining behavior the visuals can't show`
+    });
+  } else if (isInteractive) {
+    checks.push({
+      check: 'Annotations',
+      status: 'warning',
+      value: 'None',
+      suggestion: 'No annotations. Behavior like keyboard use, focus order or what happens on click isn\'t visible in the design, so AI tools have to guess it.'
+    });
+  }
+
+  // 6. Detached copies lose the link to the component
+  if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+    checks.push({
+      check: 'Detached copies',
+      status: detachedCount === 0 ? 'pass' : 'warning',
+      value: detachedCount === 0 ? 'None' : `${detachedCount}`,
+      suggestion: detachedCount === 0
+        ? 'No detached copies on this page'
+        : `${detachedCount} detached cop${detachedCount === 1 ? 'y' : 'ies'} on this page. AI tools see them as plain frames and write new markup instead of reusing this component.`
+    });
+  }
+
+  // 7. Code Connect: Figma's top recommendation, invisible to plugins
+  checks.push({
+    check: 'Code Connect',
+    status: 'info',
+    value: 'Not checked',
+    suggestion: 'Figma ranks linking components to your code first: it is what makes AI tools reuse your real component. Plugins can\'t see these links, so check it in Dev Mode.'
+  });
+
+  return checks;
+}
+
 /**
  * Determine if a component is interactive based on name, states, and structure
  */
@@ -2233,10 +2408,23 @@ function isInteractiveComponent(node: SceneNode, states: string[]): boolean {
   const nameLower = node.name.toLowerCase();
   // Check name keywords
   if (INTERACTIVE_KEYWORDS.some(kw => nameLower.includes(kw))) return true;
+  // Supporting text (a field note, helper or error text) often mirrors its
+  // field's disabled and error states without being focusable itself
+  if (/\b(note|helper|hint|caption|legend)\b|error text|help text/i.test(node.name)) return false;
   // Check if it has interactive states (hover, pressed, focus, active, disabled)
   const interactiveStates = ['hover', 'pressed', 'focus', 'focused', 'active', 'disabled'];
   if (states.some(s => interactiveStates.includes(s.toLowerCase()))) return true;
   return false;
+}
+
+/** Name of the variant (component) a layer belongs to, if any */
+function findVariantName(node: SceneNode): string | null {
+  let current: BaseNode | null = node.parent;
+  while (current && current.type !== 'PAGE') {
+    if (current.type === 'COMPONENT') return current.name;
+    current = current.parent;
+  }
+  return null;
 }
 
 /**
@@ -2259,7 +2447,10 @@ function getContrastRatio(l1: number, l2: number): number {
 }
 
 /**
- * Find the nearest background color by walking up the parent chain
+ * Find the nearest background color by walking up the parent chain.
+ * A variable-bound fill still carries its resolved color in `fill.color`, so
+ * those count too. A translucent fill means the real background depends on
+ * what's behind the component, so the result is unknown (null).
  */
 function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number } | null {
   let current: BaseNode | null = node.parent;
@@ -2270,16 +2461,63 @@ function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number
     if ('fills' in sceneNode) {
       const fills = (sceneNode as any).fills;
       if (Array.isArray(fills)) {
-        for (const fill of fills) {
-          if (fill.type === 'SOLID' && fill.visible !== false && fill.color) {
-            // Skip if bound to a variable — we can't resolve the actual value reliably
-            if (fill.boundVariables && fill.boundVariables.color) continue;
-            return fill.color;
-          }
+        const fill = fills.find((f: any) => f.type === 'SOLID' && f.visible !== false && f.color);
+        if (fill) {
+          return (fill.opacity ?? 1) < 1 ? null : fill.color;
         }
       }
     }
+    if (current.type === 'COMPONENT') break; // nothing above a variant is part of it
     current = current.parent;
+  }
+  return null;
+}
+
+/** True when an annotation in the component mentions the touch target or hit area */
+function hasHitAreaAnnotation(node: SceneNode): boolean {
+  const pattern = /hit (area|target|region)|touch (target|area)|tap target|target size|tappable/i;
+  let visited = 0;
+  const walk = (current: SceneNode): boolean => {
+    if (visited++ > 2000) return false;
+    const annotations = 'annotations' in current ? (current as any).annotations : null;
+    if (Array.isArray(annotations) && annotations.some((a: any) => pattern.test(`${a.label || ''} ${a.labelMarkdown || ''}`))) {
+      return true;
+    }
+    if (current.type === 'INSTANCE' || !('children' in current)) return false;
+    return (current as ChildrenMixin & SceneNode).children.some((child) => walk(child as SceneNode));
+  };
+  return walk(node);
+}
+
+/**
+ * A composite (tabs, pagination, a menu) is often built from item components
+ * that carry the focus state themselves. Returns the name of the first nested
+ * component whose variants include a focus state.
+ */
+async function findNestedFocusSource(node: SceneNode): Promise<string | null> {
+  if (!('findAll' in node)) return null;
+  const instances = (node as FrameNode).findAll((n) => n.type === 'INSTANCE') as InstanceNode[];
+  const seen = new Set<string>();
+  for (const instance of instances.slice(0, 200)) {
+    let main: ComponentNode | null = null;
+    try {
+      main = await instance.getMainComponentAsync();
+    } catch {
+      continue;
+    }
+    if (!main) continue;
+    const owner = main.parent?.type === 'COMPONENT_SET' ? (main.parent as ComponentSetNode) : main;
+    if (seen.has(owner.id)) continue;
+    seen.add(owner.id);
+    if (owner.type !== 'COMPONENT_SET') continue;
+    try {
+      const hasFocus = Object.values(owner.componentPropertyDefinitions).some(
+        (def) => def.type === 'VARIANT' && (def.variantOptions || []).some((v) => /focus/i.test(v))
+      );
+      if (hasFocus) return owner.name;
+    } catch {
+      // Remote or broken sets can't be read; skip them
+    }
   }
   return null;
 }
@@ -2287,7 +2525,7 @@ function findBackgroundColor(node: SceneNode): { r: number; g: number; b: number
 /**
  * Run real accessibility checks on a component node
  */
-function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[] {
+function runAccessibilityChecks(node: SceneNode, states: string[], focusSource: string | null = null): AuditCheck[] {
   const checks: AuditCheck[] = [];
   const interactive = isInteractiveComponent(node, states);
 
@@ -2297,8 +2535,10 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
     // always clears 44px. Measure the smallest variant instead.
     let target: SceneNode = node;
     if (node.type === 'COMPONENT_SET') {
-      for (const variant of node.children) {
-        if (Math.min(variant.width, variant.height) < Math.min(target.width, target.height)) {
+      // Dividers, separators and spacers in a set aren't click targets
+      const candidates = node.children.filter((v) => !/divider|separator|spacer/i.test(v.name));
+      for (const variant of candidates.length > 0 ? candidates : node.children) {
+        if (target === node || Math.min(variant.width, variant.height) < Math.min(target.width, target.height)) {
           target = variant;
         }
       }
@@ -2308,23 +2548,33 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
     const minDim = Math.min(width, height);
     const where = target !== node ? ` (smallest variant: "${target.name}")` : '';
 
+    const size = `${Math.round(width)}×${Math.round(height)}px`;
+
     if (minDim >= 44) {
       checks.push({
         check: 'Touch target size',
         status: 'pass',
-        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets recommended 44px minimum${where}`
+        suggestion: `${size} meets the 44×44 touch size as well as the WCAG minimum${where}`
       });
     } else if (minDim >= 24) {
+      // WCAG 2.2 AA (2.5.8) asks for 24×24; 44×44 is AAA (2.5.5) and the
+      // Apple/Google touch guidance. Compact sizes in a size scale are a
+      // deliberate choice, and the usual fix is a larger hit area in code, which
+      // the frame can't show. So this passes, with the touch note.
+      const documented = hasHitAreaAnnotation(node);
+      checks.push({
+        check: 'Touch target size',
+        status: 'pass',
+        suggestion: `${size} meets WCAG 2.2 AA (24×24)${where}. It's under 44×44, the size for touch screens: ${documented ? 'an annotation covers the hit area' : 'give it a larger hit area in code on touch screens, and note that in an annotation'}.`
+      });
+    } else {
+      // WCAG 2.5.8 also accepts a smaller target when nothing else clickable
+      // sits within a 24px circle around it. Spacing isn't visible in the
+      // component itself, so this is a warning rather than a failure.
       checks.push({
         check: 'Touch target size',
         status: 'warning',
-        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px meets WCAG minimum (24px) but is below recommended 44px${where}`
-      });
-    } else {
-      checks.push({
-        check: 'Touch target size',
-        status: 'fail',
-        suggestion: `Target size ${Math.round(width)}×${Math.round(height)}px is below WCAG 2.5.8 minimum of 24×24px${where}`
+        suggestion: `${size} is under the WCAG 2.5.8 minimum of 24×24${where}. It still passes if it's spaced so nothing else clickable is within 24px, or if the clickable area in code (such as the whole label row) is at least 24px tall.`
       });
     }
   }
@@ -2337,10 +2587,12 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
     });
     checks.push({
       check: 'Focus state',
-      status: hasFocus ? 'pass' : 'warning',
+      status: hasFocus || focusSource ? 'pass' : 'warning',
       suggestion: hasFocus
         ? 'Component has a focus state for keyboard navigation'
-        : 'Add a visible focus state to support keyboard navigation (WCAG 2.4.7)'
+        : focusSource
+          ? `Focus comes from the nested "${focusSource}" component, which has a focus state`
+          : 'Add a visible focus state to support keyboard navigation (WCAG 2.4.7)'
     });
   }
 
@@ -2379,55 +2631,89 @@ function runAccessibilityChecks(node: SceneNode, states: string[]): AuditCheck[]
     const textNodes = containerNode.findAll(n => n.type === 'TEXT') as TextNode[];
     let worstRatio = Infinity;
     let checkedCount = 0;
+    let unknownBackground = 0;
     let worstTextName = '';
 
+    // WCAG 1.4.3 exempts inactive (disabled) controls from contrast
+    const isDisabledVariant = (text: SceneNode): boolean => {
+      let current: BaseNode | null = text.parent;
+      while (current && current.type !== 'PAGE') {
+        if (current.type === 'COMPONENT') return /disabled|inactive/i.test(current.name);
+        current = current.parent;
+      }
+      return false;
+    };
+
     for (const text of textNodes) {
-      // Get text fill color (skip variable-bound fills)
+      if (!text.visible || isDisabledVariant(text)) continue;
+      // Variable-bound fills carry their resolved color, so they're measured too
       const fills = (text as any).fills;
       if (!Array.isArray(fills) || fills.length === 0) continue;
-      const textFill = fills.find((f: any) =>
-        f.type === 'SOLID' && f.visible !== false && f.color &&
-        !(f.boundVariables && f.boundVariables.color)
-      );
+      const textFill = fills.find((f: any) => f.type === 'SOLID' && f.visible !== false && f.color);
       if (!textFill) continue;
 
-      // Find background color
       const bgColor = findBackgroundColor(text);
-      if (!bgColor) continue;
+      if (!bgColor) {
+        unknownBackground++;
+        continue;
+      }
 
-      const textLum = getLuminance(textFill.color.r, textFill.color.g, textFill.color.b);
-      const bgLum = getLuminance(bgColor.r, bgColor.g, bgColor.b);
-      const ratio = getContrastRatio(textLum, bgLum);
+      // Blend translucent text over its background
+      const alpha = (textFill.opacity ?? 1) * (text.opacity ?? 1);
+      const mix = (c: number, b: number) => c * alpha + b * (1 - alpha);
+      const color = {
+        r: mix(textFill.color.r, bgColor.r),
+        g: mix(textFill.color.g, bgColor.g),
+        b: mix(textFill.color.b, bgColor.b),
+      };
+
+      const ratio = getContrastRatio(
+        getLuminance(color.r, color.g, color.b),
+        getLuminance(bgColor.r, bgColor.g, bgColor.b)
+      );
       checkedCount++;
 
       if (ratio < worstRatio) {
         worstRatio = ratio;
-        worstTextName = text.name || 'text';
+        const variant = findVariantName(text);
+        worstTextName = variant ? `${text.name || 'text'}" in "${variant}` : (text.name || 'text');
       }
     }
 
+    const unknownNote = unknownBackground > 0
+      ? ` ${unknownBackground} text layer${unknownBackground === 1 ? ' sits' : 's sit'} on a transparent background, so ${unknownBackground === 1 ? 'it depends' : 'they depend'} on where the component is placed and ${unknownBackground === 1 ? "wasn't" : "weren't"} measured.`
+      : '';
+
     if (checkedCount > 0 && worstRatio !== Infinity) {
       const ratioStr = worstRatio.toFixed(1);
+      const counted = `${checkedCount} text layer${checkedCount === 1 ? '' : 's'} measured, disabled variants excluded.`;
       // WCAG AA: 4.5:1 for normal text, 3:1 for large text
       if (worstRatio >= 4.5) {
         checks.push({
           check: 'Color contrast',
           status: 'pass',
-          suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1)`
+          suggestion: `Lowest contrast ratio is ${ratioStr}:1, meets WCAG AA (4.5:1). ${counted}${unknownNote}`
         });
       } else if (worstRatio >= 3) {
         checks.push({
           check: 'Color contrast',
           status: 'warning',
-          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1)`
+          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast. Meets large text AA (3:1) but not normal text (4.5:1). ${counted}${unknownNote}`
         });
       } else {
         checks.push({
           check: 'Color contrast',
           status: 'fail',
-          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1`
+          suggestion: `"${worstTextName}" has ${ratioStr}:1 contrast, below WCAG AA minimum of 3:1. ${counted}${unknownNote}`
         });
       }
+    } else if (unknownBackground > 0) {
+      checks.push({
+        check: 'Color contrast',
+        status: 'info',
+        value: 'Not measured',
+        suggestion: `Every text layer sits on a transparent background, so contrast depends on where the component is placed. Check it in context.`
+      });
     }
   }
 
@@ -2586,16 +2872,7 @@ function generateFallbackMCPReadiness(data: {
     }
   }
 
-  // Ensure we have minimum content (but make it more specific)
-  if (strengths.length === 0) {
-    strengths.push('Component follows basic Figma structure patterns');
-  }
-  if (gaps.length === 0) {
-    gaps.push('Well-structured component - consider minor enhancements for broader usage');
-  }
-  if (recommendations.length === 0) {
-    recommendations.push('Component is well-configured - ready for code generation');
-  }
+  // No gaps means no gaps: empty lists are hidden rather than padded with filler.
 
   // Calculate score based on actual code generation readiness
   let score = 0;
@@ -2663,7 +2940,7 @@ function generateFallbackMCPReadiness(data: {
  */
 function generateImplementationNotes(
   family: string,
-  strengths: string[],
+  _strengths: string[],
   gaps: string[],
   properties: any[],
   states: string[],
@@ -2715,15 +2992,11 @@ function generateImplementationNotes(
   // If we have no specific notes, provide general guidance
   if (notes.length === 0) {
     if (gaps.length > 3) {
-      notes.push('Focus on addressing the high-priority gaps identified above');
-    } else if (strengths.length > gaps.length) {
-      notes.push('Component is well-structured for code generation with minor improvements needed');
-    } else {
-      notes.push('Balance quick wins with systematic improvements for optimal results');
+      notes.push('Start with the gaps listed above');
     }
   }
-  
-  return notes.join('. ') + '.';
+
+  return notes.length > 0 ? notes.join('. ') + '.' : '';
 }
 
 /**

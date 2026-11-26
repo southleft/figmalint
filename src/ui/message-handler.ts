@@ -29,6 +29,7 @@ import {
   applySpacingFix,
   findMatchingColorVariable,
   findBestMatchingVariable,
+  pillThresholdFor,
   colorFieldFromPropertyPath,
   FixPreview,
   FixResult,
@@ -42,6 +43,7 @@ import {
   RenamePreview,
 } from '../fixes/naming-fixer';
 import { FixRequest, FixPreviewRequest, BatchFixRequest } from '../types';
+import { planCodeSyntax, applyCodeSyntax, CodeSyntaxOptions } from '../fixes/code-syntax-fixer';
 
 // Plugin state
 let storedApiKey: string | null = null;
@@ -170,6 +172,12 @@ export async function handleUIMessage(msg: PluginMessage): Promise<void> {
         break;
       case 'preview-batch-fix':
         await handlePreviewBatchFix(data);
+        break;
+      case 'preview-code-syntax':
+        await handlePreviewCodeSyntax(data);
+        break;
+      case 'apply-code-syntax':
+        await handleApplyCodeSyntax(data);
         break;
       case 'generate-instance-sheet':
         await handleGenerateInstanceSheet(data);
@@ -560,15 +568,9 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
         type: selectedNode.type,
       },
       analyzedAt: Date.now(),
-      fromCache: result.fromCache === true,
     };
     sendMessageToUI('enhanced-analysis-result', payload);
-    figma.notify(
-      result.fromCache
-        ? 'Loaded cached analysis (component unchanged).'
-        : 'Enhanced analysis complete! Check the results panel.',
-      { timeout: 3000 }
-    );
+    figma.notify('Analysis complete', { timeout: 2000 });
 
     // Persist so reopening the plugin can restore without a paid re-analysis.
     // Results can be large; a failed write (quota) must never fail the analysis.
@@ -583,7 +585,9 @@ async function handleEnhancedAnalyze(options: EnhancedAnalysisOptions): Promise<
     if (isStale()) return; // user already cancelled — don't surface the error
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    figma.notify(`Analysis failed: ${errorMessage}`, { error: true });
+    // The full explanation goes to the panel; the canvas toast only needs the
+    // headline, or a long provider message runs off the side of the screen.
+    figma.notify(`Analysis failed: ${shortNotice(errorMessage)}`, { error: true, timeout: 5000 });
 
     // Structured details let the UI offer targeted recovery (retry countdown
     // for rate limits, portal link for auth errors).
@@ -681,7 +685,9 @@ async function handlePreviewBatchFix(data: { fixes?: Array<{ nodeId: string; pro
   try {
     for (const fix of data?.fixes || []) {
       if (!fix.propertyPath || !fix.newValue) continue;
-      const key = `${fix.newValue}|${fix.propertyPath}`;
+      // A radius can be a pill on one layer and not another, so it resolves per layer
+      const pill = await pillThresholdFor(fix.nodeId, fix.propertyPath);
+      const key = `${fix.newValue}|${fix.propertyPath}${pill !== undefined && parseFloat(fix.newValue) >= pill ? '|pill' : ''}`;
       if (key in resolutions) continue;
 
       try {
@@ -691,7 +697,7 @@ async function handlePreviewBatchFix(data: { fixes?: Array<{ nodeId: string; pro
           matches = await findMatchingColorVariable(fix.newValue, 0.1, colorFieldFromPropertyPath(fix.propertyPath));
         } else {
           const pixelValue = parseFloat(fix.newValue);
-          matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2);
+          matches = isNaN(pixelValue) ? [] : await findBestMatchingVariable(pixelValue, fix.propertyPath, 2, pill);
         }
         resolutions[key] = matches.length > 0
           ? {
@@ -790,33 +796,6 @@ async function handleBatchAnalysis(
         // Extract context and tokens for hashing
         const componentContext = await extractComponentContext(node);
         const tokenAnalysis = await extractDesignTokensFromNode(node);
-        const allTokens = [
-          ...tokenAnalysis.colors,
-          ...tokenAnalysis.spacing,
-          ...tokenAnalysis.typography,
-          ...tokenAnalysis.effects,
-          ...tokenAnalysis.borders
-        ];
-
-        // Generate component hash. Keyless runs get their own cache slot so a
-        // later keyed run isn't served the earlier local-only result.
-        const componentHash =
-          consistencyEngine.generateComponentHash(componentContext, allTokens) +
-          (aiEnabled ? '' : ':local');
-
-        // Check for cached analysis first
-        const cachedAnalysis = consistencyEngine.getCachedAnalysis(componentHash);
-        if (cachedAnalysis) {
-          console.log(`✅ Using cached analysis for ${node.name}`);
-          results.push({
-            node: node.name,
-            success: true,
-            data: cachedAnalysis.result.metadata,
-            cached: true
-          });
-          continue;
-        }
-
         // Without a key, skip the LLM entirely — processAnalysisResult fills
         // every field it would have provided from the Figma node itself.
         let enhancedData: any = {};
@@ -846,9 +825,6 @@ async function handleBatchAnalysis(
           result = consistencyEngine.applyConsistencyCorrections(result, componentContext);
         }
 
-        // Cache for future consistency
-        consistencyEngine.cacheAnalysis(componentHash, result);
-
         results.push({
           node: node.name,
           success: true,
@@ -865,11 +841,10 @@ async function handleBatchAnalysis(
     }
   }
 
-  const cachedCount = results.filter(r => r.success && (r as any).cached).length;
-  const analyzedCount = results.filter(r => r.success && !(r as any).cached).length;
+  const analyzedCount = results.filter(r => r.success).length;
 
   sendMessageToUI('batch-analysis-result', { results });
-  figma.notify(`Batch analysis complete: ${analyzedCount} analyzed, ${cachedCount} from cache`, { timeout: 3000 });
+  figma.notify(`Batch analysis complete: ${analyzedCount} analyzed`, { timeout: 3000 });
 }
 
 
@@ -1416,7 +1391,7 @@ async function handlePreviewFix(data: FixPreviewRequest): Promise<void> {
       } else {
         // Spacing property - find matching variable with property-aware ranking
         const pixelValue = parseFloat(data.suggestedValue || '0');
-        const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || '', 2);
+        const spacingMatches = await findBestMatchingVariable(pixelValue, data.propertyPath || '', 2, await pillThresholdFor(data.nodeId, data.propertyPath));
         if (spacingMatches.length > 0) {
           preview = await previewTokenFix(sceneNode, data.propertyPath, spacingMatches[0].variableId);
         }
@@ -1669,7 +1644,7 @@ async function handleApplyBatchFix(data: BatchFixRequest): Promise<void> {
               } else {
                 const pixelValue = parseFloat(fix.newValue);
                 if (!isNaN(pixelValue)) {
-                  const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || '', 2);
+                  const spacingMatches = await findBestMatchingVariable(pixelValue, fix.propertyPath || '', 2, await pillThresholdFor(fix.nodeId, fix.propertyPath));
                   if (spacingMatches.length > 0) {
                     tokenId = spacingMatches[0].variableId;
                   }
@@ -2311,6 +2286,23 @@ async function buildInstanceSheet(
       sheet.appendChild(section);
     }
 
+    // Every other variant property (size, state, …) gets its own row of
+    // values, with the rest held at their defaults, so no value is missing.
+    const extraAxes = variantEntries.slice(2);
+    if (extraAxes.length > 0) {
+      const section = makeAutoFrame('VERTICAL', 16);
+      section.appendChild(makeText('Other variants', 13, true, 0.25));
+      for (const [axisName, def] of extraAxes) {
+        const row = makeAutoFrame('HORIZONTAL', 24);
+        row.appendChild(makeRowLabel(axisName));
+        for (const value of (def.variantOptions || []).map((v) => String(v)).slice(0, 12)) {
+          row.appendChild(makeInstanceCell({ [axisName]: value }, value));
+        }
+        section.appendChild(row);
+      }
+      sheet.appendChild(section);
+    }
+
     // Boolean toggles — property keys carry their #id suffix; setProperties
     // needs the full key, the label only the base name.
     if (boolEntries.length > 0) {
@@ -2321,6 +2313,26 @@ async function buildInstanceSheet(
         row.appendChild(makeRowLabel(key.split('#')[0]));
         row.appendChild(makeInstanceCell({ [key]: true }, 'true'));
         row.appendChild(makeInstanceCell({ [key]: false }, 'false'));
+        section.appendChild(row);
+      }
+      sheet.appendChild(section);
+    }
+
+    // Text and instance swap properties can't be laid out as a grid of values,
+    // so list them with their defaults so the sheet accounts for every property.
+    const otherEntries = Object.entries(defs).filter(([, d]) => d.type === 'TEXT' || d.type === 'INSTANCE_SWAP');
+    if (otherEntries.length > 0) {
+      const section = makeAutoFrame('VERTICAL', 10);
+      section.appendChild(makeText('Text and swap properties', 13, true, 0.25));
+      for (const [key, def] of otherEntries.slice(0, 12)) {
+        let value = String(def.defaultValue);
+        if (def.type === 'INSTANCE_SWAP') {
+          const swap = await figma.getNodeByIdAsync(value).catch(() => null);
+          value = swap ? swap.name : 'instance';
+        }
+        const row = makeAutoFrame('HORIZONTAL', 24);
+        row.appendChild(makeRowLabel(key.split('#')[0]));
+        row.appendChild(makeText(`${def.type === 'TEXT' ? 'Text' : 'Instance swap'}, default "${value}"`, 11, false, 0.35));
         section.appendChild(row);
       }
       sheet.appendChild(section);
@@ -2398,5 +2410,31 @@ async function buildInstanceSheet(
       sheet.remove(); // never leave a half-built sheet on the canvas
     }
     throw error;
+  }
+}
+
+/** First sentence of an error, capped so a canvas toast stays on screen. */
+function shortNotice(message: string, max = 90): string {
+  const first = message.split(/(?<=\.)\s/)[0] || message;
+  return first.length > max ? `${first.slice(0, max - 1).trimEnd()}…` : first;
+}
+
+// Variable code syntax: preview the names, then set them
+async function handlePreviewCodeSyntax(data: CodeSyntaxOptions & { requestId?: number }): Promise<void> {
+  try {
+    const plan = await planCodeSyntax(data);
+    sendMessageToUI('code-syntax-preview', { ...plan, requestId: data.requestId });
+  } catch (error) {
+    sendMessageToUI('code-syntax-error', { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+async function handleApplyCodeSyntax(data: CodeSyntaxOptions): Promise<void> {
+  try {
+    const result = await applyCodeSyntax(data);
+    sendMessageToUI('code-syntax-applied', result);
+    figma.notify(`Set code syntax on ${result.updated} variable${result.updated === 1 ? '' : 's'}`, { timeout: 3000 });
+  } catch (error) {
+    sendMessageToUI('code-syntax-error', { error: error instanceof Error ? error.message : String(error) });
   }
 }

@@ -1,5 +1,51 @@
 # Changelog
 
+## 3.0.0
+
+A new interface, and an audit that only claims what it can measure. FigmaLint now checks what Figma's MCP server actually passes to AI coding tools, can set variable code syntax for you, and was tested against two full design systems (74 component sets) to remove false positives.
+
+### New
+- **A redesigned panel.** The top bar names what Analyze will run on and holds the one action (Analyze, or Stop analysis during a run). Results are split into Audit, Properties and Handoff tabs, and AI settings collapse to one row. Without a key, it says AI features are off and the audit runs without them.
+- **Every check is listed, passes included.** A scorecard under the score has one row per category with a status tile and a plain result ("No focus state", "2 hard-coded values", "All 62 use variables"), and each row links to its section. Each check shows its measured value (6.0:1, 70×36, 12px) and its target. An All checks / Problems only switch narrows the list, and the choice is remembered.
+- **Sections are separate sheets** with a pass, warning or fail tile, and severity reads by shape as well as color. Interactive states appear as pills, properties show their type with the default highlighted, and bound variables are grouped by kind with color swatches.
+- **The plugin follows Figma's light or dark theme.**
+- **AI handoff checks**, based on what Figma's MCP server passes to AI coding tools (checked against `get_design_context` output):
+  - **Variables mapped to code:** variables without code syntax reach AI tools as CSS variables built from the Figma path, which don't exist in your code.
+  - **Auto layout:** containers without it become absolute positioning.
+  - **Property names:** properties become the generated props word for word, so names and values with symbols (such as "Hover & Active") are flagged.
+  - **Usage guidance:** the description is passed as instructions, so it should say when and how to use the component, not just what it is.
+  - **Annotations** on interactive components, and **detached copies** of the component on the page.
+  - **Code Connect,** Figma's top recommendation, is listed as not checked, because plugins can't see it.
+- **Set code syntax from the panel.** The "Variables mapped to code" check has a Set code syntax button. It fills in each variable's Web code syntax from its path (`bg/neutral/weak` becomes `var(--bg-neutral-weak)`), with an optional prefix and the option to leave out the top-level group, and shows the names before writing.
+  - It covers every variable in the file without code syntax by default, since variables are shared across components. This component's variables only is the narrower option.
+  - Existing code syntax is never changed, names never collide, and library variables are left for their library file. One undo reverts it.
+  - Path-based names are right only when your code's variables are generated from these Figma variables (Tokens Studio, Style Dictionary or a Figma export). The dialog says so, and the button stays disabled until you confirm the preview names match your code.
+- **The instance sheet shows every property.** Variant properties past the first two get their own row of values, and text and instance swap properties are listed with their defaults.
+
+### Changed
+- **The score is now "hygiene"** and covers only the design-system audit. AI handoff is reported separately and doesn't change it. Layer names have a capped weight, so many generic names can't outweigh variables or accessibility.
+- **No blanket "ready for AI" claims.** The Handoff tab and exports no longer call a component "fully ready" or "fully optimized" for AI code generation. The Handoff tab leads with the measured AI handoff results, labels the model's review as an opinion, and leaves out empty sections instead of filling them.
+- **Analyze always runs fresh.** The component cache could return a stale result after an edit it didn't detect. Batch analysis runs fresh too. Restoring your last analysis when you reopen the plugin still works.
+- **Touch targets follow WCAG 2.2.** 24×24 (AA) passes, with a note about the 44×44 touch size and a larger hit area in code. FigmaLint says so when an annotation already covers the hit area. Under 24px is a warning that explains the spacing exception, because a component can't show its spacing. The check measures the smallest variant, skipping dividers and separators.
+- **Fixes show the variable they'll apply** ("4px top padding on `control`, matches `spacing/050`"), update the verdict in place, and Fix all covers every fixable value.
+- **The AI review prompt** tells the model what actually reaches AI tools, so its notes focus on those.
+
+### Fixed
+- **Color contrast is checked on tokenized components.** The check skipped colors bound to variables, so on a fully tokenized component it never ran. It now uses each variable's resolved color, leaves out disabled variants (WCAG exempts them), blends translucent text, and says how many text layers sit on a transparent background and weren't measured.
+- **Fixes suggest the right variable.** Variables with no scopes are hidden from every picker in Figma, but FigmaLint treated them as usable anywhere, so padding was matched to `font-size/16`. Matches now rank by scope and name, so 16px padding gets the spacing variable, and a pill-shaped radius gets the pill variable instead of the nearest number.
+- **True/false variants aren't flagged.** Figma's boolean properties can only show or hide layers, so a toggle that changes styling has to be a variant.
+- **Focus state counts nested items.** Tabs, radio groups and selects built from items with a focus state pass and name the item. Components with their own hover or pressed states still need their own. Helper and note text isn't treated as interactive.
+- **Only State or Interaction properties count as states.** A "Status" property (success, warning…) was counted.
+- **Corner radius is counted once.** A uniform radius was also counted as four corners, so one unbound radius showed as five hard-coded values.
+- **Batch results only list real states.** A cleanup step added hover, focus, active and disabled to anything button-like, and sizes to avatars.
+- **Library variables load in parallel.** In files with large shared libraries, the first fix suggestion imported every library variable one at a time.
+- **OpenAI errors no longer show up as "Network error … Failed to fetch".** OpenAI leaves the CORS header off error responses, which hid the cause. The plugin now reports whether the key was rejected, the account is out of credit or rate-limited, or the model isn't available.
+- **Long error messages ran off the screen.** The banner wraps, the canvas toast shows only the first sentence, and OpenAI's masked copy of your key is left out.
+- **The Stop analysis label was nearly invisible in dark mode.**
+- **Analyze was enabled with nothing selected** after the plugin loaded or the provider changed.
+- **The AI prompt export option disappeared** after the first analysis.
+- **A "Save your API key to continue" message appeared on launch**, although the audit doesn't need a key.
+
 ## 2.11.4
 
 ### Changed

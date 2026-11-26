@@ -87,6 +87,8 @@ export interface DesignToken {
     property?: string;
     /** Whether a matching design token variable exists for this hard-coded value */
     hasMatchingToken?: boolean;
+    /** Name of the best-matching variable, which a Fix would bind */
+    matchingTokenName?: string;
   };
 }
 
@@ -206,7 +208,9 @@ export type UIMessageType =
   | 'preview-naming-strategy'
   | 'apply-naming-strategy'
   | 'preview-batch-fix'
-  | 'generate-instance-sheet';
+  | 'generate-instance-sheet'
+  | 'preview-code-syntax'
+  | 'apply-code-syntax';
 
 // Auto-fix Types
 export interface FixRequest {
@@ -238,8 +242,6 @@ export interface EnhancedAnalysisOptions {
   node?: SceneNode;
   mcpServerUrl?: string;
   useMCP?: boolean;
-  /** Skip the component-hash cache and force a fresh LLM analysis. */
-  bypassCache?: boolean;
   /** UI-generated id used to drop results of cancelled/superseded analyses. */
   requestId?: string;
   /**
@@ -253,8 +255,13 @@ export interface EnhancedAnalysisOptions {
 
 export interface AuditCheck {
   check: string;
-  status: 'pass' | 'fail' | 'warning';
+  /** 'info' marks something reported but not checked or scored */
+  status: 'pass' | 'fail' | 'warning' | 'info';
   suggestion: string;
+  /** The measured result, shown beside the check (e.g. "7.2:1", "3 of 12") */
+  value?: string;
+  /** A fix the panel can apply for this check */
+  action?: 'set-code-syntax';
 }
 
 export interface DetachedInstanceInfo {
@@ -276,6 +283,8 @@ export interface DetailedAuditResults {
   accessibility: AuditCheck[];
   /** Detached instance detection — informational, not scored */
   detachedInstances?: DetachedInstanceInfo[];
+  /** What reaches AI coding tools through Figma's MCP server; not part of the score */
+  aiHandoff?: AuditCheck[];
 }
 
 export interface EnhancedAnalysisResult {
@@ -286,8 +295,6 @@ export interface EnhancedAnalysisResult {
   recommendations?: Array<{ name: string; type: string; description: string; examples: string[] }>;
   namingIssues?: NamingIssue[];
   existingDescription?: string;
-  /** True when served from the component-hash cache (no LLM call was made). */
-  fromCache?: boolean;
   /**
    * False when this result was produced without an API key. The UI uses it to
    * hide the AI-authored sections rather than render them empty.

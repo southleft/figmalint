@@ -388,13 +388,9 @@ ${scoringCriteria}
   applyConsistencyCorrections(result: EnhancedAnalysisResult, context: ComponentContext): EnhancedAnalysisResult {
     const corrected = { ...result };
 
-    // Apply component family-specific corrections
-    if (context.additionalContext?.componentFamily) {
-      corrected.metadata = this.applyComponentFamilyCorrections(
-        corrected.metadata,
-        context.additionalContext.componentFamily
-      );
-    }
+    // No component-family "corrections": they added states and sizes a
+    // button or avatar usually has, whether or not this component has them.
+    // The report only states what the file contains.
 
     // Apply token consistency corrections
     corrected.tokens = this.applyTokenConsistencyCorrections(corrected.tokens);
@@ -662,25 +658,6 @@ ${scoringCriteria}
       token.name.includes('semantic-') || token.name.includes('primary') || token.name.includes('secondary')
     );
     return hasSemanticColors !== false; // Allow undefined/null
-  }
-
-  private applyComponentFamilyCorrections(metadata: any, family: string): any {
-    const corrected = { ...metadata };
-
-    switch (family) {
-      case 'button':
-        if (!corrected.states?.includes('hover')) {
-          corrected.states = [...(corrected.states || []), 'hover', 'focus', 'active', 'disabled'];
-        }
-        break;
-      case 'avatar':
-        if (!corrected.variants?.size && !corrected.props?.some((p: any) => p.name.includes('size'))) {
-          corrected.variants = { ...corrected.variants, size: ['small', 'medium', 'large'] };
-        }
-        break;
-    }
-
-    return corrected;
   }
 
   private applyTokenConsistencyCorrections(tokens: any): any {
